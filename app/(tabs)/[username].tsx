@@ -152,12 +152,6 @@ export default function UserProfileScreen() {
 
         // Check if there's a pending follow request
         if (!isFollowing) {
-          console.log('Checking for follow request:', {
-            requester_id: user.id,
-            requested_id: profileData.id,
-            username: profileData.username
-          });
-          
           const { data: followRequestData, error: followRequestError } = await supabase
             .from('follow_requests')
             .select('id')
@@ -171,10 +165,9 @@ export default function UserProfileScreen() {
           
           followRequestSent = !!followRequestData;
           
-          console.log('Follow request result:', {
-            followRequestData,
+          console.log('Follow request check for', profileData.username, ':', {
             followRequestSent,
-            error: followRequestError
+            hasData: !!followRequestData
           });
         }
       }
@@ -199,7 +192,7 @@ export default function UserProfileScreen() {
         setWorkouts(workoutsData || []);
       }
 
-      const profileToSet = {
+      setProfile({
         ...profileData,
         is_private: profileData.is_private || false,
         _count: {
@@ -209,16 +202,7 @@ export default function UserProfileScreen() {
         is_following: isFollowing,
         has_story: !!(storiesData && storiesData.length > 0),
         follow_request_sent: followRequestSent
-      };
-      
-      console.log('Setting profile state:', {
-        username: profileData.username,
-        is_following: isFollowing,
-        follow_request_sent: followRequestSent,
-        is_private: profileData.is_private
       });
-      
-      setProfile(profileToSet);
 
       // Load user's posts with likes
       const { data: postsData, error: postsError } = await supabase
@@ -242,9 +226,10 @@ export default function UserProfileScreen() {
 
     setFollowLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('You must be logged in to follow users');
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.error('Auth error:', userError);
+        Alert.alert('Authentication Error', 'You must be logged in to follow users');
         return;
       }
 
@@ -327,12 +312,6 @@ export default function UserProfileScreen() {
           }
 
           // Send follow request
-          console.log('Sending follow request:', {
-            requester_id: user.id,
-            requested_id: profile.id,
-            username: profile.username
-          });
-          
           const { error: insertError } = await supabase
             .from('follow_requests')
             .insert({
@@ -345,15 +324,11 @@ export default function UserProfileScreen() {
             throw insertError;
           }
 
-          console.log('Follow request sent successfully');
-
           // Update profile state to show request sent
           setProfile(prev => prev ? {
             ...prev,
             follow_request_sent: true
           } : null);
-          
-          console.log('Updated profile state to show follow_request_sent: true');
 
           Alert.alert('Follow Request Sent', 'Your follow request has been sent. You will be notified when they respond.');
         } else {
@@ -390,10 +365,18 @@ export default function UserProfileScreen() {
       // Provide more specific error messages
       let errorMessage = 'Failed to update follow status';
       if (err instanceof Error) {
+        console.error('Full error details:', {
+          message: err.message,
+          name: err.name,
+          stack: err.stack
+        });
+        
         if (err.message.includes('23505')) {
           errorMessage = 'You are already following this user';
         } else if (err.message.includes('42501')) {
           errorMessage = 'Permission denied. Please check your account status.';
+        } else if (err.message.includes('JWT')) {
+          errorMessage = 'Authentication error. Please try logging out and back in.';
         } else {
           errorMessage = `Error: ${err.message}`;
         }
@@ -681,7 +664,6 @@ export default function UserProfileScreen() {
   useFocusEffect(
     React.useCallback(() => {
       if (username) {
-        console.log('Screen focused, reloading profile:', username);
         loadProfile();
       }
     }, [username])
@@ -741,7 +723,6 @@ export default function UserProfileScreen() {
           filter: `requester_id=eq.${currentUserId}`,
         },
         (payload: any) => {
-          console.log('Follow request realtime update:', payload);
           // Only update if the change affects the current user's request to this profile
           if (payload.new?.requested_id === profile.id || payload.old?.requested_id === profile.id) {
             setProfile(prev => prev ? {
