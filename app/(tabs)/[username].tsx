@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { MessageSquare, MoreVertical, CircleCheck as CheckCircle2, Heart, Grid3x3, Activity, Dumbbell, UserPlus, UserCheck } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -151,14 +152,30 @@ export default function UserProfileScreen() {
 
         // Check if there's a pending follow request
         if (!isFollowing) {
-          const { data: followRequestData } = await supabase
+          console.log('Checking for follow request:', {
+            requester_id: user.id,
+            requested_id: profileData.id,
+            username: profileData.username
+          });
+          
+          const { data: followRequestData, error: followRequestError } = await supabase
             .from('follow_requests')
             .select('id')
             .eq('requester_id', user.id)
             .eq('requested_id', profileData.id)
             .maybeSingle();
           
+          if (followRequestError) {
+            console.error('Error checking follow request:', followRequestError);
+          }
+          
           followRequestSent = !!followRequestData;
+          
+          console.log('Follow request result:', {
+            followRequestData,
+            followRequestSent,
+            error: followRequestError
+          });
         }
       }
 
@@ -182,7 +199,7 @@ export default function UserProfileScreen() {
         setWorkouts(workoutsData || []);
       }
 
-      setProfile({
+      const profileToSet = {
         ...profileData,
         is_private: profileData.is_private || false,
         _count: {
@@ -192,7 +209,16 @@ export default function UserProfileScreen() {
         is_following: isFollowing,
         has_story: !!(storiesData && storiesData.length > 0),
         follow_request_sent: followRequestSent
+      };
+      
+      console.log('Setting profile state:', {
+        username: profileData.username,
+        is_following: isFollowing,
+        follow_request_sent: followRequestSent,
+        is_private: profileData.is_private
       });
+      
+      setProfile(profileToSet);
 
       // Load user's posts with likes
       const { data: postsData, error: postsError } = await supabase
@@ -301,18 +327,33 @@ export default function UserProfileScreen() {
           }
 
           // Send follow request
-          await supabase
+          console.log('Sending follow request:', {
+            requester_id: user.id,
+            requested_id: profile.id,
+            username: profile.username
+          });
+          
+          const { error: insertError } = await supabase
             .from('follow_requests')
             .insert({
               requester_id: user.id,
               requested_id: profile.id,
             });
 
+          if (insertError) {
+            console.error('Error inserting follow request:', insertError);
+            throw insertError;
+          }
+
+          console.log('Follow request sent successfully');
+
           // Update profile state to show request sent
           setProfile(prev => prev ? {
             ...prev,
             follow_request_sent: true
           } : null);
+          
+          console.log('Updated profile state to show follow_request_sent: true');
 
           Alert.alert('Follow Request Sent', 'Your follow request has been sent. You will be notified when they respond.');
         } else {
@@ -636,6 +677,16 @@ export default function UserProfileScreen() {
     }
   }, [username]);
 
+  // Reload profile when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (username) {
+        console.log('Screen focused, reloading profile:', username);
+        loadProfile();
+      }
+    }, [username])
+  );
+
   // Set up real-time subscription for follower changes
   useEffect(() => {
     if (!profile?.id || !currentUserId) return;
@@ -687,11 +738,12 @@ export default function UserProfileScreen() {
           event: '*',
           schema: 'public',
           table: 'follow_requests',
-          filter: `requested_id=eq.${profile.id}`,
+          filter: `requester_id=eq.${currentUserId}`,
         },
         (payload: any) => {
+          console.log('Follow request realtime update:', payload);
           // Only update if the change affects the current user's request to this profile
-          if (payload.new?.requester_id === currentUserId || payload.old?.requester_id === currentUserId) {
+          if (payload.new?.requested_id === profile.id || payload.old?.requested_id === profile.id) {
             setProfile(prev => prev ? {
               ...prev,
               follow_request_sent: payload.eventType === 'INSERT'
