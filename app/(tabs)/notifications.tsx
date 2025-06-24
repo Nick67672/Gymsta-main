@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { ArrowLeft, Heart, UserPlus, MessageCircle, CircleCheck as CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, Heart, UserPlus, MessageCircle, CircleCheck as CheckCircle2, Check, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -10,7 +10,7 @@ import Colors from '@/constants/Colors';
 
 interface Notification {
   id: string;
-  type: 'like' | 'follow' | 'comment' | 'workout_like';
+  type: 'like' | 'follow' | 'comment' | 'workout_like' | 'follow_request';
   created_at: string;
   read: boolean;
   actor: {
@@ -26,6 +26,11 @@ interface Notification {
   workout?: {
     id: string;
     progress_image_url: string | null;
+  };
+  followRequest?: {
+    id: string;
+    requester_id: string;
+    requested_id: string;
   };
 }
 
@@ -91,33 +96,102 @@ export default function NotificationsScreen() {
         .order('created_at', { ascending: false })
         .limit(50);
 
+      // Get notifications (including follow requests)
+      const { data: notificationsData } = await supabase
+        .from('notifications')
+        .select(`
+          id,
+          type,
+          created_at,
+          read,
+          actor_id,
+          post_id,
+          profiles!notifications_actor_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          ),
+          posts (
+            id,
+            image_url
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
       // Combine and format notifications
       const allNotifications: Notification[] = [];
 
-      // Add like notifications
-      if (likesData) {
-        likesData.forEach((like: any) => {
-          allNotifications.push({
-            id: `like_${like.id}`,
-            type: 'like',
-            created_at: like.created_at,
-            read: false,
-            actor: like.profiles,
-            post: like.posts
-          });
+      // Add notifications from the notifications table
+      if (notificationsData) {
+        notificationsData.forEach((notification: any) => {
+          const baseNotification = {
+            id: notification.id,
+            type: notification.type,
+            created_at: notification.created_at,
+            read: notification.read,
+            actor: notification.profiles
+          };
+
+          if (notification.type === 'follow_request') {
+            // For follow requests, we need to get the follow request details
+            allNotifications.push({
+              ...baseNotification,
+              followRequest: {
+                id: notification.id, // We'll use the notification ID for now
+                requester_id: notification.actor_id,
+                requested_id: user.id
+              }
+            });
+          } else if (notification.type === 'like' && notification.posts) {
+            allNotifications.push({
+              ...baseNotification,
+              post: notification.posts
+            });
+          } else {
+            allNotifications.push(baseNotification);
+          }
         });
       }
 
-      // Add follow notifications
+      // Add like notifications (legacy - keeping for now)
+      if (likesData) {
+        likesData.forEach((like: any) => {
+          // Skip if we already have this from notifications table
+          const existingNotification = allNotifications.find(n => 
+            n.type === 'like' && n.actor.id === like.profiles.id && n.post?.id === like.posts.id
+          );
+          if (!existingNotification) {
+            allNotifications.push({
+              id: `like_${like.id}`,
+              type: 'like',
+              created_at: like.created_at,
+              read: false,
+              actor: like.profiles,
+              post: like.posts
+            });
+          }
+        });
+      }
+
+      // Add follow notifications (legacy - keeping for now)
       if (followersData) {
         followersData.forEach((follow: any) => {
-          allNotifications.push({
-            id: `follow_${follow.id}`,
-            type: 'follow',
-            created_at: follow.created_at,
-            read: false,
-            actor: follow.profiles
-          });
+          // Skip if we already have this from notifications table
+          const existingNotification = allNotifications.find(n => 
+            n.type === 'follow' && n.actor.id === follow.profiles.id
+          );
+          if (!existingNotification) {
+            allNotifications.push({
+              id: `follow_${follow.id}`,
+              type: 'follow',
+              created_at: follow.created_at,
+              read: false,
+              actor: follow.profiles
+            });
+          }
         });
       }
 
@@ -169,6 +243,8 @@ export default function NotificationsScreen() {
         return 'commented on your post';
       case 'workout_like':
         return 'liked your workout';
+      case 'follow_request':
+        return 'wants to follow you';
       default:
         return '';
     }
@@ -184,8 +260,98 @@ export default function NotificationsScreen() {
         return <MessageCircle size={20} color={colors.tint} />;
       case 'workout_like':
         return <Heart size={20} color="#E91E63" fill="#E91E63" />;
+      case 'follow_request':
+        return <UserPlus size={20} color="#FF9500" />;
       default:
         return <Heart size={20} color={colors.tint} />;
+    }
+  };
+
+  const handleAcceptFollowRequest = async (notification: Notification) => {
+    if (!notification.followRequest) return;
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Find the actual follow request
+      const { data: followRequestData, error: findError } = await supabase
+        .from('follow_requests')
+        .select('id')
+        .eq('requester_id', notification.followRequest.requester_id)
+        .eq('requested_id', user.id)
+        .single();
+
+      if (findError || !followRequestData) {
+        Alert.alert('Error', 'Follow request not found.');
+        loadNotifications(); // Refresh to remove stale notification
+        return;
+      }
+
+      // Create the follow relationship
+      const { error: followError } = await supabase
+        .from('followers')
+        .insert({
+          follower_id: notification.followRequest.requester_id,
+          following_id: notification.followRequest.requested_id,
+        });
+
+      if (followError) throw followError;
+
+      // Delete the follow request (this will also trigger cleanup of the notification)
+      const { error: deleteError } = await supabase
+        .from('follow_requests')
+        .delete()
+        .eq('id', followRequestData.id);
+
+      if (deleteError) throw deleteError;
+
+      // Refresh notifications
+      loadNotifications();
+      
+      Alert.alert('Follow Request Accepted', `${notification.actor.username} is now following you.`);
+    } catch (error) {
+      console.error('Error accepting follow request:', error);
+      Alert.alert('Error', 'Failed to accept follow request. Please try again.');
+    }
+  };
+
+  const handleDeclineFollowRequest = async (notification: Notification) => {
+    if (!notification.followRequest) return;
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Find the actual follow request
+      const { data: followRequestData, error: findError } = await supabase
+        .from('follow_requests')
+        .select('id')
+        .eq('requester_id', notification.followRequest.requester_id)
+        .eq('requested_id', user.id)
+        .single();
+
+      if (findError || !followRequestData) {
+        Alert.alert('Error', 'Follow request not found.');
+        loadNotifications(); // Refresh to remove stale notification
+        return;
+      }
+
+      // Delete the follow request (this will also trigger cleanup of the notification)
+      const { error } = await supabase
+        .from('follow_requests')
+        .delete()
+        .eq('id', followRequestData.id);
+
+      if (error) throw error;
+
+      // Refresh notifications
+      loadNotifications();
+      
+      Alert.alert('Follow Request Declined', `You declined ${notification.actor.username}'s follow request.`);
+    } catch (error) {
+      console.error('Error declining follow request:', error);
+      Alert.alert('Error', 'Failed to decline follow request. Please try again.');
     }
   };
 
@@ -196,6 +362,9 @@ export default function NotificationsScreen() {
       }
     } else if (notification.type === 'follow') {
       router.push(`/${notification.actor.username}`);
+    } else if (notification.type === 'follow_request') {
+      // For follow requests, we handle them with accept/decline buttons, not navigation
+      return;
     }
   };
 
@@ -269,7 +438,7 @@ export default function NotificationsScreen() {
           </View>
         ) : (
           notifications.map((notification) => (
-            <TouchableOpacity
+            <View
               key={notification.id}
               style={[
                 styles.notificationItem,
@@ -278,10 +447,12 @@ export default function NotificationsScreen() {
                   borderBottomColor: colors.border 
                 }
               ]}
-              onPress={() => handleNotificationPress(notification)}
-              activeOpacity={0.7}
             >
-              <View style={styles.notificationContent}>
+              <TouchableOpacity
+                style={styles.notificationContent}
+                onPress={() => handleNotificationPress(notification)}
+                activeOpacity={notification.type === 'follow_request' ? 1 : 0.7}
+              >
                 <View style={styles.avatarContainer}>
                   <Image
                     source={{
@@ -322,8 +493,27 @@ export default function NotificationsScreen() {
                     />
                   </View>
                 )}
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              {notification.type === 'follow_request' && (
+                <View style={styles.followRequestActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.acceptButton, { backgroundColor: colors.tint }]}
+                    onPress={() => handleAcceptFollowRequest(notification)}
+                  >
+                    <Check size={18} color="#fff" />
+                    <Text style={styles.actionButtonText}>Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.declineButton, { backgroundColor: colors.textSecondary }]}
+                    onPress={() => handleDeclineFollowRequest(notification)}
+                  >
+                    <X size={18} color="#fff" />
+                    <Text style={styles.actionButtonText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           ))
         )}
       </ScrollView>
@@ -449,5 +639,31 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 8,
+  },
+  followRequestActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  acceptButton: {
+    flex: 1,
+  },
+  declineButton: {
+    flex: 1,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

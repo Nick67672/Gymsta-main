@@ -32,6 +32,7 @@ interface Profile {
   };
   is_following: boolean;
   has_story: boolean;
+  follow_request_sent: boolean;
 }
 
 interface WorkoutSummary {
@@ -137,6 +138,7 @@ export default function UserProfileScreen() {
 
       // Check if the current user is following this profile
       let isFollowing = false;
+      let followRequestSent = false;
       if (user) {
         const { data: followData } = await supabase
           .from('followers')
@@ -146,6 +148,18 @@ export default function UserProfileScreen() {
           .maybeSingle();
         
         isFollowing = !!followData;
+
+        // Check if there's a pending follow request
+        if (!isFollowing) {
+          const { data: followRequestData } = await supabase
+            .from('follow_requests')
+            .select('id')
+            .eq('requester_id', user.id)
+            .eq('requested_id', profileData.id)
+            .maybeSingle();
+          
+          followRequestSent = !!followRequestData;
+        }
       }
 
       // Load user's stories
@@ -176,7 +190,8 @@ export default function UserProfileScreen() {
           following: profileData.following?.[0]?.count || 0,
         },
         is_following: isFollowing,
-        has_story: !!(storiesData && storiesData.length > 0)
+        has_story: !!(storiesData && storiesData.length > 0),
+        follow_request_sent: followRequestSent
       });
 
       // Load user's posts with likes
@@ -207,6 +222,36 @@ export default function UserProfileScreen() {
         return;
       }
 
+      // Check if user is blocked or has blocked the target user
+      console.log('Checking if user is blocked:', profile.username);
+      if (isUserBlocked(profile.id)) {
+        console.log('User has blocked the target user');
+        Alert.alert('Cannot Follow', 'You have blocked this user. Unblock them to follow.');
+        return;
+      }
+
+      // Check if the target user has blocked the current user
+      console.log('Checking if target user has blocked current user');
+      const { data: blockedByTarget, error: blockCheckError } = await supabase
+        .from('blocked_users')
+        .select('id')
+        .eq('blocker_id', profile.id)
+        .eq('blocked_id', user.id)
+        .maybeSingle();
+
+      if (blockCheckError) {
+        console.error('Error checking if blocked by target:', blockCheckError);
+        // Continue anyway if the table doesn't exist or there's an error
+      }
+
+      if (blockedByTarget) {
+        console.log('Target user has blocked current user');
+        Alert.alert('Cannot Follow', 'This user has blocked you and you cannot follow them.');
+        return;
+      }
+
+      console.log('No blocking issues found, proceeding with follow logic');
+
       if (profile.is_following) {
         // Unfollow
         await supabase
@@ -223,6 +268,22 @@ export default function UserProfileScreen() {
             followers: prev._count.followers - 1
           }
         } : null);
+      } else if (profile.follow_request_sent) {
+        // Cancel follow request
+        const { error: cancelError } = await supabase
+          .from('follow_requests')
+          .delete()
+          .eq('requester_id', user.id)
+          .eq('requested_id', profile.id);
+
+        if (cancelError) throw cancelError;
+
+        setProfile(prev => prev ? {
+          ...prev,
+          follow_request_sent: false
+        } : null);
+
+        Alert.alert('Follow Request Cancelled', 'Your follow request has been cancelled.');
       } else {
         // Check if account is private
         if (profile.is_private) {
@@ -247,15 +308,30 @@ export default function UserProfileScreen() {
               requested_id: profile.id,
             });
 
+          // Update profile state to show request sent
+          setProfile(prev => prev ? {
+            ...prev,
+            follow_request_sent: true
+          } : null);
+
           Alert.alert('Follow Request Sent', 'Your follow request has been sent. You will be notified when they respond.');
         } else {
           // Public account - follow directly
-          await supabase
+          console.log('Attempting to follow user:', profile.username, 'Profile ID:', profile.id);
+          
+          const { error: followError } = await supabase
             .from('followers')
             .insert({
               follower_id: user.id,
               following_id: profile.id,
             });
+
+          if (followError) {
+            console.error('Follow error:', followError);
+            throw followError;
+          }
+
+          console.log('Successfully followed user:', profile.username);
 
           setProfile(prev => prev ? {
             ...prev,
@@ -269,7 +345,21 @@ export default function UserProfileScreen() {
       }
     } catch (err) {
       console.error('Error following/unfollowing:', err);
-      setError('Failed to update follow status');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to update follow status';
+      if (err instanceof Error) {
+        if (err.message.includes('23505')) {
+          errorMessage = 'You are already following this user';
+        } else if (err.message.includes('42501')) {
+          errorMessage = 'Permission denied. Please check your account status.';
+        } else {
+          errorMessage = `Error: ${err.message}`;
+        }
+      }
+      
+      Alert.alert('Follow Error', errorMessage);
+      setError(errorMessage);
       // Reload profile to ensure correct state
       loadProfile();
     } finally {
@@ -686,25 +776,27 @@ export default function UserProfileScreen() {
                 style={[
                   styles.button,
                   styles.primaryButton,
-                  profile.is_following && [styles.followingButton, { backgroundColor: colors.background, borderColor: colors.tint }],
+                  (profile.is_following || profile.follow_request_sent) && [styles.followingButton, { backgroundColor: colors.background, borderColor: colors.tint }],
                   followLoading && styles.buttonDisabled
                 ]}
                 onPress={handleFollow}
                 disabled={followLoading}>
                 {followLoading ? (
-                  <ActivityIndicator size="small" color={profile.is_following ? colors.tint : '#fff'} />
+                  <ActivityIndicator size="small" color={(profile.is_following || profile.follow_request_sent) ? colors.tint : '#fff'} />
                 ) : (
                   <View style={styles.buttonContent}>
                     {profile.is_following ? (
                       <UserCheck size={18} color={colors.tint} />
+                    ) : profile.follow_request_sent ? (
+                      <UserPlus size={18} color={colors.tint} />
                     ) : (
                       <UserPlus size={18} color="#fff" />
                     )}
                     <Text style={[
                       styles.buttonText,
-                      profile.is_following && { color: colors.tint }
+                      (profile.is_following || profile.follow_request_sent) && { color: colors.tint }
                     ]}>
-                      {profile.is_following ? 'Following' : 'Follow'}
+                      {profile.is_following ? 'Following' : profile.follow_request_sent ? 'Requested' : 'Follow'}
                     </Text>
                   </View>
                 )}
@@ -1086,31 +1178,31 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
     backgroundColor: 'transparent',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    minWidth: 80,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    minWidth: 60,
     flex: 1,
-    marginHorizontal: 5,
+    marginHorizontal: 3,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
     },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
     elevation: 1,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   postsGrid: {
     flexDirection: 'row',

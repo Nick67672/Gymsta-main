@@ -7,6 +7,8 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { Typography } from '@/constants/Typography';
 import StoryViewer from '@/components/StoryViewer';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -189,7 +191,7 @@ export default function ChatScreen() {
 
         // Filter out chats with blocked users
         const nonBlockedChats = transformedChats.filter(chat => 
-          !chat.participants.some(participant => 
+          !chat.participants.some((participant: { id: string; username: string; avatar_url: string | null; is_verified: boolean }) => 
             blockedUserIds.includes(participant.id)
           )
         );
@@ -506,10 +508,7 @@ export default function ChatScreen() {
                     setNavigating(true);
 
                     const participant = chat.participants[0];
-                    router.push({
-                      pathname: `/chat/${participant.username as string}`,
-                      params: { avatarUrl: participant.avatar_url || undefined }
-                    });
+                    router.push(`/chat/${participant.username}` as any);
                   }}>
                   
                   {/* Avatar with Online Indicator */}
@@ -583,8 +582,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   headerContent: {
     flexDirection: 'row',
@@ -592,26 +591,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '700',
+    ...Typography.h1,
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    marginTop: 2,
+    ...Typography.bodyLarge,
+    marginTop: Spacing.xs,
   },
   newChatButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...Shadows.medium,
   },
   loadingContainer: {
     flex: 1,
@@ -635,43 +628,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
+    ...Typography.h3,
+    marginBottom: Spacing.md,
     letterSpacing: -0.3,
   },
   storiesSection: {
-    marginBottom: 32,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    marginBottom: Spacing.xl,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.light,
   },
   storiesContent: {
-    gap: 16,
+    gap: Spacing.md,
   },
   storyItem: {
     alignItems: 'center',
     width: 80,
   },
   storyRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     padding: 3,
     borderWidth: 2,
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   storyAvatar: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
   },
   storyUsername: {
-    fontSize: 13,
+    ...Typography.caption,
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -680,32 +668,28 @@ const styles = StyleSheet.create({
   },
   chatPreview: {
     flexDirection: 'row',
-    padding: 20,
-    borderRadius: 16,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.xl,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
+    ...Shadows.light,
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 16,
+    marginRight: Spacing.md,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   onlineIndicator: {
     position: 'absolute',
     bottom: 2,
     right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
     borderColor: '#fff',
   },
   chatInfo: {
@@ -715,31 +699,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: Spacing.xs,
   },
   usernameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
   },
   username: {
-    fontSize: 17,
+    ...Typography.bodyLarge,
     fontWeight: '600',
     letterSpacing: -0.2,
   },
   timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: Spacing.xs,
   },
   time: {
-    fontSize: 13,
+    ...Typography.caption,
     fontWeight: '500',
   },
   lastMessage: {
-    fontSize: 15,
+    ...Typography.bodyMedium,
     lineHeight: 20,
-    fontWeight: '400',
   },
   emptyContainer: {
     flex: 1,

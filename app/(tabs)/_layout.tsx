@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
-import { Chrome as Home, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Dumbbell } from 'lucide-react-native';
+import { Chrome as Home, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Image, View } from 'react-native';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -71,11 +72,12 @@ export default function TabLayout() {
         tabBarShowLabel: false,
         tabBarStyle: {
           height: 70,
-          backgroundColor: colors.card,
+          backgroundColor: colors.background,
           borderTopWidth: 1,
-          borderTopColor: colors.border,
-          paddingBottom: 10,
-          paddingTop: 10,
+          borderTopColor: 'rgba(0,0,0,0.05)',
+          paddingBottom: 0,
+          paddingTop: Spacing.sm,
+          paddingHorizontal: Spacing.sm,
         },
         tabBarActiveTintColor: colors.tint,
         tabBarInactiveTintColor: colors.tabIconDefault,
@@ -84,6 +86,8 @@ export default function TabLayout() {
           alignItems: 'center',
           justifyContent: 'center',
           height: 50,
+          borderRadius: BorderRadius.lg,
+          marginHorizontal: 2,
         },
       }}>
       <Tabs.Screen
@@ -102,7 +106,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="workout"
+        name="fitness"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
             <View style={{
@@ -111,7 +115,7 @@ export default function TabLayout() {
               width: 40,
               height: 40,
             }}>
-              <Dumbbell size={24} color={focused ? colors.tint : color} />
+              <Zap size={24} color={focused ? colors.tint : color} />
             </View>
           ),
         }}
@@ -123,18 +127,14 @@ export default function TabLayout() {
             <View style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 50,
-              height: 50,
+              width: 56,
+              height: 56,
               backgroundColor: colors.tint,
-              borderRadius: 25,
-              marginTop: -5,
-              elevation: 6,
-              shadowColor: colors.tint,
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 8,
+              borderRadius: 28,
+              marginTop: -8,
+              ...Shadows.heavy,
             }}>
-              <PlusSquare size={26} color="#fff" />
+              <PlusSquare size={28} color="#fff" />
             </View>
           ),
         }}
@@ -187,9 +187,9 @@ export default function TabLayout() {
                 <Image
                   source={{ uri: avatarUrl }}
                   style={{ 
-                    width: 28, 
-                    height: 28, 
-                    borderRadius: 14,
+                    width: 24, 
+                    height: 24, 
+                    borderRadius: 12,
                     borderWidth: focused ? 2 : 0,
                     borderColor: colors.tint,
                   }}

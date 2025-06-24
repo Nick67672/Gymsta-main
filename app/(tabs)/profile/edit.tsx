@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Alert, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Alert, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera } from 'lucide-react-native';
+import { Camera, User, MapPin, FileText } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { ThemedInput } from '@/components/ThemedInput';
+import { ThemedButton } from '@/components/ThemedButton';
+import { ThemedView, ThemedCardView, ThemedSurfaceView } from '@/components/ThemedView';
+import { ThemedText, ThemedSecondaryText, ThemedH2, ThemedH3 } from '@/components/ThemedText';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { Typography } from '@/constants/Typography';
 
 export default function EditProfileScreen() {
   const { theme } = useTheme();
@@ -216,9 +222,10 @@ export default function EditProfileScreen() {
 
   if (initialLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+      <ThemedView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.tint} />
-      </View>
+        <ThemedText style={styles.loadingText}>Loading profile...</ThemedText>
+      </ThemedView>
     );
   }
 
@@ -227,169 +234,187 @@ export default function EditProfileScreen() {
       Keyboard.dismiss();
       setShowGymSuggestions(false);
     }}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.text }]}>Edit</Text>
-        </View>
-
-      {error && (
-        <View style={[styles.errorContainer, { backgroundColor: colors.error + '20' }]}>
-          <Text style={[styles.error, { color: colors.error }]}>{error}</Text>
-          <TouchableOpacity 
-            style={[styles.retryButton, { 
-              backgroundColor: colors.background,
-              borderColor: colors.error 
-            }]} 
-            onPress={() => setError(null)}>
-            <Text style={[styles.retryText, { color: colors.error }]}>Dismiss</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <TouchableOpacity 
-        style={styles.avatarContainer} 
-        onPress={pickImage}
-        disabled={uploadingAvatar}>
-        {uploadingAvatar ? (
-          <View style={[styles.avatarPlaceholder, { 
-            backgroundColor: colors.backgroundSecondary,
-            borderColor: colors.border 
-          }]}>
-            <ActivityIndicator size="large" color={colors.tint} />
+      <ThemedView style={styles.container}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <ThemedH2 style={styles.title}>Edit Profile</ThemedH2>
+            <ThemedSecondaryText style={styles.subtitle}>
+              Update your profile information
+            </ThemedSecondaryText>
           </View>
-        ) : avatar ? (
-          <Image source={{ uri: avatar }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { 
-            backgroundColor: colors.backgroundSecondary,
-            borderColor: colors.border 
-          }]}>
-            <Camera size={40} color={colors.textSecondary} />
-            <Text style={[styles.avatarText, { color: colors.textSecondary }]}>Change Profile Picture</Text>
-          </View>
-        )}
-      </TouchableOpacity>
 
-      <TextInput
-        style={[styles.input, { 
-          borderColor: colors.border,
-          backgroundColor: colors.inputBackground,
-          color: colors.text
-        }]}
-        placeholder="Username"
-        placeholderTextColor={colors.textSecondary}
-        value={username}
-        onChangeText={setUsername}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-
-      <TextInput
-        style={[
-          styles.input, 
-          styles.bioInput, 
-          { 
-            borderColor: colors.border,
-            backgroundColor: colors.inputBackground,
-            color: colors.text
-          }
-        ]}
-        placeholder="Bio"
-        placeholderTextColor={colors.textSecondary}
-        value={bio}
-        onChangeText={setBio}
-        multiline
-        numberOfLines={4}
-      />
-
-      <View style={styles.gymInputContainer}>
-        <TextInput
-          style={[
-            styles.input,
-            { 
-              borderColor: colors.border,
-              backgroundColor: colors.inputBackground,
-              color: colors.text,
-              marginBottom: showGymSuggestions && filteredGyms.length > 0 ? 0 : 16,
-              borderBottomLeftRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
-              borderBottomRightRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8
-            }
-          ]}
-          placeholder="Gym (optional)"
-          placeholderTextColor={colors.textSecondary}
-          value={gym}
-          onChangeText={(text) => {
-            setGym(text);
-            setShowGymSuggestions(true);
-          }}
-          onFocus={() => setShowGymSuggestions(true)}
-        />
-        
-        {showGymSuggestions && filteredGyms.length > 0 && (
-          <ScrollView 
-            style={[
-              styles.suggestionsContainer,
-              {
-                backgroundColor: colors.inputBackground,
-                borderColor: colors.border
-              }
-            ]}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
-            {filteredGyms.map((suggestion: string, index: number) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.suggestionItem,
-                  { borderBottomColor: colors.border }
-                ]}
-                onPress={() => {
-                  setGym(suggestion);
-                  setShowGymSuggestions(false);
-                }}
+          {/* Error Display */}
+          {error && (
+            <ThemedSurfaceView style={[styles.errorContainer, { 
+              backgroundColor: colors.error + '15',
+              borderColor: colors.error + '30'
+            }]}>
+              <ThemedText style={[styles.errorText, { color: colors.error }]}>{error}</ThemedText>
+              <TouchableOpacity 
+                style={[styles.dismissButton, { borderColor: colors.error }]} 
+                onPress={() => setError(null)}
               >
-                <Text style={[styles.suggestionText, { color: colors.text }]}>
-                  {suggestion}
-                </Text>
+                <ThemedText style={[styles.dismissText, { color: colors.error }]}>Dismiss</ThemedText>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={[
-            styles.button, 
-            styles.cancelButton, 
-            { 
-              backgroundColor: colors.background, 
-              borderColor: colors.tint 
-            }
-          ]}
-          onPress={() => router.back()}
-          disabled={loading || uploadingAvatar}>
-          <Text style={[styles.cancelButtonText, { color: colors.tint }]}>Cancel</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.button, 
-            styles.saveButton, 
-            (loading || uploadingAvatar) && styles.buttonDisabled, 
-            { backgroundColor: colors.tint }
-          ]}
-          onPress={handleSave}
-          disabled={loading || uploadingAvatar}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save Changes</Text>
+            </ThemedSurfaceView>
           )}
-        </TouchableOpacity>
-      </View>
-    </View>
+
+          {/* Avatar Section */}
+          <ThemedCardView style={styles.avatarSection}>
+            <ThemedH3 style={styles.sectionTitle}>Profile Picture</ThemedH3>
+            <TouchableOpacity 
+              style={styles.avatarContainer} 
+              onPress={pickImage}
+              disabled={uploadingAvatar}
+              activeOpacity={0.8}
+            >
+              {uploadingAvatar ? (
+                <View style={[styles.avatarPlaceholder, { 
+                  backgroundColor: colors.backgroundSecondary,
+                  borderColor: colors.border 
+                }]}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                  <ThemedText style={[styles.uploadingText, { color: colors.textSecondary }]}>
+                    Uploading...
+                  </ThemedText>
+                </View>
+              ) : avatar ? (
+                <View style={styles.avatarWrapper}>
+                  <Image source={{ uri: avatar }} style={styles.avatar} />
+                  <View style={[styles.avatarOverlay, { backgroundColor: colors.background + '80' }]}>
+                    <Camera size={24} color={colors.text} />
+                  </View>
+                </View>
+              ) : (
+                <View style={[styles.avatarPlaceholder, { 
+                  backgroundColor: colors.backgroundSecondary,
+                  borderColor: colors.border 
+                }]}>
+                  <Camera size={32} color={colors.textSecondary} />
+                  <ThemedText style={[styles.avatarText, { color: colors.textSecondary }]}>
+                    Add Photo
+                  </ThemedText>
+                </View>
+              )}
+            </TouchableOpacity>
+          </ThemedCardView>
+
+          {/* Profile Information */}
+          <ThemedCardView style={styles.formSection}>
+            <ThemedH3 style={styles.sectionTitle}>Profile Information</ThemedH3>
+            
+            <View style={styles.inputGroup}>
+              <View style={styles.inputContainer}>
+                <ThemedText style={styles.inputLabel}>Username</ThemedText>
+                <ThemedInput
+                  value={username}
+                  onChangeText={setUsername}
+                  leftIcon={<User size={20} color={colors.textSecondary} />}
+                  variant="filled"
+                  size="medium"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  error={error && error.includes('username') ? 'Username is required' : undefined}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <ThemedText style={styles.inputLabel}>Bio</ThemedText>
+                <ThemedInput
+                  value={bio}
+                  onChangeText={setBio}
+                  leftIcon={<FileText size={20} color={colors.textSecondary} />}
+                  variant="filled"
+                  size="medium"
+                  multiline
+                  numberOfLines={4}
+                  style={styles.bioInput}
+                />
+              </View>
+
+              <View style={styles.gymInputContainer}>
+                <View style={styles.inputContainer}>
+                  <ThemedText style={styles.inputLabel}>Gym (Optional)</ThemedText>
+                  <ThemedInput
+                    value={gym}
+                    onChangeText={(text) => {
+                      setGym(text);
+                      setShowGymSuggestions(true);
+                    }}
+                    onFocus={() => setShowGymSuggestions(true)}
+                    leftIcon={<MapPin size={20} color={colors.textSecondary} />}
+                    variant="filled"
+                    size="medium"
+                  />
+                </View>
+                
+                {showGymSuggestions && filteredGyms.length > 0 && (
+                  <ThemedSurfaceView style={[styles.suggestionsContainer, {
+                    borderColor: colors.border
+                  }]}>
+                    <ScrollView 
+                      style={styles.suggestionsList}
+                      keyboardShouldPersistTaps="handled"
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {filteredGyms.map((suggestion: string, index: number) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={[styles.suggestionItem, { 
+                            borderBottomColor: colors.border,
+                            borderBottomWidth: index < filteredGyms.length - 1 ? 1 : 0
+                          }]}
+                          onPress={() => {
+                            setGym(suggestion);
+                            setShowGymSuggestions(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <MapPin size={16} color={colors.textSecondary} style={styles.suggestionIcon} />
+                          <ThemedText style={styles.suggestionText}>
+                            {suggestion}
+                          </ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </ThemedSurfaceView>
+                )}
+              </View>
+            </View>
+          </ThemedCardView>
+
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+             <ThemedButton
+               title="Cancel"
+               onPress={() => router.back()}
+               variant="outline"
+               size="medium"
+               disabled={loading || uploadingAvatar}
+               style={styles.cancelButton}
+               fullWidth={false}
+             />
+
+             <ThemedButton
+               title="Save Changes"
+               onPress={handleSave}
+               variant="primary"
+               size="medium"
+               loading={loading}
+               disabled={uploadingAvatar}
+               gradient={true}
+               style={styles.saveButton}
+               fullWidth={false}
+             />
+           </View>
+        </ScrollView>
+      </ThemedView>
     </TouchableWithoutFeedback>
   );
 }
@@ -397,48 +422,85 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xl,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingText: {
+    marginTop: Spacing.md,
+    opacity: 0.7,
+  },
   header: {
-    marginTop: 40,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  errorContainer: {
-    padding: 15,
-    marginBottom: 20,
-    borderRadius: 8,
+    paddingTop: Spacing.xl + 20,
+    paddingBottom: Spacing.lg,
     alignItems: 'center',
   },
-  error: {
-    textAlign: 'center',
-    marginBottom: 10,
+  title: {
+    marginBottom: Spacing.xs,
   },
-  retryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 4,
+  subtitle: {
+    textAlign: 'center',
+  },
+  errorContainer: {
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  errorText: {
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+    ...Typography.bodyMedium,
+  },
+  dismissButton: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
   },
-  retryText: {
+  dismissText: {
+    ...Typography.bodyMedium,
     fontWeight: '600',
+  },
+  avatarSection: {
+    marginBottom: Spacing.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    marginBottom: Spacing.lg,
+    alignSelf: 'flex-start',
+    width: '100%',
   },
   avatarContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+  },
+  avatarWrapper: {
+    position: 'relative',
   },
   avatar: {
     width: 120,
     height: 120,
     borderRadius: 60,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
   },
   avatarPlaceholder: {
     width: 120,
@@ -446,72 +508,87 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     borderStyle: 'dashed',
   },
   avatarText: {
-    marginTop: 8,
-    fontSize: 12,
+    marginTop: Spacing.sm,
+    ...Typography.bodySmall,
+    fontWeight: '500',
   },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
+  uploadingText: {
+    marginTop: Spacing.sm,
+    ...Typography.bodySmall,
+  },
+  formSection: {
+    marginBottom: Spacing.lg,
+    padding: Spacing.xl,
+  },
+  inputGroup: {
+    gap: Spacing.lg,
+  },
+  inputContainer: {
+    marginBottom: Spacing.sm,
+  },
+  inputLabel: {
+    marginBottom: Spacing.xs,
+    marginLeft: 0,
+    ...Typography.bodyMedium,
+    fontWeight: '600',
   },
   bioInput: {
-    height: 100,
+    minHeight: 100,
     textAlignVertical: 'top',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  button: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 5,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  cancelButton: {
-    borderWidth: 1,
-  },
-  saveButton: {
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   gymInputContainer: {
     position: 'relative',
-    zIndex: 1,
+    zIndex: 1000,
+    marginBottom: Spacing.xl, // Add extra margin to prevent overlap
   },
   suggestionsContainer: {
-    maxHeight: 200,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    marginBottom: 16,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 150, // Reduce height to prevent overlap
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    marginTop: -Spacing.md,
+    zIndex: 1001,
+    ...Shadows.medium,
+  },
+  suggestionsList: {
+    flex: 1,
   },
   suggestionItem: {
-    padding: 12,
-    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  suggestionIcon: {
+    marginRight: Spacing.sm,
   },
   suggestionText: {
-    fontSize: 16,
+    flex: 1,
+    ...Typography.bodyMedium,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.lg,
+    marginTop: Spacing.xl * 1.5,
+    paddingTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+  },
+  cancelButton: {
+    flex: 1,
+    maxWidth: 130,
+  },
+  saveButton: {
+    flex: 1.5,
+    minWidth: 150,
   },
 });
 

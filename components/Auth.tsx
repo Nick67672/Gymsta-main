@@ -5,6 +5,8 @@ import { Check } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { Typography } from '@/constants/Typography';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
@@ -258,7 +260,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: Spacing.lg,
   },
   formContainer: {
     width: '100%',
@@ -266,30 +268,31 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 30,
+    ...Typography.h2,
+    marginBottom: Spacing.xl,
     textAlign: 'center',
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
+    borderWidth: 0,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Typography.bodyLarge,
+    ...Shadows.light,
   },
   eulaContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 20,
-    paddingVertical: 8,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: 6,
+    borderRadius: BorderRadius.sm,
     borderWidth: 2,
-    marginRight: 10,
+    marginRight: Spacing.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -297,17 +300,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eulaText: {
-    fontSize: 14,
+    ...Typography.bodySmall,
     lineHeight: 20,
   },
   eulaLink: {
     textDecorationLine: 'underline',
   },
   button: {
-    padding: 14,
-    borderRadius: 16,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Spacing.sm,
+    ...Shadows.medium,
   },
   buttonDisabled: {
     opacity: 0.7,
@@ -317,20 +322,21 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...Typography.button,
   },
   switchModeButton: {
-    marginTop: 16,
+    marginTop: Spacing.lg,
     alignItems: 'center',
+    paddingVertical: Spacing.sm,
   },
   switchModeText: {
-    fontSize: 16,
+    ...Typography.bodyLarge,
   },
   error: {
     color: '#6C5CE7',
-    marginBottom: 16,
+    marginBottom: Spacing.md,
     textAlign: 'center',
+    ...Typography.bodyMedium,
   },
   modalOverlay: {
     flex: 1,
@@ -340,45 +346,43 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '95%',
     maxHeight: '90%',
-    borderRadius: 16,
+    borderRadius: BorderRadius.xl,
     overflow: 'hidden',
-    boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
-    elevation: 5,
+    ...Shadows.heavy,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...Typography.h4,
   },
   closeButton: {
-    padding: 5,
+    padding: Spacing.xs,
+    borderRadius: BorderRadius.full,
   },
   closeButtonText: {
     fontSize: 24,
     fontWeight: 'bold',
   },
   eulaScrollView: {
-    padding: 16,
+    padding: Spacing.lg,
     maxHeight: 400,
   },
   eulaFullText: {
-    fontSize: 14,
+    ...Typography.bodySmall,
     lineHeight: 20,
   },
   acceptButton: {
-    padding: 16,
+    padding: Spacing.lg,
     alignItems: 'center',
   },
   acceptButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    ...Typography.button,
   },
 });
