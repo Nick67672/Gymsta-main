@@ -278,7 +278,7 @@ export default function WorkoutHubScreen() {
           style={[styles.createWorkoutButton, { backgroundColor: colors.tint }]}
           onPress={handleCreateWorkout}
         >
-          <Edit3 size={18} color="#fff" />
+          <Plus size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 

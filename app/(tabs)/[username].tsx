@@ -638,7 +638,7 @@ export default function UserProfileScreen() {
 
   // Set up real-time subscription for follower changes
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!profile?.id || !currentUserId) return;
 
     const subscription = supabase
       .channel(`followers_changes_${profile.id}_${Date.now()}`)
@@ -650,9 +650,22 @@ export default function UserProfileScreen() {
           table: 'followers',
           filter: `following_id=eq.${profile.id}`,
         },
-        () => {
-          // Reload profile data when followers change
-          loadProfile();
+        (payload: any) => {
+          // Only reload if the change affects the current user's relationship with this profile
+          if (payload.new?.follower_id === currentUserId || payload.old?.follower_id === currentUserId) {
+            loadProfile();
+          } else {
+            // Just update the follower count without full reload
+            setProfile(prev => prev ? {
+              ...prev,
+              _count: {
+                ...prev._count,
+                followers: payload.eventType === 'INSERT' 
+                  ? prev._count.followers + 1 
+                  : prev._count.followers - 1
+              }
+            } : null);
+          }
         }
       )
       .subscribe();
@@ -660,7 +673,38 @@ export default function UserProfileScreen() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [profile?.id]);
+  }, [profile?.id, currentUserId]);
+
+  // Set up real-time subscription for follow request changes
+  useEffect(() => {
+    if (!profile?.id || !currentUserId) return;
+
+    const subscription = supabase
+      .channel(`follow_requests_changes_${profile.id}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests',
+          filter: `requested_id=eq.${profile.id}`,
+        },
+        (payload: any) => {
+          // Only update if the change affects the current user's request to this profile
+          if (payload.new?.requester_id === currentUserId || payload.old?.requester_id === currentUserId) {
+            setProfile(prev => prev ? {
+              ...prev,
+              follow_request_sent: payload.eventType === 'INSERT'
+            } : null);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [profile?.id, currentUserId]);
 
   // Set up real-time subscription for likes changes
   useEffect(() => {
