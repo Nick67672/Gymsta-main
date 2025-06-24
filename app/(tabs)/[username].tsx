@@ -104,7 +104,13 @@ export default function UserProfileScreen() {
 
   const loadProfile = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      console.log('Loading profile for username:', username);
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('Auth error in loadProfile:', authError);
+        throw authError;
+      }
 
       // Get profile with follower counts
       const { data: profileData, error: profileError } = await supabase
@@ -299,12 +305,18 @@ export default function UserProfileScreen() {
         // Check if account is private
         if (profile.is_private) {
           // Check if follow request already exists
-          const { data: existingRequest } = await supabase
+          console.log('Checking for existing follow request...');
+          const { data: existingRequest, error: checkError } = await supabase
             .from('follow_requests')
             .select('id')
             .eq('requester_id', user.id)
             .eq('requested_id', profile.id)
             .maybeSingle();
+
+          if (checkError) {
+            console.error('Error checking existing request:', checkError);
+            throw new Error(`Failed to check existing follow request: ${checkError.message}`);
+          }
 
           if (existingRequest) {
             Alert.alert('Request Already Sent', 'You have already sent a follow request to this user.');
@@ -312,6 +324,11 @@ export default function UserProfileScreen() {
           }
 
           // Send follow request
+          console.log('Attempting to insert follow request...', {
+            requester_id: user.id,
+            requested_id: profile.id
+          });
+          
           const { error: insertError } = await supabase
             .from('follow_requests')
             .insert({
@@ -321,8 +338,10 @@ export default function UserProfileScreen() {
 
           if (insertError) {
             console.error('Error inserting follow request:', insertError);
-            throw insertError;
+            throw new Error(`Failed to send follow request: ${insertError.message}`);
           }
+          
+          console.log('Follow request inserted successfully');
 
           // Update profile state to show request sent
           setProfile(prev => prev ? {
