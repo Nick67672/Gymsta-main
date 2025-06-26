@@ -5,11 +5,13 @@ import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { LogIn, MessageSquare, Bell } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
+import TestDeleteFunctionality from '../../test_delete_functionality';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
@@ -159,7 +161,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
 export default function HomeScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { isAuthenticated, showAuthModal } = useAuth();
+  const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
   
   const [activeTab, setActiveTab] = useState<'explore' | 'following' | 'my-gym'>('explore');
@@ -181,6 +183,7 @@ export default function HomeScreen() {
   const [gymWorkouts, setGymWorkouts] = useState<Workout[]>([]);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showTestMode, setShowTestMode] = useState(false);
   const videoRefs = useRef<{ [key: string]: any }>({});
   const [flaggedPosts, setFlaggedPosts] = useState<{ [postId: string]: boolean }>({});
   const [flagging, setFlagging] = useState<{ [postId: string]: boolean }>({});
@@ -190,6 +193,47 @@ export default function HomeScreen() {
     stories?: any;
   }>({});
   
+  const loadFeed = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      setLoading(false);
+      setPosts([]);
+      setFollowingPosts([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data: feedPosts, error: feedError } = await supabase.rpc('get_feed_posts');
+
+      if (feedError) throw feedError;
+
+      const { data: followingData, error: followingError } = await supabase
+        .from('followers')
+        .select('following_id')
+        .eq('follower_id', user.id);
+
+      if (followingError) throw followingError;
+
+      const followingIds = followingData.map(f => f.following_id);
+
+      const userAndFollowingPosts = (feedPosts as Post[]).filter(
+        (p: Post) => p.user_id === user.id || followingIds.includes(p.user_id)
+      );
+
+      setPosts(feedPosts as Post[]);
+      setFollowingPosts(userAndFollowingPosts);
+      
+    } catch (err: any) {
+      console.error('Error loading feed:', err);
+      setError('Could not load your feed. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isAuthenticated, user]);
+
   const loadFollowing = async () => {
     if (!isAuthenticated) return;
     
@@ -281,6 +325,7 @@ export default function HomeScreen() {
         .from('posts')
         .select(`
           id,
+          user_id,
           caption,
           image_url,
           media_type,
@@ -380,6 +425,7 @@ export default function HomeScreen() {
         .from('posts')
         .select(`
           id,
+          user_id,
           caption,
           image_url,
           media_type,
@@ -439,27 +485,12 @@ export default function HomeScreen() {
       showAuthModal();
       return;
     }
-    
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      
-      // Optimistically update the UI immediately
-      const updateLikes = (currentPosts: Post[]) => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            const newLike = { id: `temp-${Date.now()}`, user_id: user.id };
-            return {
-              ...post,
-              likes: [...post.likes, newLike]
-            };
-          }
-          return post;
-        });
-      
-      setPosts(updateLikes);
-      setFollowingPosts(updateLikes);
 
+      // The real-time listener will handle the UI update.
       const { error } = await supabase
         .from('likes')
         .insert({
@@ -468,81 +499,26 @@ export default function HomeScreen() {
         });
 
       if (error) {
-        // Revert optimistic update on error
-        const revertLikes = (currentPosts: Post[]) => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: post.likes.filter(like => !like.id.toString().startsWith('temp-'))
-              };
-            }
-            return post;
-          });
-        
-        setPosts(revertLikes);
-        setFollowingPosts(revertLikes);
-        throw error;
+        // Log the error but don't worry about reverting UI,
+        // as no optimistic update was made.
+        console.error('Error liking post:', error);
       }
-
-      // Refresh the post data to get the real like ID from database
-      const { data: updatedPost } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .eq('id', postId)
-        .single();
-
-      if (updatedPost) {
-        const updateFinalLikes = (currentPosts: Post[]) => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: updatedPost.likes
-              };
-            }
-            return post;
-          });
-        
-        setPosts(updateFinalLikes);
-        setFollowingPosts(updateFinalLikes);
-      }
-
     } catch (err) {
-      console.error('Error liking post:', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      // Find the like to remove for optimistic update
-      const currentPost = posts.find(p => p.id === postId) || followingPosts.find(p => p.id === postId);
-      const likeToRemove = currentPost?.likes.find(like => like.user_id === user.id);
       
-      // Optimistically update the UI immediately
-      const removeOptimisticLike = (currentPosts: Post[]) => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likes: post.likes.filter(like => like.user_id !== user.id)
-            };
-          }
-          return post;
-        });
-      
-      setPosts(removeOptimisticLike);
-      setFollowingPosts(removeOptimisticLike);
-      
+      // The real-time listener will handle the UI update.
       const { error } = await supabase
         .from('likes')
         .delete()
@@ -550,27 +526,10 @@ export default function HomeScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        // Revert optimistic update on error
-        if (likeToRemove) {
-          const revertUnlike = (currentPosts: Post[]) => 
-            currentPosts.map(post => {
-              if (post.id === postId) {
-                return {
-                  ...post,
-                  likes: [...post.likes, likeToRemove]
-                };
-              }
-              return post;
-            });
-          
-          setPosts(revertUnlike);
-          setFollowingPosts(revertUnlike);
-        }
-        throw error;
+        console.error('Error unliking post:', error);
       }
-
     } catch (err) {
-      console.error('Error unliking post:', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 
@@ -601,30 +560,105 @@ export default function HomeScreen() {
   };
 
   const handleWorkoutPress = (workoutId: string) => {
+    setSelectedWorkoutId(workoutId);
+    setShowWorkoutModal(true);
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    console.log('🗑️ Attempting to delete post:', postId);
+    
+    try {
+      // Get current user to verify they can delete this post
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('❌ Error getting current user:', userError);
+        Alert.alert('Error', 'Authentication error. Please try again.');
+        return;
+      }
+      
+      if (!user) {
+        console.error('❌ No authenticated user found');
+        Alert.alert('Error', 'You must be logged in to delete posts.');
+        return;
+      }
+      
+      console.log('👤 Current user ID:', user.id);
+      
+      // Find the post to check ownership
+      const postToDelete = posts.find(p => p.id === postId) || followingPosts.find(p => p.id === postId);
+      if (postToDelete) {
+        console.log('📝 Post owner ID:', postToDelete.user_id);
+        console.log('🔐 User can delete:', postToDelete.user_id === user.id);
+      }
+      
+      // Optimistically remove from UI
+      setPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
+      setFollowingPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
+      
+      console.log('🔄 Sending delete request to Supabase...');
+      const { error } = await supabase.from('posts').delete().eq('id', postId);
+      
+      if (error) {
+        console.error('❌ Supabase delete error:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        Alert.alert('Error', `Could not delete post: ${error.message}`);
+        // Reload feed to restore the post in UI
+        loadFeed();
+      } else {
+        console.log('✅ Post deleted successfully');
+      }
+    } catch (err) {
+      console.error('❌ Unexpected error in handleDeletePost:', err);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      // Reload feed to restore the post in UI
+      loadFeed();
+    }
+  };
+
+  const handleFlagPost = async (postId: string) => {
     if (!isAuthenticated) {
       showAuthModal();
       return;
     }
     
-    setSelectedWorkoutId(workoutId);
-    setShowWorkoutModal(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      // The real-time listener will handle the UI update.
+      const { error } = await supabase
+        .from('likes')
+        .delete()
+        .eq('post_id', postId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error flagging post:', error);
+      }
+    } catch (err) {
+      console.error('Error in handleFlagPost function:', err);
+    }
   };
 
-  useEffect(() => {
-    // Don't load posts until blocking context is ready
-    if (blockingLoading) return;
-    
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setCurrentUserId(user.id);
-      }
-    });
+  useFocusEffect(
+    useCallback(() => {
+      if (blockingLoading) return;
 
-    loadPosts();
-    loadFollowing();
-    loadGymWorkouts();
-    loadFollowingContent();
-  }, [blockingLoading, blockedUserIds]);
+      loadFeed();
+      loadFollowing();
+      loadGymWorkouts();
+
+      // Setup Supabase real-time subscriptions
+      // ... (rest of the subscription logic remains the same)
+
+    }, [isAuthenticated, blockingLoading, loadFeed])
+  );
 
   // Separate useEffect for channel subscriptions to avoid multiple subscriptions
   // We only create real-time subscriptions once the user is authenticated. This
@@ -655,6 +689,32 @@ export default function HomeScreen() {
         console.log('🔗 Test channel status:', status);
       });
 
+    const handlePostInsert = (payload: any) => {
+      const newPost = {
+        ...payload.new,
+        user_id: payload.new.user_id, // Ensure user_id is mapped
+        profiles: {
+          id: payload.new.profiles?.id,
+          username: payload.new.profiles?.username,
+          avatar_url: payload.new.profiles?.avatar_url,
+          is_verified: payload.new.profiles?.is_verified,
+          gym: payload.new.profiles?.gym,
+        },
+        likes: [],
+      };
+
+      // Add the new post only if it's not from a blocked user
+      if (!blockedUserIds.includes(newPost.user_id)) {
+        setPosts(currentPosts => [newPost, ...currentPosts]);
+        
+        // Also add to following feed if the author is followed
+        const isFollowing = following.some(f => f.id === newPost.user_id);
+        if (isFollowing || newPost.user_id === user?.id) {
+          setFollowingPosts(currentPosts => [newPost, ...currentPosts]);
+        }
+      }
+    };
+
     const postsChannel = supabase.channel('posts-channel-' + Date.now())
       .on(
         'postgres_changes',
@@ -663,38 +723,20 @@ export default function HomeScreen() {
           schema: 'public',
           table: 'posts'
         },
-        async (payload) => {
-          const { data: newPost, error } = await supabase
-            .from('posts')
-            .select(`
-              id,
-              caption,
-              image_url,
-              media_type,
-              created_at,
-              product_id,
-              profiles (
-                id,
-                username,
-                avatar_url,
-                is_verified,
-                gym
-              ),
-              likes (
-                id,
-                user_id
-              )
-            `)
-            .eq('id', payload.new.id)
-            .single();
-
-          if (!error && newPost) {
-            const postWithMediaType = {
-              ...newPost,
-              media_type: newPost.media_type || 'image'
-            };
-            setPosts(currentPosts => [postWithMediaType, ...currentPosts]);
-          }
+        handlePostInsert
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'posts'
+        },
+        (payload) => {
+          console.log('🗑️ Post deletion detected:', payload.old.id);
+          // Remove the deleted post from all feeds
+          setPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
+          setFollowingPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
         }
       )
       .subscribe();
@@ -709,41 +751,34 @@ export default function HomeScreen() {
         },
         (payload) => {
           console.log('🔥 Main feed - Likes change detected:', payload);
-          // Efficiently update posts state instead of reloading all posts
+          
           if (payload.eventType === 'INSERT') {
             const { post_id } = payload.new;
-            console.log('➕ Adding like to post:', post_id);
-            setPosts(currentPosts => 
-              currentPosts.map(post => {
-                if (post.id === post_id) {
-                  console.log('✅ Updated post likes for:', post_id);
-                  return {
-                    ...post,
-                    likes: [...post.likes, { id: payload.new.id, user_id: payload.new.user_id }]
-                  };
-                }
-                return post;
-              })
-            );
+            const newLike = { id: payload.new.id, user_id: payload.new.user_id };
+
+            const addLikeToPost = (posts: Post[]) => posts.map(post => {
+              if (post.id === post_id && !post.likes.some(l => l.id === newLike.id)) {
+                return { ...post, likes: [...post.likes, newLike] };
+              }
+              return post;
+            });
+            
+            setPosts(addLikeToPost);
+            setFollowingPosts(addLikeToPost);
+
           } else if (payload.eventType === 'DELETE') {
-            const { post_id } = payload.old;
-            console.log('➖ Removing like from post:', post_id);
-            console.log('🗑️ Deleted like payload:', payload.old);
-            setPosts(currentPosts => 
-              currentPosts.map(post => {
-                if (post.id === post_id) {
-                  console.log('🔍 Current likes before filter:', post.likes);
-                  const updatedLikes = post.likes.filter(like => like.id !== payload.old.id);
-                  console.log('🔍 Updated likes after filter:', updatedLikes);
-                  console.log('✅ Updated post likes for:', post_id);
-                  return {
-                    ...post,
-                    likes: updatedLikes
-                  };
-                }
-                return post;
-              })
-            );
+            const deletedLikeId = payload.old.id;
+            if (!deletedLikeId) return;
+
+            const removeLikeFromPost = (posts: Post[]) => posts.map(post => {
+              if (post.likes.some(l => l.id === deletedLikeId)) {
+                return { ...post, likes: post.likes.filter(l => l.id !== deletedLikeId) };
+              }
+              return post;
+            });
+
+            setPosts(removeLikeFromPost);
+            setFollowingPosts(removeLikeFromPost);
           }
         }
       )
@@ -778,7 +813,7 @@ export default function HomeScreen() {
       likesChannel.unsubscribe();
       storiesChannel.unsubscribe();
     };
-  }, [blockingLoading, isAuthenticated]); // Re-run when auth status changes
+  }, [blockingLoading, isAuthenticated, blockedUserIds, following, user]);
 
   // Load gym workouts when currentUserGym changes
   useEffect(() => {
@@ -795,10 +830,10 @@ export default function HomeScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadPosts();
+    loadFeed();
     loadFollowing();
     loadGymWorkouts();
-    loadFollowingContent();
+    setRefreshing(false);
   };
 
   // Filter posts based on active tab
@@ -852,11 +887,62 @@ export default function HomeScreen() {
         navigateToProfile={navigateToProfile}
         handleLike={handleLike}
         handleUnlike={handleUnlike}
+        handleDeletePost={handleDeletePost}
         videoRefs={videoRefs}
       />
     ),
-    [colors, playingVideo, currentUserId, flaggedPosts, flagging]
+    [colors, playingVideo, currentUserId, flaggedPosts, flagging, handleDeletePost]
   );
+
+  const renderExploreItem = ({ item }: { item: Post }) => (
+    <FeedPost
+      post={item}
+      currentUserId={user!.id}
+      toggleVideoPlayback={toggleVideoPlayback}
+      playingVideo={playingVideo}
+      videoRefs={videoRefs}
+      colors={colors}
+      handleLike={handleLike}
+      handleUnlike={handleUnlike}
+      handleDeletePost={handleDeletePost}
+      onDelete={handleDeletePost}
+      setFlagging={setFlagging}
+      setFlaggedPosts={setFlaggedPosts}
+      isAuthenticated={isAuthenticated}
+      showAuthModal={showAuthModal}
+      navigateToProfile={navigateToProfile}
+      flaggedPosts={flaggedPosts}
+      flagging={flagging}
+    />
+  );
+
+  const renderFollowingItem = ({ item }: { item: Post | Workout }) => {
+    if (item.hasOwnProperty('caption')) {
+      const post = item as Post;
+      return (
+        <FeedPost
+          post={post}
+          currentUserId={user!.id}
+          toggleVideoPlayback={toggleVideoPlayback}
+          playingVideo={playingVideo}
+          videoRefs={videoRefs}
+          colors={colors}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          handleDeletePost={handleDeletePost}
+          onDelete={handleDeletePost}
+          setFlagging={setFlagging}
+          setFlaggedPosts={setFlaggedPosts}
+          isAuthenticated={isAuthenticated}
+          showAuthModal={showAuthModal}
+          navigateToProfile={navigateToProfile}
+          flaggedPosts={flaggedPosts}
+          flagging={flagging}
+        />
+      );
+    }
+    // ... workout card rendering
+  };
 
   if (error) {
     return (
@@ -867,7 +953,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
           <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
@@ -875,11 +961,18 @@ export default function HomeScreen() {
         <View style={styles.headerButtons}>
           {!isAuthenticated && (
             <TouchableOpacity 
-              style={[styles.signInButton, { backgroundColor: colors.tint }]}
+              style={styles.signInButton}
               onPress={() => router.push('/auth')}
               activeOpacity={0.8}>
-              <LogIn size={20} color="#fff" />
-              <Text style={styles.signInText}>Sign In</Text>
+              <LinearGradient
+                colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.signInGradient}
+              >
+                <LogIn size={20} color="#fff" />
+                <Text style={styles.signInText}>Sign In</Text>
+              </LinearGradient>
             </TouchableOpacity>
           )}
           {isAuthenticated && (
@@ -901,15 +994,21 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <TikTokStyleFeedSelector
-        activeTab={activeTab}
-        activeTabIndex={activeTabIndex}
-        setActiveTab={setActiveTab}
-        setActiveTabIndex={setActiveTabIndex}
-        translateX={translateX}
-        colors={colors}
-        panRef={panRef}
-      />
+      {isAuthenticated && user ? (
+        <TikTokStyleFeedSelector
+          activeTab={activeTab}
+          activeTabIndex={activeTabIndex}
+          setActiveTab={setActiveTab}
+          setActiveTabIndex={setActiveTabIndex}
+          translateX={translateX}
+          colors={colors}
+          panRef={panRef}
+        />
+      ) : (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      )}
 
       <ScrollView
         refreshControl={
@@ -927,7 +1026,7 @@ export default function HomeScreen() {
           ) : (
             <FlashList
               data={filteredPosts}
-              renderItem={renderPost}
+              renderItem={renderExploreItem}
               keyExtractor={(item) => item.id}
               estimatedItemSize={600}
               refreshing={refreshing}
@@ -975,6 +1074,8 @@ export default function HomeScreen() {
                   navigateToProfile={navigateToProfile}
                   handleLike={handleLike}
                   handleUnlike={handleUnlike}
+                  handleDeletePost={handleDeletePost}
+                  onDelete={handleDeletePost}
                   videoRefs={videoRefs}
                 />
               ))}
@@ -1024,6 +1125,7 @@ export default function HomeScreen() {
                           navigateToProfile={navigateToProfile}
                           handleLike={handleLike}
                           handleUnlike={handleUnlike}
+                          handleDeletePost={handleDeletePost}
                           videoRefs={videoRefs}
                         />
                       ) : (
@@ -1073,6 +1175,44 @@ export default function HomeScreen() {
           setSelectedWorkoutId(null);
         }}
       />
+
+      {/* Debug Test Modal */}
+      <Modal
+        visible={showTestMode}
+        animationType="slide"
+        onRequestClose={() => setShowTestMode(false)}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 50 }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text }}>Delete Test Mode</Text>
+            <TouchableOpacity onPress={() => setShowTestMode(false)}>
+              <Text style={{ color: colors.tint, fontSize: 16 }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <TestDeleteFunctionality />
+        </View>
+      </Modal>
+
+      {/* Debug Button - Only show in development */}
+      {__DEV__ && (
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            bottom: 100,
+            right: 20,
+            backgroundColor: colors.tint,
+            padding: 12,
+            borderRadius: 25,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5,
+          }}
+          onPress={() => setShowTestMode(true)}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>🧪 Test Delete</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1100,6 +1240,9 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   signInButton: {
+    borderRadius: BorderRadius.lg,
+  },
+  signInGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
@@ -1355,6 +1498,11 @@ const styles = StyleSheet.create({
   },
   workoutTime: {
     fontSize: 14,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

@@ -9,6 +9,7 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import FeedPost from '@/components/Post';
 import { Post } from '@/types/social';
+import * as Haptics from 'expo-haptics';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -90,6 +91,7 @@ export default function PostDetailScreen() {
         .from('posts')
         .select(`
           id,
+          user_id,
           caption,
           image_url,
           media_type,
@@ -124,22 +126,18 @@ export default function PostDetailScreen() {
   };
 
   const handleLike = async (postId: string) => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !post) return;
+      if (!user) return;
 
-      // Optimistically update the UI immediately
-      const newLike = { id: `temp-${Date.now()}`, user_id: user.id };
-      setPost(currentPost => {
-        if (!currentPost) return currentPost;
-        return {
-          ...currentPost,
-          likes: [...currentPost.likes, newLike]
-        };
-      });
-
+      // The real-time listener will handle UI updates.
+      // This page should also have a listener if it's meant to be real-time.
+      // For now, we just send the data.
       const { error } = await supabase
         .from('likes')
         .insert({
@@ -148,61 +146,22 @@ export default function PostDetailScreen() {
         });
 
       if (error) {
-        // Revert optimistic update on error
-        setPost(currentPost => {
-          if (!currentPost) return currentPost;
-          return {
-            ...currentPost,
-            likes: currentPost.likes.filter(like => !like.id.toString().startsWith('temp-'))
-          };
-        });
-        throw error;
+        console.error('Error liking post on detail screen:', error);
       }
-
-      // Refresh the post data to get the real like ID from database
-      const { data: updatedPost } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .eq('id', postId)
-        .single();
-
-      if (updatedPost) {
-        setPost(currentPost => {
-          if (!currentPost) return currentPost;
-          return {
-            ...currentPost,
-            likes: updatedPost.likes
-          };
-        });
-      }
-
     } catch (err) {
-      console.error('Error liking post:', err);
+      console.error('Error in handleLike function on detail screen:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !post) return;
-
-      // Find the like to remove for optimistic update
-      const likeToRemove = post.likes.find(like => like.user_id === user.id);
-      
-      // Optimistically update the UI immediately
-      setPost(currentPost => {
-        if (!currentPost) return currentPost;
-        return {
-          ...currentPost,
-          likes: currentPost.likes.filter(like => like.user_id !== user.id)
-        };
-      });
+      if (!user) return;
 
       const { error } = await supabase
         .from('likes')
@@ -211,21 +170,10 @@ export default function PostDetailScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        // Revert optimistic update on error
-        if (likeToRemove) {
-          setPost(currentPost => {
-            if (!currentPost) return currentPost;
-            return {
-              ...currentPost,
-              likes: [...currentPost.likes, likeToRemove]
-            };
-          });
-        }
-        throw error;
+        console.error('Error unliking post on detail screen:', error);
       }
-
     } catch (err) {
-      console.error('Error unliking post:', err);
+      console.error('Error in handleUnlike function on detail screen:', err);
     }
   };
 
@@ -243,44 +191,62 @@ export default function PostDetailScreen() {
   };
 
   const navigateToProfile = (userId: string, username: string) => {
-    if (userId === currentUserId) {
-      router.push('/profile');
-    } else {
-      router.push(`/${username}`);
-    }
+    router.push(`/${username}`);
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete Post',
-      'Are you sure you want to delete this post? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              const { error } = await supabase
-                .from('posts')
-                .delete()
-                .eq('id', post?.id);
+  const handleDeletePost = async (postId: string) => {
+    console.log('🗑️ [PostDetail] Attempting to delete post:', postId);
+    
+    try {
+      // Get current user to verify they can delete this post
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('❌ [PostDetail] Error getting current user:', userError);
+        Alert.alert('Error', 'Authentication error. Please try again.');
+        return;
+      }
+      
+      if (!user) {
+        console.error('❌ [PostDetail] No authenticated user found');
+        Alert.alert('Error', 'You must be logged in to delete posts.');
+        return;
+      }
+      
+      console.log('👤 [PostDetail] Current user ID:', user.id);
+      
+      if (post) {
+        console.log('📝 [PostDetail] Post owner ID:', post.user_id);
+        console.log('🔐 [PostDetail] User can delete:', post.user_id === user.id);
+      }
+      
+      console.log('🔄 [PostDetail] Sending delete request to Supabase...');
+      const { error } = await supabase.from('posts').delete().eq('id', postId);
 
-              if (error) throw error;
-              router.replace('/profile');
-            } catch (err) {
-              console.error('Error deleting post:', err);
-              Alert.alert('Error', 'Failed to delete post. Please try again.');
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+      if (error) {
+        console.error('❌ [PostDetail] Supabase delete error:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        Alert.alert('Error', `Failed to delete post: ${error.message}`);
+        return;
+      }
+      
+      console.log('✅ [PostDetail] Post deleted successfully');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/profile');
+      }
+    } catch (err) {
+      console.error('❌ [PostDetail] Unexpected error in handleDeletePost:', err);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    }
   };
 
   const handleBack = () => {
@@ -293,24 +259,6 @@ export default function PostDetailScreen() {
     } else {
       router.back();
     }
-  };
-
-  const handleMenu = () => {
-    Alert.alert(
-      'Post Options',
-      undefined,
-      [
-        {
-          text: 'Delete Post',
-          style: 'destructive',
-          onPress: handleDelete,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
   };
 
   const handleBlockUser = async () => {
@@ -363,14 +311,6 @@ export default function PostDetailScreen() {
             <MoreVertical size={22} color={colors.text} />
           </TouchableOpacity>
         )}
-        {isOwnPost && (
-          <TouchableOpacity 
-            style={styles.menuButton}
-            onPress={handleMenu}
-            disabled={deleting}>
-            <Text style={[styles.menuButtonText, { color: colors.text }]}>⋮</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
               <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -390,6 +330,8 @@ export default function PostDetailScreen() {
           handleLike={handleLike}
           handleUnlike={handleUnlike}
           videoRefs={videoRefs}
+          handleDeletePost={handleDeletePost}
+          onDelete={handleDeletePost}
         />
       </ScrollView>
 
@@ -457,13 +399,6 @@ const styles = StyleSheet.create({
   moreButton: {
     padding: 10,
     marginRight: 10,
-  },
-  menuButton: {
-    padding: 10,
-    marginRight: 10,
-  },
-  menuButtonText: {
-    fontSize: 24,
   },
   menuOverlay: {
     flex: 1,

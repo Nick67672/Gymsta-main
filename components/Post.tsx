@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal } from 'react-native';
-import { Pause, Play, Heart, MoreHorizontal, CircleCheck as CheckCircle2 } from 'lucide-react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable } from 'react-native';
+import { Pause, Play, Heart, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X } from 'lucide-react-native';
 import { VideoView } from 'expo-video';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -27,6 +27,8 @@ interface PostProps {
   handleLike: (postId: string) => void;
   handleUnlike: (postId: string) => void;
   videoRefs: React.MutableRefObject<{ [key: string]: any }>;
+  handleDeletePost: (postId: string) => void;
+  onDelete?: (postId: string) => void;
 }
 
 const PostComponent: React.FC<PostProps> = ({
@@ -45,7 +47,25 @@ const PostComponent: React.FC<PostProps> = ({
   handleLike,
   handleUnlike,
   videoRefs,
+  handleDeletePost,
+  onDelete,
 }) => {
+  // --- DEBUGGING LOG ---
+  // This will print the values being compared for the delete button logic.
+  // Please check your console/terminal output for these logs.
+  console.log(`[Post ID: ${post.id}] -- Comparing post owner ID: ${post.user_id} with current user ID: ${currentUserId}. Match: ${post.user_id === currentUserId}`);
+  console.log(`[Post ID: ${post.id}] -- Post object:`, JSON.stringify({
+    id: post.id,
+    user_id: post.user_id,
+    profiles: post.profiles,
+    caption: post.caption?.substring(0, 50) + '...'
+  }, null, 2));
+  console.log(`[Post ID: ${post.id}] -- Current User ID type:`, typeof currentUserId, 'Post User ID type:', typeof post.user_id);
+  console.log(`[Post ID: ${post.id}] -- Current User ID value:`, JSON.stringify(currentUserId));
+  console.log(`[Post ID: ${post.id}] -- Post User ID value:`, JSON.stringify(post.user_id));
+  console.log(`[Post ID: ${post.id}] -- Strict equality check:`, post.user_id === currentUserId);
+  console.log(`[Post ID: ${post.id}] -- Loose equality check:`, post.user_id == currentUserId);
+
   const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
   const [likeAnimation] = useState(new Animated.Value(1));
   const [doubleTapAnimation] = useState(new Animated.Value(0));
@@ -57,6 +77,7 @@ const PostComponent: React.FC<PostProps> = ({
   const [isProcessingLike, setIsProcessingLike] = useState(false);
   const likeActionRef = useRef(false);
   const lastLikeActionRef = useRef(0);
+  const singleTapTimeout = useRef<number | null>(null);
 
   // Enhanced date formatting function
   const formatDate = (dateString: string) => {
@@ -154,60 +175,44 @@ const PostComponent: React.FC<PostProps> = ({
     performLikeAction();
   }, [isProcessingLike, performLikeAction, likeAnimation]);
 
-  // Handle post tap for fullscreen or double tap to like
   const handlePostTap = useCallback(() => {
     const now = Date.now();
     const DOUBLE_PRESS_DELAY = 300;
 
+    // If there's a pending single tap, clear it.
+    if (singleTapTimeout.current) {
+      clearTimeout(singleTapTimeout.current);
+      singleTapTimeout.current = null;
+    }
+
     if (lastTap && (now - lastTap) < DOUBLE_PRESS_DELAY) {
-      // Double tap to like
-      if (!isLiked && isAuthenticated && !isProcessingLike) {
-        // iOS Haptic feedback for double tap
-        if (Platform.OS === 'ios') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        }
-
-        // Double tap heart animation
-        Animated.sequence([
-          Animated.timing(doubleTapAnimation, {
-            toValue: 1,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-          Animated.parallel([
-            Animated.timing(doubleTapAnimation, {
-              toValue: 0,
-              duration: 800,
-              useNativeDriver: true,
-            }),
-            Animated.sequence([
-              Animated.timing(likeAnimation, {
-                toValue: 1.6,
-                duration: 150,
-                useNativeDriver: true,
-              }),
-              Animated.spring(likeAnimation, {
-                toValue: 1,
-                friction: 3,
-                useNativeDriver: true,
-              }),
-            ]),
-          ]),
-        ]).start();
-
-        // Use centralized like handler
-        performLikeAction();
+      // --- This is a DOUBLE TAP ---
+      // Reset the tap timer to prevent a triple-tap from acting like a double-tap.
+      setLastTap(0); 
+      
+      // Like the post (if not already liked)
+      if (!isLiked) {
+        handleLike(post.id);
       }
+      
+      // Trigger the heart animation
+      doubleTapAnimation.setValue(1);
+      Animated.sequence([
+        Animated.spring(doubleTapAnimation, { toValue: 2, friction: 3, useNativeDriver: true }),
+        Animated.timing(doubleTapAnimation, { toValue: 0, duration: 200, useNativeDriver: true, delay: 200 }),
+      ]).start();
+      
     } else {
-      // Single tap - show fullscreen
+      // --- This is a SINGLE TAP ---
+      // Record the time of this tap.
       setLastTap(now);
-      setTimeout(() => {
-        if (Date.now() - now >= DOUBLE_PRESS_DELAY) {
-          setShowFullscreen(true);
-        }
+      
+      // Schedule the enlarge action to run after a delay.
+      singleTapTimeout.current = setTimeout(() => {
+        setShowFullscreen(true);
       }, DOUBLE_PRESS_DELAY);
     }
-  }, [lastTap, isLiked, isAuthenticated, isProcessingLike, performLikeAction, doubleTapAnimation, likeAnimation]);
+  }, [lastTap, isLiked, post.id, handleLike, doubleTapAnimation]);
 
   const onReportPress = useCallback(async () => {
     if (flaggedPosts[post.id] || flagging[post.id]) return;
@@ -236,6 +241,24 @@ const PostComponent: React.FC<PostProps> = ({
       setFlagging(prev => ({ ...prev, [post.id]: false }));
     }
   }, [flaggedPosts, flagging, post.id]);
+
+  const showDeleteConfirmation = () => {
+    // Hide the flag modal first
+    setShowMenu(false);
+    
+    Alert.alert(
+      "Delete Post",
+      "Are you sure you want to delete this post?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: () => handleDeletePost(post.id),
+        },
+      ]
+    );
+  };
 
   // Get dynamic aspect ratio based on content
   const getImageAspectRatio = () => {
@@ -292,7 +315,12 @@ const PostComponent: React.FC<PostProps> = ({
         </TouchableOpacity>
         
         <TouchableOpacity
-          onPress={() => setShowMenu(true)}
+          onPress={() => {
+            console.log('🔘 Menu button clicked for post:', post.id);
+            console.log('🔘 Post user_id:', post.user_id, 'Current user_id:', currentUserId);
+            console.log('🔘 Should show delete:', post.user_id === currentUserId);
+            setShowMenu(true);
+          }}
           style={[styles.menuButton, { backgroundColor: colors.backgroundSecondary }]}
           hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
           activeOpacity={0.8}
@@ -302,81 +330,66 @@ const PostComponent: React.FC<PostProps> = ({
       </View>
 
       {/* Full-width Media */}
-      <View style={styles.mediaWrapper}>
-        {post.media_type === 'video' ? (
-          <TouchableOpacity
-            style={[styles.videoContainer, { aspectRatio: getImageAspectRatio() }]}
-            activeOpacity={0.95}
-            onPress={() => toggleVideoPlayback(post.id)}
-          >
-            <Video
-              ref={(ref: any) => {
-                videoRefs.current[post.id] = ref;
-              }}
-              source={{ uri: post.image_url }}
-              style={styles.videoPlayer}
-              useNativeControls={false}
-              isLooping
-              shouldPlay={false}
-            />
-            <View style={styles.videoControls}>
-              <View style={styles.playButtonContainer}>
-                {playingVideo === post.id ? 
-                  <Pause size={28} color="#fff" /> : 
-                  <Play size={28} color="#fff" />
-                }
-              </View>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={handlePostTap}
-            style={styles.imageWrapper}
-            disabled={isProcessingLike}
-          >
-            <Image 
-              source={{ uri: post.image_url }} 
-              style={[
-                styles.postMedia, 
-                { 
-                  aspectRatio: getImageAspectRatio(),
-                  opacity: imageLoaded ? 1 : 0 
-                }
-              ]}
-              resizeMode="cover"
-              onLoad={() => setImageLoaded(true)}
-            />
-            {!imageLoaded && (
-              <View style={[styles.mediaPlaceholder, { 
-                aspectRatio: getImageAspectRatio(),
-                backgroundColor: colors.backgroundSecondary 
-              }]} />
-            )}
-            
-            {/* Double tap heart animation */}
-            <Animated.View 
-              style={[
-                styles.doubleTapEffect,
-                {
-                  opacity: doubleTapAnimation,
-                  transform: [
-                    {
-                      scale: doubleTapAnimation.interpolate({
-                        inputRange: [0, 0.1, 1],
-                        outputRange: [0, 1.3, 0],
-                      }),
-                    },
-                  ],
-                }
-              ]}
-              pointerEvents="none"
+      <Pressable onPress={handlePostTap}>
+        <View style={styles.mediaWrapper}>
+          {post.media_type === 'video' ? (
+            <TouchableOpacity
+              style={[styles.videoContainer, { aspectRatio: getImageAspectRatio() }]}
+              activeOpacity={0.95}
+              onPress={() => toggleVideoPlayback(post.id)}
             >
-              <Heart size={90} color="#fff" fill="#FF3B30" />
-            </Animated.View>
-          </TouchableOpacity>
-        )}
-      </View>
+              <Video
+                ref={(ref: any) => {
+                  videoRefs.current[post.id] = ref;
+                }}
+                source={{ uri: post.image_url }}
+                style={styles.videoPlayer}
+                useNativeControls={false}
+                isLooping
+                shouldPlay={false}
+              />
+              <View style={styles.videoControls}>
+                <View style={styles.playButtonContainer}>
+                  {playingVideo === post.id ? 
+                    <Pause size={28} color="#fff" /> : 
+                    <Play size={28} color="#fff" />
+                  }
+                </View>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <Image 
+                source={{ uri: post.image_url }} 
+                style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
+                resizeMode="cover"
+                onLoad={() => setImageLoaded(true)}
+              />
+              {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+              <Animated.View 
+                style={[
+                  styles.doubleTapEffect,
+                  {
+                    opacity: doubleTapAnimation.interpolate({
+                      inputRange: [0, 1, 2],
+                      outputRange: [0, 1, 0],
+                    }),
+                    transform: [{
+                      scale: doubleTapAnimation.interpolate({
+                        inputRange: [0, 1, 2],
+                        outputRange: [0.5, 1.2, 0.9],
+                      }),
+                    }],
+                  }
+                ]}
+                pointerEvents="none"
+              >
+                <Heart size={90} color="rgba(255, 255, 255, 0.9)" fill="rgba(255, 255, 255, 0.9)" />
+              </Animated.View>
+            </>
+          )}
+        </View>
+      </Pressable>
 
       {/* Interaction Section */}
       <View style={styles.interactionSection}>
@@ -451,31 +464,21 @@ const PostComponent: React.FC<PostProps> = ({
       {/* Fullscreen Modal */}
       <Modal
         visible={showFullscreen}
-        transparent
-        animationType="fade"
+        transparent={false}
         onRequestClose={() => setShowFullscreen(false)}
+        animationType="fade"
       >
         <View style={styles.fullscreenContainer}>
+          <Image
+            source={{ uri: post.image_url }}
+            style={styles.fullscreenImage}
+            resizeMode="contain"
+          />
           <TouchableOpacity 
-            style={styles.fullscreenOverlay}
-            activeOpacity={1}
+            style={styles.closeButton}
             onPress={() => setShowFullscreen(false)}
           >
-            {post.media_type === 'video' ? (
-              <Video
-                source={{ uri: post.image_url }}
-                style={styles.fullscreenMedia}
-                useNativeControls={false}
-                isLooping
-                shouldPlay={true}
-              />
-            ) : (
-              <Image 
-                source={{ uri: post.image_url }} 
-                style={styles.fullscreenMedia}
-                resizeMode="contain"
-              />
-            )}
+            <Text style={styles.closeButtonText}>Close</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -487,28 +490,40 @@ const PostComponent: React.FC<PostProps> = ({
         animationType="fade"
         onRequestClose={() => setShowMenu(false)}
       >
-        <TouchableOpacity 
-          style={styles.menuOverlay} 
-          activeOpacity={1} 
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
           onPress={() => setShowMenu(false)}
         >
-          <View style={[styles.menuContainer, { backgroundColor: colors.card }]}>
-            <TouchableOpacity 
-              style={[styles.menuItem, flaggedPosts[post.id] && { opacity: 0.5 }]}
-              onPress={onReportPress}
-              disabled={flaggedPosts[post.id] || flagging[post.id]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>
-                {flaggedPosts[post.id] ? 'Post Reported' : flagging[post.id] ? 'Reporting...' : 'Report Post'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
+          <View style={[styles.menuModal, { backgroundColor: colors.backgroundSecondary }]}>
+            <Text style={[styles.menuTitle, { color: colors.text }]}>Post Options</Text>
+            
+            {(() => {
+              console.log('🔘 Rendering menu - Should show delete:', post.user_id === currentUserId);
+              return null;
+            })()}
+            
+            {post.user_id === currentUserId && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  console.log('🔘 Delete button pressed for post:', post.id);
+                  console.log('🔘 onDelete function exists:', !!onDelete);
+                  setShowMenu(false);
+                  onDelete?.(post.id);
+                }}
+              >
+                <Trash2 size={20} color="#ff4444" />
+                <Text style={[styles.menuItemText, { color: '#ff4444' }]}>Delete Post</Text>
+              </TouchableOpacity>
+            )}
+            
+            <TouchableOpacity
               style={styles.menuItem}
               onPress={() => setShowMenu(false)}
-              activeOpacity={0.7}
             >
-              <Text style={[styles.menuItemText, { color: colors.text }]}>Cancel</Text>
+              <X size={20} color={colors.textSecondary} />
+              <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -625,17 +640,12 @@ const styles = StyleSheet.create({
   },
   doubleTapEffect: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -45 }, { translateY: -45 }],
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-    }),
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   
   // Interaction Section
@@ -707,44 +717,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullscreenOverlay: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenMedia: {
+  fullscreenImage: {
     width: '100%',
     height: '100%',
   },
-  menuOverlay: {
+  closeButton: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  menuContainer: {
-    borderRadius: BorderRadius.lg,
+  menuModal: {
+    backgroundColor: 'white',
+    borderRadius: Spacing.md,
+    padding: Spacing.sm,
     minWidth: 200,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-      },
-    }),
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: Spacing.sm,
   },
   menuItem: {
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   menuItemText: {
     fontSize: 16,
-    fontWeight: '500',
     textAlign: 'center',
   },
 }); 
