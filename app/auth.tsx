@@ -1,20 +1,27 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check } from 'lucide-react-native';
+import { ArrowLeft, Check, Mail, Lock } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ThemedInput } from '../components/ThemedInput';
+import { ThemedButton } from '../components/ThemedButton';
+import { useAuth } from '../hooks/useAuth';
 
 export default function AuthScreen() {
   const params = useLocalSearchParams();
   const initialMode = params.mode === 'signin' ? 'signin' : 'signup';
   
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  const [email, setEmail] = useState('');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot-password' | 'reset-password'>(initialMode);
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const { theme } = useTheme();
   const colors = Colors[theme];
   const [eulaChecked, setEulaChecked] = useState(false);
@@ -24,22 +31,70 @@ export default function AuthScreen() {
     Keyboard.dismiss();
   };
 
+  // Check for password reset tokens in URL params
+  useEffect(() => {
+    const { access_token, refresh_token, type } = params;
+    
+    if (type === 'recovery' && access_token && refresh_token) {
+      // User clicked password reset link
+      setMode('reset-password');
+      // Set the session with the tokens
+      supabase.auth.setSession({
+        access_token: access_token as string,
+        refresh_token: refresh_token as string
+      });
+    }
+  }, [params]);
+
+  // Helper function to check if input is an email
+  const isEmail = (input: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(input);
+  };
+
   async function signInWithEmail() {
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password to sign in');
+    if (!emailOrUsername.trim() || !password.trim()) {
+      setError('Please enter your email/username and password to sign in');
       return;
     }
 
     setLoading(true);
     setError(null);
+    setSuccess(null);
     
     try {
+      let email = emailOrUsername.trim();
+      
+      // If input is not an email, treat it as username and find the email
+      if (!isEmail(email)) {
+        const { data, error: rpcError } = await supabase.rpc('get_email_by_username', {
+          username_input: email
+        });
+
+        if (rpcError) {
+          console.error('RPC Error:', rpcError);
+          setError('Error looking up username. Please try using your email instead.');
+          setLoading(false);
+          return;
+        }
+
+        if (!data) {
+          setError('Username not found. Please check your username or try using your email instead.');
+          setLoading(false);
+          return;
+        }
+        
+        email = data;
+      }
+
       const { data: { user }, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       // Check if user has a profile
       if (user) {
@@ -63,31 +118,152 @@ export default function AuthScreen() {
   }
 
   async function signUpWithEmail() {
-    if (!email.trim() || !password.trim()) {
+    if (!emailOrUsername.trim() || !password.trim()) {
       setError('Please enter your email and password to sign up');
+      return;
+    }
+
+    // For signup, we only accept email addresses
+    if (!isEmail(emailOrUsername.trim())) {
+      setError('Please enter a valid email address for signup');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
       return;
     }
 
     setLoading(true);
     setError(null);
+    setSuccess(null);
     
     try {
-      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
-        email,
+      const { data: { user, session }, error: signUpError } = await supabase.auth.signUp({
+        email: emailOrUsername.trim(),
         password,
       });
 
       if (signUpError) throw signUpError;
-      if (!user) throw new Error('No user data returned from signup');
-
-      // After successful signup, redirect to register page to complete profile
+      
+      if (user && session) {
+        // Session is established, redirect to register page
+        router.replace('/register');
+      } else if (user && !session) {
+        // User created but no session, try to sign them in
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: emailOrUsername.trim(),
+          password,
+        });
+        
+        if (signInError) throw signInError;
+        
+        if (signInData.user) {
       router.replace('/register');
+        }
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
   }
+
+  async function resetPassword() {
+    if (!emailOrUsername.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    if (!isEmail(emailOrUsername.trim())) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(emailOrUsername.trim());
+
+      if (error) throw error;
+
+      setSuccess('Password reset instructions have been sent to your email. Click the link in the email to continue.');
+      setMode('signin');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updatePassword() {
+    if (!password.trim() || !confirmPassword.trim()) {
+      setError('Please enter and confirm your new password');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      });
+
+      if (error) throw error;
+
+      setSuccess('Your password has been successfully updated!');
+      setTimeout(() => {
+        router.replace('/(tabs)');
+      }, 2000);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const getHeaderText = () => {
+    switch (mode) {
+      case 'signin': return 'Welcome Back';
+      case 'signup': return 'Create Account';
+      case 'forgot-password': return 'Reset Password';
+      case 'reset-password': return 'Set New Password';
+      default: return 'Welcome';
+    }
+  };
+
+  const getButtonText = () => {
+    switch (mode) {
+      case 'signin': return 'Sign In';
+      case 'signup': return 'Sign Up';
+      case 'forgot-password': return 'Send Reset Link';
+      case 'reset-password': return 'Update Password';
+      default: return 'Continue';
+    }
+  };
+
+  const handleSubmit = () => {
+    switch (mode) {
+      case 'signin': return signInWithEmail();
+      case 'signup': return signUpWithEmail();
+      case 'forgot-password': return resetPassword();
+      case 'reset-password': return updatePassword();
+    }
+  };
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
@@ -102,38 +278,77 @@ export default function AuthScreen() {
         
         <View style={styles.formContainer}>
           <Text style={[styles.headerText, { color: colors.tint }]}>
-            {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+            {getHeaderText()}
           </Text>
+
+          {mode === 'forgot-password' && (
+            <View style={styles.infoContainer}>
+              <Mail size={48} color={colors.tint} />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                Enter your email address and we'll send you a link to reset your password.
+              </Text>
+            </View>
+          )}
+
+          {mode === 'reset-password' && (
+            <View style={styles.infoContainer}>
+              <Lock size={48} color={colors.tint} />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                Please enter your new password below.
+              </Text>
+            </View>
+          )}
           
           {error && <Text style={styles.error}>{error}</Text>}
+          {success && <Text style={styles.success}>{success}</Text>}
           
+          {mode !== 'reset-password' && (
           <TextInput
             style={[styles.input, { 
               borderColor: colors.border,
               backgroundColor: colors.inputBackground,
               color: colors.text 
             }]}
-            placeholder="Email"
+              placeholder={mode === 'signin' ? "Email or Username" : "Email"}
             placeholderTextColor={colors.textSecondary}
-            value={email}
-            onChangeText={setEmail}
+              value={emailOrUsername}
+              onChangeText={setEmailOrUsername}
             autoCapitalize="none"
-            keyboardType="email-address"
+              keyboardType={mode === 'signin' ? "default" : "email-address"}
           />
+          )}
           
+          {mode !== 'forgot-password' && (
           <TextInput
             style={[styles.input, { 
               borderColor: colors.border,
               backgroundColor: colors.inputBackground,
               color: colors.text 
             }]}
-            placeholder="Password"
+              placeholder={mode === 'reset-password' ? "New Password" : "Password"}
             placeholderTextColor={colors.textSecondary}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
           />
+          )}
+
+          {mode === 'reset-password' && (
+            <TextInput
+              style={[styles.input, { 
+                borderColor: colors.border,
+                backgroundColor: colors.inputBackground,
+                color: colors.text 
+              }]}
+              placeholder="Confirm New Password"
+              placeholderTextColor={colors.textSecondary}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          )}
 
           {mode === 'signup' && (
             <TouchableOpacity
@@ -141,26 +356,47 @@ export default function AuthScreen() {
               onPress={() => setEulaChecked(!eulaChecked)}
               activeOpacity={0.7}
             >
-              <View style={[styles.checkbox, eulaChecked && { backgroundColor: colors.tint, borderColor: colors.tint }]}> 
+              <TouchableOpacity
+                style={styles.eulaCheckbox}
+                onPress={() => setEulaChecked(!eulaChecked)}
+              >
+                <LinearGradient
+                  colors={eulaChecked ? [colors.primaryGradientStart, colors.primaryGradientEnd] : [colors.border, colors.border]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.checkbox, eulaChecked && styles.checkboxChecked]}
+                >
                 {eulaChecked && <Check size={16} color="#fff" />}
-              </View>
+                </LinearGradient>
+              </TouchableOpacity>
               <Text style={[styles.eulaText, { color: colors.text }]}>by checking this box you agree to the <Text style={[styles.eulaLink, { color: colors.tint }]} onPress={(e) => { e.stopPropagation(); setShowEula(true); }}>EULA</Text></Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             style={[styles.button, styles.signInButton, loading && styles.buttonDisabled, { backgroundColor: colors.button }]}
-            onPress={mode === 'signin' ? signInWithEmail : signUpWithEmail}
+            onPress={handleSubmit}
             disabled={loading || (mode === 'signup' && !eulaChecked)}>
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.buttonText}>
-                {mode === 'signin' ? 'Sign In' : 'Sign Up'}
+                {getButtonText()}
               </Text>
             )}
           </TouchableOpacity>
 
+          {mode === 'signin' && (
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={() => setMode('forgot-password')}>
+              <Text style={[styles.forgotPasswordText, { color: colors.tint }]}>
+                Forgot Password?
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {mode !== 'forgot-password' && mode !== 'reset-password' && (
           <TouchableOpacity
             style={styles.switchModeButton}
             onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
@@ -168,6 +404,17 @@ export default function AuthScreen() {
               {mode === 'signin' ? 'Need an account? Sign Up' : 'Already have an account? Sign In'}
             </Text>
           </TouchableOpacity>
+          )}
+
+          {(mode === 'forgot-password' || mode === 'reset-password') && (
+            <TouchableOpacity
+              style={styles.switchModeButton}
+              onPress={() => setMode('signin')}>
+              <Text style={[styles.switchModeText, { color: colors.tint }]}>
+                Back to Sign In
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* EULA Modal */}
@@ -294,10 +541,24 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
+  success: {
+    color: '#00C851',
+    marginBottom: 16,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   eulaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  eulaCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   checkbox: {
     width: 24,
@@ -308,6 +569,9 @@ const styles = StyleSheet.create({
     marginRight: 10,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  checkboxChecked: {
+    borderColor: '#fff',
   },
   eulaText: {
     fontSize: 14,
@@ -356,5 +620,21 @@ const styles = StyleSheet.create({
   modalText: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  infoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  infoText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  forgotPasswordButton: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  forgotPasswordText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

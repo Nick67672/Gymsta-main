@@ -56,6 +56,28 @@ interface Post {
   }[];
 }
 
+interface Follower {
+  id: string;
+  follower_id: string;
+  profiles: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    is_verified: boolean;
+  } | null;
+}
+
+interface Following {
+  id: string;
+  following_id: string;
+  profiles: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    is_verified: boolean;
+  } | null;
+}
+
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams();
   const router = useRouter();
@@ -81,6 +103,12 @@ export default function UserProfileScreen() {
   const [showingStories, setShowingStories] = useState(false);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [followers, setFollowers] = useState<Follower[]>([]);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [loadingFollowers, setLoadingFollowers] = useState(false);
+  const [following, setFollowing] = useState<Following[]>([]);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
 
   // Format numbers for better display (e.g., 1.2K, 1.5M)
   const formatNumber = (num: number): string => {
@@ -228,183 +256,63 @@ export default function UserProfileScreen() {
   };
 
   const handleFollow = async () => {
-    if (!profile || followLoading) return;
+    if (!profile || !currentUserId) return;
+
+    if (!isAuthenticated) {
+      showAuthModal();
+        return;
+      }
 
     setFollowLoading(true);
+
     try {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        console.error('Auth error:', userError);
-        Alert.alert('Authentication Error', 'You must be logged in to follow users');
-        return;
-      }
-
-      // Check if user is blocked or has blocked the target user
-      console.log('Checking if user is blocked:', profile.username);
-      if (isUserBlocked(profile.id)) {
-        console.log('User has blocked the target user');
-        Alert.alert('Cannot Follow', 'You have blocked this user. Unblock them to follow.');
-        return;
-      }
-
-      // Check if the target user has blocked the current user
-      console.log('Checking if target user has blocked current user');
-      const { data: blockedByTarget, error: blockCheckError } = await supabase
-        .from('blocked_users')
-        .select('id')
-        .eq('blocker_id', profile.id)
-        .eq('blocked_id', user.id)
-        .maybeSingle();
-
-      if (blockCheckError) {
-        console.error('Error checking if blocked by target:', blockCheckError);
-        // Continue anyway if the table doesn't exist or there's an error
-      }
-
-      if (blockedByTarget) {
-        console.log('Target user has blocked current user');
-        Alert.alert('Cannot Follow', 'This user has blocked you and you cannot follow them.');
-        return;
-      }
-
-      console.log('No blocking issues found, proceeding with follow logic');
-
       if (profile.is_following) {
-        // Unfollow
-        await supabase
+        // --- UNFOLLOW ---
+        const { error } = await supabase
           .from('followers')
           .delete()
-          .eq('follower_id', user.id)
-          .eq('following_id', profile.id);
+          .match({ follower_id: currentUserId, following_id: profile.id });
 
-        setProfile(prev => prev ? {
-          ...prev,
-          is_following: false,
-          _count: {
-            ...prev._count,
-            followers: prev._count.followers - 1
-          }
-        } : null);
-      } else if (profile.follow_request_sent) {
-        // Cancel follow request
-        const { error: cancelError } = await supabase
+        if (error) throw error;
+
+      } else if (profile.is_private) {
+        // --- PRIVATE PROFILE: REQUEST OR WITHDRAW REQUEST ---
+        if (profile.follow_request_sent) {
+          // Withdraw the existing follow request.
+          const { error } = await supabase
           .from('follow_requests')
           .delete()
-          .eq('requester_id', user.id)
-          .eq('requested_id', profile.id);
+            .match({ requester_id: currentUserId, requested_id: profile.id });
 
-        if (cancelError) throw cancelError;
+          if (error) throw error;
+          Alert.alert('Request Withdrawn', 'Your follow request has been withdrawn.');
 
-        setProfile(prev => prev ? {
-          ...prev,
-          follow_request_sent: false
-        } : null);
-
-        Alert.alert('Follow Request Cancelled', 'Your follow request has been cancelled.');
       } else {
-        // Check if account is private
-        if (profile.is_private) {
-          // Check if follow request already exists
-          console.log('Checking for existing follow request...');
-          const { data: existingRequest, error: checkError } = await supabase
+          // Send a new follow request.
+          const { error } = await supabase
             .from('follow_requests')
-            .select('id')
-            .eq('requester_id', user.id)
-            .eq('requested_id', profile.id)
-            .maybeSingle();
+            .insert({ requester_id: currentUserId, requested_id: profile.id });
 
-          if (checkError) {
-            console.error('Error checking existing request:', checkError);
-            throw new Error(`Failed to check existing follow request: ${checkError.message}`);
-          }
+          if (error) throw error;
+          Alert.alert('Request Sent', 'Your follow request has been sent.');
+        }
 
-          if (existingRequest) {
-            Alert.alert('Request Already Sent', 'You have already sent a follow request to this user.');
-            return;
-          }
-
-          // Send follow request
-          console.log('Attempting to insert follow request...', {
-            requester_id: user.id,
-            requested_id: profile.id
-          });
-          
-          const { error: insertError } = await supabase
-            .from('follow_requests')
-            .insert({
-              requester_id: user.id,
-              requested_id: profile.id,
-            });
-
-          if (insertError) {
-            console.error('Error inserting follow request:', insertError);
-            throw new Error(`Failed to send follow request: ${insertError.message}`);
-          }
-          
-          console.log('Follow request inserted successfully');
-
-          // Update profile state to show request sent
-          setProfile(prev => prev ? {
-            ...prev,
-            follow_request_sent: true
-          } : null);
-
-          Alert.alert('Follow Request Sent', 'Your follow request has been sent. You will be notified when they respond.');
         } else {
-          // Public account - follow directly
-          console.log('Attempting to follow user:', profile.username, 'Profile ID:', profile.id);
-          
-          const { error: followError } = await supabase
+        // --- PUBLIC PROFILE: FOLLOW ---
+        const { error } = await supabase
             .from('followers')
-            .insert({
-              follower_id: user.id,
-              following_id: profile.id,
-            });
+          .insert({ follower_id: currentUserId, following_id: profile.id });
 
-          if (followError) {
-            console.error('Follow error:', followError);
-            throw followError;
+        if (error) throw error;
           }
 
-          console.log('Successfully followed user:', profile.username);
+      // After any action, reload the profile to get the definitive state from the DB.
+      await loadProfile();
 
-          setProfile(prev => prev ? {
-            ...prev,
-            is_following: true,
-            _count: {
-              ...prev._count,
-              followers: prev._count.followers + 1
-            }
-          } : null);
-        }
-      }
-    } catch (err) {
-      console.error('Error following/unfollowing:', err);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to update follow status';
-      if (err instanceof Error) {
-        console.error('Full error details:', {
-          message: err.message,
-          name: err.name,
-          stack: err.stack
-        });
-        
-        if (err.message.includes('23505')) {
-          errorMessage = 'You are already following this user';
-        } else if (err.message.includes('42501')) {
-          errorMessage = 'Permission denied. Please check your account status.';
-        } else if (err.message.includes('JWT')) {
-          errorMessage = 'Authentication error. Please try logging out and back in.';
-        } else {
-          errorMessage = `Error: ${err.message}`;
-        }
-      }
-      
-      Alert.alert('Follow Error', errorMessage);
-      setError(errorMessage);
-      // Reload profile to ensure correct state
-      loadProfile();
+    } catch (error) {
+      const errorMessage = (error as Error).message;
+      console.error('Error in handleFollow:', errorMessage);
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
     } finally {
       setFollowLoading(false);
     }
@@ -672,6 +580,96 @@ export default function UserProfileScreen() {
     }
   };
 
+  const loadFollowers = async () => {
+    if (!profile) return;
+    
+    setLoadingFollowers(true);
+    try {
+      const { data: followersData, error: followersError } = await supabase
+        .from('followers')
+        .select(`
+          id,
+          follower_id,
+          profiles!followers_follower_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .eq('following_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (followersError) {
+        console.error('Error loading followers:', followersError);
+        return;
+      }
+
+      // Transform the data to match our interface
+      const transformedFollowers = (followersData || []).map((follower: any) => ({
+        id: follower.id,
+        follower_id: follower.follower_id,
+        profiles: Array.isArray(follower.profiles) ? follower.profiles[0] : follower.profiles
+      }));
+
+      setFollowers(transformedFollowers);
+    } catch (error) {
+      console.error('Error loading followers:', error);
+    } finally {
+      setLoadingFollowers(false);
+    }
+  };
+
+  const handleShowFollowers = () => {
+    setShowFollowersModal(true);
+    loadFollowers();
+  };
+
+  const loadFollowing = async () => {
+    if (!profile) return;
+    
+    setLoadingFollowing(true);
+    try {
+      const { data: followingData, error: followingError } = await supabase
+        .from('followers')
+        .select(`
+          id,
+          following_id,
+          profiles!followers_following_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .eq('follower_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (followingError) {
+        console.error('Error loading following:', followingError);
+        return;
+      }
+
+      // Transform the data to match our interface
+      const transformedFollowing = (followingData || []).map((following: any) => ({
+        id: following.id,
+        following_id: following.following_id,
+        profiles: Array.isArray(following.profiles) ? following.profiles[0] : following.profiles
+      }));
+
+      setFollowing(transformedFollowing);
+    } catch (error) {
+      console.error('Error loading following:', error);
+    } finally {
+      setLoadingFollowing(false);
+    }
+  };
+
+  const handleShowFollowing = () => {
+    setShowFollowingModal(true);
+    loadFollowing();
+  };
+
   // Load profile when username changes
   useEffect(() => {
     if (username) {
@@ -930,17 +928,27 @@ export default function UserProfileScreen() {
           }
         ]}>
           <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(posts.length)}</Text>
+            <Text style={[styles.statNumber, { color: colors.tint }]}>
+              {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(posts.length)}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
           </View>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
+          <TouchableOpacity 
+            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+            onPress={handleShowFollowers}
+          >
             <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
-          </View>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.following)}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+            onPress={handleShowFollowing}
+          >
+            <Text style={[styles.statNumber, { color: colors.tint }]}>
+              {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(profile._count.following)}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Toggle Tabs */}
@@ -977,7 +985,15 @@ export default function UserProfileScreen() {
         </View>
 
         {/* Content based on active tab */}
-        {activeTab === 'posts' ? (
+        {profile.is_private && !profile.is_following && currentUserId !== profile.id ? (
+          // Show private account message for all tabs
+          <View style={styles.privateAccountContainer}>
+            <Text style={[styles.privateAccountTitle, { color: colors.text }]}>This Account is Private</Text>
+            <Text style={[styles.privateAccountText, { color: colors.textSecondary }]}>
+              Follow this account to see their {activeTab === 'posts' ? 'posts' : activeTab === 'lifts' ? 'lift records' : 'workouts'}.
+            </Text>
+          </View>
+        ) : activeTab === 'posts' ? (
         <View style={styles.postsGrid}>
           {posts.map((post) => (
             <TouchableOpacity
@@ -1125,6 +1141,128 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Followers modal */}
+      <Modal
+        visible={showFollowersModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFollowersModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.modalBackground || 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Followers</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowFollowersModal(false)}>
+                <Text style={[styles.closeButtonText, { color: colors.text }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.followersContainer}>
+              {loadingFollowers ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : followers.length === 0 ? (
+                <View style={styles.emptyFollowersContainer}>
+                  <Text style={[styles.emptyFollowersText, { color: colors.textSecondary }]}>
+                    No followers yet
+                  </Text>
+                </View>
+              ) : (
+                followers.map((follower) => (
+                  <TouchableOpacity
+                    key={follower.id}
+                    style={[styles.followerItem, { backgroundColor: colors.background }]}
+                    onPress={() => {
+                      setShowFollowersModal(false);
+                      router.push(`/${follower.profiles?.username}`);
+                    }}>
+                    <Image 
+                      source={{ 
+                        uri: follower.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                      }} 
+                      style={styles.followerAvatar} 
+                    />
+                    <View style={styles.followerInfo}>
+                      <View style={styles.followerUsernameContainer}>
+                        <Text style={[styles.followerUsername, { color: colors.text }]}>
+                          {follower.profiles?.username || 'Unknown User'}
+                        </Text>
+                        {follower.profiles?.is_verified && (
+                          <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Following modal */}
+      <Modal
+        visible={showFollowingModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFollowingModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.modalBackground || 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Following</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowFollowingModal(false)}>
+                <Text style={[styles.closeButtonText, { color: colors.text }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.followersContainer}>
+              {loadingFollowing ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : following.length === 0 ? (
+                <View style={styles.emptyFollowersContainer}>
+                  <Text style={[styles.emptyFollowersText, { color: colors.textSecondary }]}>
+                    Not following anyone yet
+                  </Text>
+                </View>
+              ) : (
+                following.map((followingUser) => (
+                  <TouchableOpacity
+                    key={followingUser.id}
+                    style={[styles.followerItem, { backgroundColor: colors.background }]}
+                    onPress={() => {
+                      setShowFollowingModal(false);
+                      router.push(`/${followingUser.profiles?.username}`);
+                    }}>
+                    <Image 
+                      source={{ 
+                        uri: followingUser.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                      }} 
+                      style={styles.followerAvatar} 
+                    />
+                    <View style={styles.followerInfo}>
+                      <View style={styles.followerUsernameContainer}>
+                        <Text style={[styles.followerUsername, { color: colors.text }]}>
+                          {followingUser.profiles?.username || 'Unknown User'}
+                        </Text>
+                        {followingUser.profiles?.is_verified && (
+                          <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1527,5 +1665,87 @@ const styles = StyleSheet.create({
   workoutDate: {
     fontSize: 11,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    minHeight: '50%',
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  closeButtonText: {
+    fontSize: 24,
+  },
+  followersContainer: {
+    maxHeight: 400,
+    padding: 15,
+  },
+  emptyFollowersContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyFollowersText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  followerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 5,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  followerAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  followerInfo: {
+    flex: 1,
+  },
+  followerUsernameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  followerUsername: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  privateAccountContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privateAccountTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  privateAccountText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

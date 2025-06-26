@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal } from 'react-native';
 import { 
   ArrowLeft, 
   User, 
@@ -18,6 +18,8 @@ import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedButton } from '../../../components/ThemedButton';
 
 interface WorkoutDay {
   date: number;
@@ -42,6 +44,7 @@ export default function WorkoutHubScreen() {
   
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
   const [plannedWorkouts, setPlannedWorkouts] = useState<{[key: number]: string}>({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Get today's date
   const today = new Date().getDate();
@@ -346,13 +349,12 @@ export default function WorkoutHubScreen() {
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>Add Workout</Text>
           <View style={styles.addWorkoutSection}>
-            <TouchableOpacity
-              style={[styles.addWorkoutButton, { backgroundColor: colors.tint }]}
-              onPress={handleCreateWorkout}
-            >
-              <Plus size={20} color="#fff" />
-              <Text style={styles.addWorkoutText}>Create New Workout</Text>
-            </TouchableOpacity>
+            <ThemedButton
+              title="Create New Workout"
+              onPress={() => router.push('/fitness/workout-tracker')}
+              variant="primary"
+              style={styles.createWorkoutButton}
+            />
             <TouchableOpacity
               style={[styles.quickLogButton, { backgroundColor: colors.backgroundSecondary }]}
               onPress={handleQuickAddWorkout}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Dumbbell, Clock, TrendingUp } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 
@@ -85,10 +86,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, theme, onPress }) =>
           </View>
         </View>
         {hasPRs && (
-          <View style={[styles.prBadge, { backgroundColor: colors.tint }]}>
-            <TrendingUp size={14} color="#fff" />
-            <Text style={styles.prBadgeText}>PR</Text>
-          </View>
+          <LinearGradient
+            colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.prBadge}
+          >
+            <Text style={styles.prText}>PR</Text>
+          </LinearGradient>
         )}
       </View>
 
@@ -113,9 +118,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, theme, onPress }) =>
       {/* Workout stats */}
       <View style={styles.workoutStats}>
         <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: colors.tint + '20' }]}>
-            <Dumbbell size={16} color={colors.tint} />
-          </View>
+          <LinearGradient
+            colors={[colors.primaryGradientStart + '20', colors.primaryGradientEnd + '20']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.statIcon}
+          >
+            <Dumbbell size={16} color={colors.primaryGradientStart} />
+          </LinearGradient>
           <View>
             <Text style={[styles.statValue, { color: colors.text }]}>
               {workout.exercises.length}
@@ -127,9 +137,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, theme, onPress }) =>
         </View>
 
         <View style={styles.statItem}>
-          <View style={[styles.statIcon, { backgroundColor: colors.tint + '20' }]}>
-            <Clock size={16} color={colors.tint} />
-          </View>
+          <LinearGradient
+            colors={[colors.primaryGradientStart + '20', colors.primaryGradientEnd + '20']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.statIcon}
+          >
+            <Clock size={16} color={colors.primaryGradientStart} />
+          </LinearGradient>
           <View>
             <Text style={[styles.statValue, { color: colors.text }]}>
               {estimatedDuration}m
@@ -142,9 +157,14 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({ workout, theme, onPress }) =>
 
         {totalVolume > 0 && (
           <View style={styles.statItem}>
-            <View style={[styles.statIcon, { backgroundColor: colors.tint + '20' }]}>
-              <TrendingUp size={16} color={colors.tint} />
-            </View>
+            <LinearGradient
+              colors={[colors.primaryGradientStart + '20', colors.primaryGradientEnd + '20']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.statIcon}
+            >
+              <TrendingUp size={16} color={colors.primaryGradientStart} />
+            </LinearGradient>
             <View>
               <Text style={[styles.statValue, { color: colors.text }]}>
                 {formatVolume(totalVolume)}
@@ -222,7 +242,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 4,
   },
-  prBadgeText: {
+  prText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',

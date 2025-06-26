@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
@@ -48,6 +49,7 @@ function AppContent() {
 export default function RootLayout() {
   useFrameworkReady();
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
@@ -57,6 +59,7 @@ export default function RootLayout() {
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 

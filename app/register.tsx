@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { ThemedButton } from '../components/ThemedButton';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -14,6 +15,19 @@ export default function RegisterScreen() {
   const [showGymSuggestions, setShowGymSuggestions] = useState(false);
   const { theme } = useTheme();
   const colors = Colors[theme];
+
+  // Check auth session on component mount
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        setError('Please sign in to continue');
+        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+      }
+    };
+    
+    checkSession();
+  }, []);
 
   const filteredGyms = GYM_LIST.filter(g => 
     g.toLowerCase().includes(gym.toLowerCase())
@@ -32,9 +46,16 @@ export default function RegisterScreen() {
       // Get current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
-      if (userError) throw userError;
+      if (userError) {
+        console.error('Auth error:', userError);
+        setError('Authentication session expired. Please sign in again.');
+        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+        return;
+      }
+      
       if (!user) {
-        router.replace('/');
+        setError('No authenticated user found. Redirecting to sign in...');
+        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
         return;
       }
 
@@ -201,16 +222,14 @@ export default function RegisterScreen() {
           )}
         </View>
 
-        <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled, { backgroundColor: colors.button }]}
+        <ThemedButton
+          title={loading ? 'Creating Account...' : 'Complete Registration'}
           onPress={handleSubmit}
-          disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Complete Registration</Text>
-          )}
-        </TouchableOpacity>
+          variant="primary"
+          loading={loading}
+          disabled={loading || !username.trim() || !bio.trim()}
+          style={styles.completeButton}
+        />
       </View>
     </TouchableWithoutFeedback>
   );
@@ -268,18 +287,8 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 16,
   },
-  button: {
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  completeButton: {
+    marginTop: 20,
   },
 });
 

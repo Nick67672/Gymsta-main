@@ -399,6 +399,13 @@ export default function ChatScreen() {
     router.push('/chat/search');
   };
 
+  const handleAvatarPress = (username: string) => {
+    // Prevent navigating twice if already in a transition
+    if (navigating) return;
+    setNavigating(true);
+    router.push(`/${username}`);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Modern Header */}
@@ -492,62 +499,69 @@ export default function ChatScreen() {
           {chats.length > 0 ? (
             <View style={styles.chatsSection}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent</Text>
-              {chats.map((chat, index) => (
-                <TouchableOpacity
-                  key={chat.id}
-                  style={[
-                    styles.chatPreview, 
-                    { 
-                      backgroundColor: colors.card,
-                      marginBottom: index === chats.length - 1 ? 0 : 12
-                    }
-                  ]}
-                  disabled={navigating}
-                  onPress={() => {
-                    if (navigating) return;
-                    setNavigating(true);
-
-                    const participant = chat.participants[0];
-                    router.push(`/chat/${participant.username}` as any);
-                  }}>
-                  
-                  {/* Avatar with Online Indicator */}
-                  <View style={styles.avatarContainer}>
-                    <Image
-                      source={{
-                        uri: chat.participants[0]?.avatar_url ||
-                          `https://source.unsplash.com/random/100x100/?portrait&${chat.participants[0]?.username}`
-                      }}
-                      style={styles.avatar}
-                    />
-                    <View style={[styles.onlineIndicator, { backgroundColor: colors.success }]} />
-                  </View>
-                  
-                  <View style={styles.chatInfo}>
-                    <View style={styles.topLine}>
-                      <View style={styles.usernameContainer}>
-                        <Text style={[styles.username, { color: colors.text }]}>
-                          {chat.participants[0]?.username}
-                        </Text>
-                        {chat.participants[0]?.is_verified && (
-                          <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
-                        )}
-                      </View>
-                      <View style={styles.timeContainer}>
-                        <Clock size={12} color={colors.textSecondary} />
-                        <Text style={[styles.time, { color: colors.textSecondary }]}>
-                          {formatTime(chat.recent_message?.created_at || chat.created_at)}
+              {chats.map((chat, index) => {
+                const otherParticipant = chat.participants[0];
+                if (!otherParticipant) return null;
+                
+                return (
+                  <TouchableOpacity
+                    key={chat.id}
+                    style={[
+                      styles.chatPreview, 
+                      { 
+                        backgroundColor: colors.card,
+                        marginBottom: index === chats.length - 1 ? 0 : 12
+                      }
+                    ]}
+                    onPress={() => {
+                      if (navigating) return;
+                      setNavigating(true);
+                      router.push(`/chat/${otherParticipant.username}`);
+                    }}
+                    activeOpacity={0.95}>
+                    
+                    <View style={styles.chatRow}>
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation(); // Stop the chat row press
+                          handleAvatarPress(otherParticipant.username);
+                        }}
+                        activeOpacity={0.8}>
+                        <Image
+                          source={{
+                            uri: otherParticipant.avatar_url ||
+                              `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
+                          }}
+                          style={styles.avatar}
+                        />
+                      </TouchableOpacity>
+                      <View style={styles.chatInfo}>
+                        <View style={styles.topLine}>
+                          <View style={styles.usernameContainer}>
+                            <Text style={[styles.username, { color: colors.text }]}>
+                              {otherParticipant.username}
+                            </Text>
+                            {otherParticipant.is_verified && (
+                              <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                            )}
+                          </View>
+                          <View style={styles.timeContainer}>
+                            <Clock size={12} color={colors.textSecondary} />
+                            <Text style={[styles.time, { color: colors.textSecondary }]}>
+                              {formatTime(chat.recent_message?.created_at || chat.created_at)}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text 
+                          style={[styles.lastMessage, { color: colors.textSecondary }]}
+                          numberOfLines={2}>
+                          {chat.recent_message?.message || chat.last_message || 'No messages yet'}
                         </Text>
                       </View>
                     </View>
-                    <Text 
-                      style={[styles.lastMessage, { color: colors.textSecondary }]}
-                      numberOfLines={2}>
-                      {chat.recent_message?.message || chat.last_message || 'No messages yet'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -672,6 +686,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     alignItems: 'center',
     ...Shadows.light,
+  },
+  chatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   avatarContainer: {
     position: 'relative',

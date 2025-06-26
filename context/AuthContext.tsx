@@ -2,24 +2,28 @@ import { createContext, useState, useContext, useEffect } from 'react';
 import { Alert, Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
+import { Session, User } from '@supabase/supabase-js';
 import { useTheme } from './ThemeContext';
 import Colors from '@/constants/Colors';
 
 interface AuthContextType {
   session: Session | null;
+  user: User | null;
   loading: boolean;
   showAuthModal: () => void;
   signOut: () => Promise<void>;
   isAuthenticated: boolean;
+  currentUserId: string | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
+  user: null,
   loading: true,
   showAuthModal: () => {},
   signOut: async () => {},
   isAuthenticated: false,
+  currentUserId: null,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -99,10 +103,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider 
       value={{ 
         session, 
+        user: session?.user ?? null,
         loading, 
         showAuthModal, 
         signOut,
-        isAuthenticated: !!session
+        isAuthenticated: !!session,
+        currentUserId: session?.user?.id ?? null,
       }}
     >
       {children}

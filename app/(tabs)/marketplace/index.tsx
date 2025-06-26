@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, ActivityIndicator, Modal, Alert, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Search, ShoppingBag, LayoutGrid, Camera, CircleAlert as AlertCircle, Plus, Edit3, Trash2, Package, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -537,14 +538,21 @@ export default function MarketplaceScreen() {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: colors.tint }]}
+            style={styles.addButton}
             onPress={() => {
               resetForm();
               setSellerView('add');
             }}
           >
-            <Plus size={20} color="#fff" />
-            <Text style={styles.addButtonText}>Add Product</Text>
+            <LinearGradient
+              colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.addButtonGradient}
+            >
+              <Plus size={20} color="#fff" />
+              <Text style={styles.addButtonText}>Add Product</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -1056,6 +1064,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   addButton: {
+    borderRadius: BorderRadius.md,
+  },
+  addButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,

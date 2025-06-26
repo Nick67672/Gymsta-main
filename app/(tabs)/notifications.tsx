@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Alert, Animated, Dimensions, Pressable } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { ArrowLeft, Heart, UserPlus, MessageCircle, CircleCheck as CheckCircle2, Check, X } from 'lucide-react-native';
+import { ArrowLeft, Heart, UserPlus, MessageCircle, CircleCheck as CheckCircle2, Check, X, Trash2 } from 'lucide-react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
+import StoryViewer from '@/components/StoryViewer';
+import WorkoutDetailModal from '@/components/WorkoutDetailModal';
+import GradientButton from '@/components/GradientButton';
+import { useRouter } from 'expo-router';
 
 interface Notification {
   id: string;
@@ -34,15 +41,107 @@ interface Notification {
   };
 }
 
+const SwipeableNotification = ({ 
+  notification, 
+  colors, 
+  onPress, 
+  onDelete, 
+  children 
+}: {
+  notification: Notification;
+  colors: any;
+  onPress: () => void;
+  onDelete: () => void;
+  children: React.ReactNode;
+}) => {
+  const translateX = new Animated.Value(0);
+  const [isSwipeActive, setIsSwipeActive] = useState(false);
+  const screenWidth = Dimensions.get('window').width;
+  const deleteThreshold = screenWidth * 0.3; // 30% of screen width
+
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: translateX } }],
+    { 
+      useNativeDriver: true,
+      listener: (event: any) => {
+        const { translationX } = event.nativeEvent;
+        setIsSwipeActive(translationX > 10); // Show delete background when swiping right
+      }
+    }
+  );
+
+  const onHandlerStateChange = (event: any) => {
+    if (event.nativeEvent.state === State.END) {
+      const { translationX } = event.nativeEvent;
+      
+      if (translationX > deleteThreshold) {
+        // Swipe right past threshold - delete
+        Animated.timing(translateX, {
+          toValue: screenWidth,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(() => {
+          onDelete();
+        });
+      } else {
+        // Snap back to original position
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+        }).start();
+        setIsSwipeActive(false);
+      }
+    }
+  };
+
+  return (
+    <View style={styles.swipeContainer}>
+      {/* Delete background - only visible when swiping */}
+      {isSwipeActive && (
+        <View style={styles.deleteBackground}>
+        <Trash2 size={24} color="white" />
+        <Text style={styles.deleteText}>Delete</Text>
+      </View>
+      )}
+      
+      {/* Swipeable notification */}
+      <PanGestureHandler
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
+        activeOffsetX={10}
+      >
+        <Animated.View
+          style={[
+            styles.swipeableItem,
+            {
+              transform: [{ translateX }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            onPress={onPress}
+            activeOpacity={notification.type === 'follow_request' ? 1 : 0.7}
+          >
+            {children}
+          </TouchableOpacity>
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+};
+
 export default function NotificationsScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal } = useAuth();
+  const router = useRouter();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [swipedNotifications, setSwipedNotifications] = useState<Set<string>>(new Set());
 
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated) {
@@ -53,6 +152,16 @@ export default function NotificationsScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Load dismissed notifications first
+      let dismissedNotifications: string[] = [];
+      try {
+        const dismissedNotificationsStr = await AsyncStorage.getItem('dismissedNotifications');
+        dismissedNotifications = dismissedNotificationsStr ? JSON.parse(dismissedNotificationsStr) : [];
+        console.log('🔍 Dismissed notifications loaded:', dismissedNotifications);
+      } catch (error) {
+        console.error('Error loading dismissed notifications:', error);
+      }
 
       // Get likes on user's posts
       const { data: likesData } = await supabase
@@ -140,7 +249,7 @@ export default function NotificationsScreen() {
             allNotifications.push({
               ...baseNotification,
               followRequest: {
-                id: notification.id, // We'll use the notification ID for now
+                id: notification.id, // This will be looked up properly in the handler
                 requester_id: notification.actor_id,
                 requested_id: user.id
               }
@@ -163,7 +272,12 @@ export default function NotificationsScreen() {
           const existingNotification = allNotifications.find(n => 
             n.type === 'like' && n.actor.id === like.profiles.id && n.post?.id === like.posts.id
           );
-          if (!existingNotification) {
+          
+          // Check if this notification was dismissed
+          const notificationKey = `like_${like.profiles.id}_${like.posts.id}`;
+          const isDismissed = dismissedNotifications.includes(notificationKey);
+          
+          if (!existingNotification && !isDismissed) {
             allNotifications.push({
               id: `like_${like.id}`,
               type: 'like',
@@ -172,6 +286,8 @@ export default function NotificationsScreen() {
               actor: like.profiles,
               post: like.posts
             });
+          } else if (isDismissed) {
+            console.log(`🚫 Skipping dismissed like notification: ${notificationKey}`);
           }
         });
       }
@@ -183,7 +299,12 @@ export default function NotificationsScreen() {
           const existingNotification = allNotifications.find(n => 
             n.type === 'follow' && n.actor.id === follow.profiles.id
           );
-          if (!existingNotification) {
+          
+          // Check if this notification was dismissed
+          const notificationKey = `follow_${follow.profiles.id}`;
+          const isDismissed = dismissedNotifications.includes(notificationKey);
+          
+          if (!existingNotification && !isDismissed) {
             allNotifications.push({
               id: `follow_${follow.id}`,
               type: 'follow',
@@ -191,14 +312,97 @@ export default function NotificationsScreen() {
               read: false,
               actor: follow.profiles
             });
+          } else if (isDismissed) {
+            console.log(`🚫 Skipping dismissed follow notification: ${notificationKey}`);
           }
         });
       }
 
-      // Sort by date
-      allNotifications.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // Remove duplicates with special handling for follow requests and follows
+      const uniqueNotifications = new Map();
+      
+      allNotifications.forEach(notification => {
+        // Create a unique key based on type and actor
+        let key = `${notification.type}_${notification.actor.id}`;
+        
+        // For post-related notifications, include post ID to allow multiple likes from same user on different posts
+        if (notification.post) {
+          key += `_${notification.post.id}`;
+        }
+        
+        const existing = uniqueNotifications.get(key);
+        
+        // Special handling for follow vs follow_request from same user
+        if (notification.type === 'follow' || notification.type === 'follow_request') {
+          const followKey = `follow_${notification.actor.id}`;
+          const followRequestKey = `follow_request_${notification.actor.id}`;
+          
+          const existingFollow = uniqueNotifications.get(followKey);
+          const existingFollowRequest = uniqueNotifications.get(followRequestKey);
+          
+          if (notification.type === 'follow') {
+            // If we have a follow notification, keep it and remove any follow_request
+            uniqueNotifications.set(followKey, notification);
+            if (existingFollowRequest) {
+              uniqueNotifications.delete(followRequestKey);
+            }
+          } else if (notification.type === 'follow_request') {
+            // Only keep follow_request if there's no follow notification from same user
+            if (!existingFollow) {
+              uniqueNotifications.set(followRequestKey, notification);
+            }
+          }
+        } else {
+          // For other notification types, keep the most recent
+          if (!existing || new Date(notification.created_at) > new Date(existing.created_at)) {
+            uniqueNotifications.set(key, notification);
+          }
+        }
+      });
+      
+      // Convert back to array and sort by date
+      const deduplicatedNotifications = Array.from(uniqueNotifications.values());
+      deduplicatedNotifications.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      setNotifications(allNotifications);
+      // Final filtering for any remaining dismissed notifications (mainly for notifications table entries)
+      const finalFilteredNotifications = deduplicatedNotifications.filter(notification => {
+        let notificationKey = '';
+        if (notification.type === 'like' && notification.post) {
+          notificationKey = `like_${notification.actor.id}_${notification.post.id}`;
+        } else if (notification.type === 'follow') {
+          notificationKey = `follow_${notification.actor.id}`;
+        } else if (notification.type === 'follow_request') {
+          notificationKey = `follow_request_${notification.actor.id}`;
+        } else {
+          notificationKey = notification.id;
+        }
+        
+        const shouldInclude = !dismissedNotifications.includes(notificationKey);
+        if (!shouldInclude) {
+          console.log(`🚫 Final filter: removing dismissed notification: ${notificationKey}`);
+        }
+        
+        return shouldInclude;
+      });
+
+      console.log(`📊 Notifications: ${allNotifications.length} total, ${deduplicatedNotifications.length} after deduplication, ${finalFilteredNotifications.length} after final filtering`);
+      
+      // Log current notifications for debugging
+      finalFilteredNotifications.forEach(notification => {
+        let key = '';
+        if (notification.type === 'like' && notification.post) {
+          key = `like_${notification.actor.id}_${notification.post.id}`;
+        } else if (notification.type === 'follow') {
+          key = `follow_${notification.actor.id}`;
+        } else if (notification.type === 'follow_request') {
+          key = `follow_request_${notification.actor.id}`;
+        } else {
+          key = notification.id;
+        }
+        console.log(`📋 Final notification: ${notification.type} from ${notification.actor.username} (key: ${key})`);
+      });
+      
+      setNotifications(finalFilteredNotifications);
     } catch (err) {
       console.error('Error loading notifications:', err);
       setError('Failed to load notifications');
@@ -268,90 +472,59 @@ export default function NotificationsScreen() {
   };
 
   const handleAcceptFollowRequest = async (notification: Notification) => {
-    if (!notification.followRequest) return;
+    if (!notification.followRequest || processingRequest) return;
+    
+    setProcessingRequest(notification.id);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { requester_id, requested_id } = notification.followRequest;
+      
+      const { error } = await supabase.rpc('accept_follow_request', {
+        p_requester_id: requester_id,
+        p_requested_id: requested_id,
+      });
 
-      // Find the actual follow request
-      const { data: followRequestData, error: findError } = await supabase
-        .from('follow_requests')
-        .select('id')
-        .eq('requester_id', notification.followRequest.requester_id)
-        .eq('requested_id', user.id)
-        .single();
-
-      if (findError || !followRequestData) {
-        Alert.alert('Error', 'Follow request not found.');
-        loadNotifications(); // Refresh to remove stale notification
-        return;
+      if (error) {
+        throw new Error(`Failed to accept follow request: ${error.message}`);
       }
 
-      // Create the follow relationship
-      const { error: followError } = await supabase
-        .from('followers')
-        .insert({
-          follower_id: notification.followRequest.requester_id,
-          following_id: notification.followRequest.requested_id,
-        });
+      // Optimistically remove the notification
+        setNotifications(prev => prev.filter(n => n.id !== notification.id));
 
-      if (followError) throw followError;
-
-      // Delete the follow request (this will also trigger cleanup of the notification)
-      const { error: deleteError } = await supabase
-        .from('follow_requests')
-        .delete()
-        .eq('id', followRequestData.id);
-
-      if (deleteError) throw deleteError;
-
-      // Refresh notifications
-      loadNotifications();
-      
-      Alert.alert('Follow Request Accepted', `${notification.actor.username} is now following you.`);
-    } catch (error) {
-      console.error('Error accepting follow request:', error);
-      Alert.alert('Error', 'Failed to accept follow request. Please try again.');
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', (err as Error).message);
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
   const handleDeclineFollowRequest = async (notification: Notification) => {
-    if (!notification.followRequest) return;
+    if (!notification.followRequest || processingRequest) return;
+
+    setProcessingRequest(notification.id);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { requester_id, requested_id } = notification.followRequest;
 
-      // Find the actual follow request
-      const { data: followRequestData, error: findError } = await supabase
-        .from('follow_requests')
-        .select('id')
-        .eq('requester_id', notification.followRequest.requester_id)
-        .eq('requested_id', user.id)
-        .single();
-
-      if (findError || !followRequestData) {
-        Alert.alert('Error', 'Follow request not found.');
-        loadNotifications(); // Refresh to remove stale notification
-        return;
-      }
-
-      // Delete the follow request (this will also trigger cleanup of the notification)
+      // Deleting the follow_request will trigger the notification cleanup
       const { error } = await supabase
         .from('follow_requests')
         .delete()
-        .eq('id', followRequestData.id);
+        .match({ requester_id: requester_id, requested_id: requested_id });
+        
+      if (error) {
+        throw new Error(`Failed to decline follow request: ${error.message}`);
+      }
 
-      if (error) throw error;
+      // Optimistically remove the notification
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
 
-      // Refresh notifications
-      loadNotifications();
-      
-      Alert.alert('Follow Request Declined', `You declined ${notification.actor.username}'s follow request.`);
-    } catch (error) {
-      console.error('Error declining follow request:', error);
-      Alert.alert('Error', 'Failed to decline follow request. Please try again.');
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Error', (err as Error).message);
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
@@ -368,11 +541,86 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleDeleteNotification = async (notification: Notification) => {
+    try {
+      // Remove from UI immediately
+      setNotifications(prev => prev.filter(n => n.id !== notification.id));
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Create a unique identifier for this notification
+      let notificationKey = '';
+      if (notification.type === 'like' && notification.post) {
+        notificationKey = `like_${notification.actor.id}_${notification.post.id}`;
+      } else if (notification.type === 'follow') {
+        notificationKey = `follow_${notification.actor.id}`;
+      } else if (notification.type === 'follow_request') {
+        notificationKey = `follow_request_${notification.actor.id}`;
+      } else {
+        notificationKey = notification.id;
+      }
+      
+      console.log(`🗑️ Deleting notification: ${notification.type} from ${notification.actor.username} (key: ${notificationKey})`);
+      console.log('Full notification object:', JSON.stringify(notification, null, 2));
+
+      // Store dismissed notification in local storage or create a dismissed_notifications table
+      // For now, let's use a simple approach and mark it as read in the notifications table
+      if (!notification.id.startsWith('like_') && !notification.id.startsWith('follow_')) {
+        // If it's in the notifications table, delete it
+        const { error } = await supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notification.id);
+
+        if (error) {
+          console.error('Error deleting notification:', error);
+        }
+             } else {
+         // For legacy notifications, store the dismissal locally
+         try {
+           const dismissedNotificationsStr = await AsyncStorage.getItem('dismissedNotifications');
+           const dismissedNotifications = dismissedNotificationsStr ? JSON.parse(dismissedNotificationsStr) : [];
+           console.log('📦 Current dismissed notifications before adding:', dismissedNotifications);
+           if (!dismissedNotifications.includes(notificationKey)) {
+             dismissedNotifications.push(notificationKey);
+             await AsyncStorage.setItem('dismissedNotifications', JSON.stringify(dismissedNotifications));
+             console.log('✅ Added to dismissed notifications:', notificationKey);
+             console.log('📦 Updated dismissed notifications:', dismissedNotifications);
+           } else {
+             console.log('⚠️ Notification key already in dismissed list:', notificationKey);
+           }
+         } catch (error) {
+           console.error('Error storing dismissed notification:', error);
+         }
+       }
+      
+      // Remove from swiped set
+      setSwipedNotifications(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(notification.id);
+        return newSet;
+      });
+      
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      // Re-add to UI if deletion failed
+      loadNotifications();
+    }
+  };
+
+  const handleAvatarPress = (username: string) => {
+    router.push(`/${username}`);
+  };
+
   if (!isAuthenticated) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { backgroundColor: colors.background }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
+          >
             <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
@@ -381,11 +629,13 @@ export default function NotificationsScreen() {
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
             Sign in to see your notifications
           </Text>
-          <TouchableOpacity 
-            style={[styles.signInButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.push('/auth')}>
-            <Text style={styles.signInButtonText}>Sign In</Text>
-          </TouchableOpacity>
+          <GradientButton
+            title="Sign In"
+            onPress={() => router.push('/auth')}
+            variant="logo"
+            size="medium"
+            style={{ marginTop: 24 }}
+          />
         </View>
       </View>
     );
@@ -394,8 +644,11 @@ export default function NotificationsScreen() {
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { backgroundColor: colors.background }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
+          >
             <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
@@ -407,10 +660,127 @@ export default function NotificationsScreen() {
     );
   }
 
+  const renderNotification = ({ item }: { item: Notification }) => {
+  return (
+            <SwipeableNotification
+        key={item.id}
+        notification={item}
+              colors={colors}
+        onPress={() => handleNotificationPress(item)}
+        onDelete={() => handleDeleteNotification(item)}
+      >
+        <Pressable
+          style={[
+            styles.notificationCard,
+            { 
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowColor: colors.text,
+            },
+            !item.read && [styles.notificationCardUnread, { borderLeftColor: colors.tint }]
+          ]}
+          onPress={(e) => {
+            e.stopPropagation(); // Prevent notification press from firing
+            handleNotificationPress(item);
+          }}
+              >
+          {!item.read && <View style={[styles.unreadIndicator, { backgroundColor: colors.tint }]} />}
+          
+                <View style={styles.notificationContent}>
+                <View style={styles.avatarContainer}>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation(); // Prevent notification press from firing
+                  handleAvatarPress(item.actor.username);
+                }}
+                activeOpacity={0.8}
+              >
+                  <Image
+                    source={{
+                    uri: item.actor.avatar_url ||
+                      `https://source.unsplash.com/random/100x100/?person&${item.actor.id}`,
+                    }}
+                    style={styles.avatar}
+                  />
+              </TouchableOpacity>
+              <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>
+                {getNotificationIcon(item.type)}
+                  </View>
+                </View>
+
+                <View style={styles.textContainer}>
+                  <View style={styles.textRow}>
+                    <Text style={[styles.username, { color: colors.text }]}>
+                  {item.actor.username}
+                    </Text>
+                {item.actor.is_verified && (
+                  <View style={styles.verificationBadge}>
+                    <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                  </View>
+                    )}
+                    <Text style={[styles.actionText, { color: colors.text }]}>
+                  {getNotificationText(item)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.timeText, { color: colors.textSecondary }]}>
+                {formatTime(item.created_at)}
+                  </Text>
+                </View>
+
+            {(item.post || item.workout) && (
+                  <View style={styles.mediaContainer}>
+                    <Image
+                      source={{
+                    uri: item.post?.image_url || item.workout?.progress_image_url || ''
+                      }}
+                      style={styles.mediaImage}
+                    />
+                  </View>
+                )}
+                </View>
+
+          {item.type === 'follow_request' && (
+                <View style={styles.followRequestActions}>
+                  <TouchableOpacity
+                      style={[
+                        styles.actionButton, 
+                        styles.acceptButton, 
+                  processingRequest === item.id && { opacity: 0.7 }
+                      ]}
+                onPress={() => handleAcceptFollowRequest(item)}
+                disabled={processingRequest === item.id}
+                  >
+                {processingRequest === item.id ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                    <Check size={18} color="#fff" />
+                      )}
+                      <Text style={styles.actionButtonText}>
+                  {processingRequest === item.id ? 'Processing...' : 'Accept'}
+                      </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                style={[styles.actionButton, styles.declineButton]}
+                onPress={() => handleDeclineFollowRequest(item)}
+                disabled={processingRequest === item.id}
+                  >
+                    <X size={18} color="#fff" />
+                    <Text style={styles.actionButtonText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+        </Pressable>
+              </SwipeableNotification>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
+        >
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
@@ -421,9 +791,12 @@ export default function NotificationsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 32, paddingTop: 8 }}
+        showsVerticalScrollIndicator={false}
       >
-        {error ? (
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 32 }} size="large" color={colors.tint} />
+        ) : error ? (
           <View style={styles.errorContainer}>
             <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
           </View>
@@ -437,84 +810,7 @@ export default function NotificationsScreen() {
             </Text>
           </View>
         ) : (
-          notifications.map((notification) => (
-            <View
-              key={notification.id}
-              style={[
-                styles.notificationItem,
-                { 
-                  backgroundColor: notification.read ? colors.background : colors.backgroundSecondary,
-                  borderBottomColor: colors.border 
-                }
-              ]}
-            >
-              <TouchableOpacity
-                style={styles.notificationContent}
-                onPress={() => handleNotificationPress(notification)}
-                activeOpacity={notification.type === 'follow_request' ? 1 : 0.7}
-              >
-                <View style={styles.avatarContainer}>
-                  <Image
-                    source={{
-                      uri: notification.actor.avatar_url ||
-                        `https://source.unsplash.com/random/40x40/?portrait&${notification.actor.id}`,
-                    }}
-                    style={styles.avatar}
-                  />
-                  <View style={styles.iconContainer}>
-                    {getNotificationIcon(notification.type)}
-                  </View>
-                </View>
-
-                <View style={styles.textContainer}>
-                  <View style={styles.textRow}>
-                    <Text style={[styles.username, { color: colors.text }]}>
-                      {notification.actor.username}
-                    </Text>
-                    {notification.actor.is_verified && (
-                      <CheckCircle2 size={14} color="#fff" fill="#3B82F6" />
-                    )}
-                    <Text style={[styles.actionText, { color: colors.text }]}>
-                      {' '}{getNotificationText(notification)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.timeText, { color: colors.textSecondary }]}>
-                    {formatTime(notification.created_at)}
-                  </Text>
-                </View>
-
-                {(notification.post || notification.workout) && (
-                  <View style={styles.mediaContainer}>
-                    <Image
-                      source={{
-                        uri: notification.post?.image_url || notification.workout?.progress_image_url || ''
-                      }}
-                      style={styles.mediaImage}
-                    />
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              {notification.type === 'follow_request' && (
-                <View style={styles.followRequestActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.acceptButton, { backgroundColor: colors.tint }]}
-                    onPress={() => handleAcceptFollowRequest(notification)}
-                  >
-                    <Check size={18} color="#fff" />
-                    <Text style={styles.actionButtonText}>Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.declineButton, { backgroundColor: colors.textSecondary }]}
-                    onPress={() => handleDeclineFollowRequest(notification)}
-                  >
-                    <X size={18} color="#fff" />
-                    <Text style={styles.actionButtonText}>Decline</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ))
+          notifications.map((notification) => renderNotification({ item: notification }))
         )}
       </ScrollView>
     </View>
@@ -529,19 +825,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingTop: 50,
-    paddingHorizontal: 15,
-    paddingBottom: 15,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
   },
   backButton: {
-    padding: 8,
-    marginRight: 10,
+    padding: 10,
+    marginRight: 15,
+    borderRadius: 12,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.5,
   },
   content: {
     flex: 1,
+    paddingHorizontal: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -557,6 +857,7 @@ const styles = StyleSheet.create({
   errorText: {
     textAlign: 'center',
     fontSize: 16,
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,
@@ -565,105 +866,191 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     textAlign: 'center',
     marginBottom: 8,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    opacity: 0.7,
   },
   signInButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 20,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 16,
+    marginTop: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   signInButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  notificationItem: {
-    borderBottomWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
+  notificationCard: {
+    marginVertical: 6,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+  },
+  notificationCardUnread: {
+    borderLeftWidth: 4,
+    shadowOpacity: 0.08,
   },
   notificationContent: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: 16,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarBorder: {
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   iconContainer: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 2,
+    borderRadius: 14,
+    padding: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   textContainer: {
     flex: 1,
+    paddingRight: 8,
   },
   textRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginBottom: 4,
   },
   username: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
+    marginRight: 6,
+  },
+  verificationBadge: {
+    marginRight: 6,
+    marginTop: 1,
   },
   actionText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '400',
+    lineHeight: 20,
   },
   timeText: {
-    fontSize: 13,
-    marginTop: 2,
+    fontSize: 14,
+    marginTop: 4,
+    fontWeight: '500',
+    opacity: 0.6,
   },
   mediaContainer: {
     marginLeft: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   mediaImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 52,
+    height: 52,
   },
   followRequestActions: {
     flexDirection: 'row',
-    paddingHorizontal: 15,
-    paddingTop: 8,
-    paddingBottom: 4,
-    gap: 10,
+    paddingTop: 16,
+    gap: 12,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   acceptButton: {
     flex: 1,
+    backgroundColor: '#10B981',
   },
   declineButton: {
     flex: 1,
+    backgroundColor: '#EF4444',
   },
   actionButtonText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  unreadIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  // Swipe styles
+  swipeContainer: {
+    position: 'relative',
+    marginVertical: 6,
+  },
+  deleteBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingLeft: 32,
+    gap: 12,
+    borderRadius: 16,
+  },
+  deleteText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  swipeableItem: {
+    backgroundColor: 'transparent',
   },
 }); 

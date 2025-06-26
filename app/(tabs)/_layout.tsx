@@ -9,6 +9,7 @@ import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Image, View } from 'react-native';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import GradientTabIcon, { GradientUploadButton } from '@/components/GradientTabIcon';
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -94,14 +95,9 @@ export default function TabLayout() {
         name="index"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-            }}>
-              <Home size={24} color={focused ? colors.tint : color} />
-            </View>
+            <GradientTabIcon focused={focused} inactiveColor={color}>
+              <Home size={24} />
+            </GradientTabIcon>
           ),
         }}
       />
@@ -109,14 +105,9 @@ export default function TabLayout() {
         name="fitness"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-            }}>
-              <Zap size={24} color={focused ? colors.tint : color} />
-            </View>
+            <GradientTabIcon focused={focused} inactiveColor={color}>
+              <Zap size={24} />
+            </GradientTabIcon>
           ),
         }}
       />
@@ -124,18 +115,9 @@ export default function TabLayout() {
         name="upload"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 56,
-              height: 56,
-              backgroundColor: colors.tint,
-              borderRadius: 28,
-              marginTop: -8,
-              ...Shadows.heavy,
-            }}>
+            <GradientUploadButton>
               <PlusSquare size={28} color="#fff" />
-            </View>
+            </GradientUploadButton>
           ),
         }}
         listeners={{
@@ -149,14 +131,9 @@ export default function TabLayout() {
         name="marketplace"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-            }}>
-              <ShoppingBag size={24} color={focused ? colors.tint : color} />
-            </View>
+            <GradientTabIcon focused={focused} inactiveColor={color}>
+              <ShoppingBag size={24} />
+            </GradientTabIcon>
           ),
           href: '/marketplace',
         }}
@@ -177,29 +154,21 @@ export default function TabLayout() {
         name="profile"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
-            <View style={{
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 40,
-              height: 40,
-            }}>
+            <GradientTabIcon focused={focused} inactiveColor={color} size={44}>
               {avatarUrl ? (
                 <Image
                   source={{ uri: avatarUrl }}
                   style={{ 
-                    width: 24, 
-                    height: 24, 
-                    borderRadius: 12,
-                    borderWidth: focused ? 2 : 0,
-                    borderColor: colors.tint,
+                    width: focused ? 28 : 24, 
+                    height: focused ? 28 : 24, 
+                    borderRadius: focused ? 14 : 12,
                   }}
                 />
               ) : (
-                <User size={24} color={focused ? colors.tint : color} />
+                <User size={24} />
               )}
-            </View>
+            </GradientTabIcon>
           ),
-          href: '/profile',
         }}
       />
       <Tabs.Screen

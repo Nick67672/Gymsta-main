@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, Platform, PanResponder, RefreshControl } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -62,6 +63,28 @@ interface WorkoutSummary {
   }[] | null;
 }
 
+interface Follower {
+  id: string;
+  follower_id: string;
+  profiles: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    is_verified: boolean;
+  } | null;
+}
+
+interface Following {
+  id: string;
+  following_id: string;
+  profiles: {
+    id: string;
+    username: string;
+    avatar_url: string | null;
+    is_verified: boolean;
+  } | null;
+}
+
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -89,6 +112,12 @@ export default function ProfileScreen() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [lifts, setLifts] = useState<any[]>([]);
+  const [followers, setFollowers] = useState<Follower[]>([]);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [loadingFollowers, setLoadingFollowers] = useState(false);
+  const [following, setFollowing] = useState<Following[]>([]);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [loadingFollowing, setLoadingFollowing] = useState(false);
 
   // Format numbers for better display (e.g., 1.2K, 1.5M)
   const formatNumber = (num: number): string => {
@@ -466,6 +495,96 @@ export default function ProfileScreen() {
     }
   };
 
+  const loadFollowers = async () => {
+    if (!profile) return;
+    
+    setLoadingFollowers(true);
+    try {
+      const { data: followersData, error: followersError } = await supabase
+        .from('followers')
+        .select(`
+          id,
+          follower_id,
+          profiles!followers_follower_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .eq('following_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (followersError) {
+        console.error('Error loading followers:', followersError);
+        return;
+      }
+
+      // Transform the data to match our interface
+      const transformedFollowers = (followersData || []).map((follower: any) => ({
+        id: follower.id,
+        follower_id: follower.follower_id,
+        profiles: Array.isArray(follower.profiles) ? follower.profiles[0] : follower.profiles
+      }));
+
+      setFollowers(transformedFollowers);
+    } catch (error) {
+      console.error('Error loading followers:', error);
+    } finally {
+      setLoadingFollowers(false);
+    }
+  };
+
+  const handleShowFollowers = () => {
+    setShowFollowersModal(true);
+    loadFollowers();
+  };
+
+  const loadFollowing = async () => {
+    if (!profile) return;
+    
+    setLoadingFollowing(true);
+    try {
+      const { data: followingData, error: followingError } = await supabase
+        .from('followers')
+        .select(`
+          id,
+          following_id,
+          profiles!followers_following_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .eq('follower_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (followingError) {
+        console.error('Error loading following:', followingError);
+        return;
+      }
+
+      // Transform the data to match our interface
+      const transformedFollowing = (followingData || []).map((following: any) => ({
+        id: following.id,
+        following_id: following.following_id,
+        profiles: Array.isArray(following.profiles) ? following.profiles[0] : following.profiles
+      }));
+
+      setFollowing(transformedFollowing);
+    } catch (error) {
+      console.error('Error loading following:', error);
+    } finally {
+      setLoadingFollowing(false);
+    }
+  };
+
+  const handleShowFollowing = () => {
+    setShowFollowingModal(true);
+    loadFollowing();
+  };
+
   // Set up real-time subscription for likes changes
   useEffect(() => {
     const likesChannel = supabase.channel('profile-likes-channel-' + Date.now())
@@ -665,12 +784,19 @@ export default function ProfileScreen() {
         </View>
         
         <View style={styles.signInContainer}>
-          <TouchableOpacity
-            style={[styles.signInButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.push('/auth')}
-          >
-            <Text style={styles.signInButtonText}>Sign In</Text>
-          </TouchableOpacity>
+                      <TouchableOpacity 
+              style={styles.signInButton}
+              onPress={() => router.push('/auth')}
+            >
+              <LinearGradient
+                colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.signInGradient}
+              >
+                <Text style={styles.signInButtonText}>Sign In</Text>
+              </LinearGradient>
+            </TouchableOpacity>
         </View>
       </View>
     );
@@ -767,14 +893,20 @@ export default function ProfileScreen() {
             <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(posts.length)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
           </View>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
+          <TouchableOpacity 
+            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+            onPress={handleShowFollowers}
+          >
             <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
-          </View>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+            onPress={handleShowFollowing}
+          >
             <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.following)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Toggle Tabs */}
@@ -1096,6 +1228,128 @@ export default function ProfileScreen() {
           )}
         </View>
       </Modal>
+
+      {/* Followers modal */}
+      <Modal
+        visible={showFollowersModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFollowersModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.modalBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Followers</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowFollowersModal(false)}>
+                <Text style={[styles.closeButtonText, { color: colors.text }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.followersContainer}>
+              {loadingFollowers ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : followers.length === 0 ? (
+                <View style={styles.emptyFollowersContainer}>
+                  <Text style={[styles.emptyFollowersText, { color: colors.textSecondary }]}>
+                    No followers yet
+                  </Text>
+                </View>
+              ) : (
+                followers.map((follower) => (
+                  <TouchableOpacity
+                    key={follower.id}
+                    style={[styles.followerItem, { backgroundColor: colors.background }]}
+                    onPress={() => {
+                      setShowFollowersModal(false);
+                      router.push(`/${follower.profiles?.username}`);
+                    }}>
+                    <Image 
+                      source={{ 
+                        uri: follower.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                      }} 
+                      style={styles.followerAvatar} 
+                    />
+                    <View style={styles.followerInfo}>
+                      <View style={styles.followerUsernameContainer}>
+                        <Text style={[styles.followerUsername, { color: colors.text }]}>
+                          {follower.profiles?.username || 'Unknown User'}
+                        </Text>
+                        {follower.profiles?.is_verified && (
+                          <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Following modal */}
+      <Modal
+        visible={showFollowingModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFollowingModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.modalBackground }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Following</Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowFollowingModal(false)}>
+                <Text style={[styles.closeButtonText, { color: colors.text }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.followersContainer}>
+              {loadingFollowing ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={colors.tint} />
+                </View>
+              ) : following.length === 0 ? (
+                <View style={styles.emptyFollowersContainer}>
+                  <Text style={[styles.emptyFollowersText, { color: colors.textSecondary }]}>
+                    Not following anyone yet
+                  </Text>
+                </View>
+              ) : (
+                following.map((followingUser) => (
+                  <TouchableOpacity
+                    key={followingUser.id}
+                    style={[styles.followerItem, { backgroundColor: colors.background }]}
+                    onPress={() => {
+                      setShowFollowingModal(false);
+                      router.push(`/${followingUser.profiles?.username}`);
+                    }}>
+                    <Image 
+                      source={{ 
+                        uri: followingUser.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                      }} 
+                      style={styles.followerAvatar} 
+                    />
+                    <View style={styles.followerInfo}>
+                      <View style={styles.followerUsernameContainer}>
+                        <Text style={[styles.followerUsername, { color: colors.text }]}>
+                          {followingUser.profiles?.username || 'Unknown User'}
+                        </Text>
+                        {followingUser.profiles?.is_verified && (
+                          <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1361,9 +1615,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signInButton: {
+    borderRadius: 20,
+  },
+  signInGradient: {
     padding: 16,
     borderRadius: 20,
-    backgroundColor: '#3B82F6',
+    alignItems: 'center',
   },
   signInButtonText: {
     color: '#fff',
@@ -1504,5 +1761,44 @@ const styles = StyleSheet.create({
   workoutDate: {
     fontSize: 11,
     textAlign: 'center',
+  },
+  followersContainer: {
+    maxHeight: 400,
+    padding: 15,
+  },
+  emptyFollowersContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyFollowersText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  followerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 5,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  followerAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  followerInfo: {
+    flex: 1,
+  },
+  followerUsernameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  followerUsername: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

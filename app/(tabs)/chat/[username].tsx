@@ -7,6 +7,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
+import { Spacing } from '@/constants/Spacing';
 
 interface Message {
   id: string;
@@ -368,44 +369,33 @@ export default function UserProfileScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         enabled
       >
-        {/* Enhanced Header */}
-        <View style={[styles.header, { 
-          borderBottomColor: colors.border,
-          backgroundColor: colors.background
-        }]}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}>
+        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <ArrowLeft size={24} color={colors.text} />
             </TouchableOpacity>
             
-            <View style={styles.profileSection}>
-              <View style={styles.avatarContainer}>
+          {recipientProfile && (
+            <TouchableOpacity 
+              style={styles.profileHeader} 
+              activeOpacity={0.8}
+              onPress={() => router.push(`/${recipientProfile.username}`)}
+            >
                 <Image
-                  source={{
-                    uri: avatarUrl as string ||
-                      `https://source.unsplash.com/random/200x200/?portrait&${username}`
-                  }}
+                source={{ uri: recipientProfile.avatar_url || `https://source.unsplash.com/random/40x40/?portrait&${recipientId}` }}
                   style={styles.avatar}
                 />
-                <View style={[styles.onlineIndicator, { backgroundColor: colors.success }]} />
-              </View>
-              <View style={styles.userInfo}>
-                <View style={styles.usernameContainer}>
-                  <Text style={[styles.username, { color: colors.text }]}>{username}</Text>
-                  {recipientProfile?.is_verified && (
-                    <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
-                  )}
-                </View>
-                <Text style={[styles.statusText, { color: colors.textSecondary }]}>
-                  {isTyping ? 'typing...' : 'online'}
+              <View style={styles.usernameWrapper}>
+                <Text style={[styles.username, { color: colors.text }]} numberOfLines={1}>
+                  {recipientProfile.username}
                 </Text>
+                {recipientProfile.is_verified && (
+                  <CheckCircle2 size={16} color="#fff" fill="#3B82F6" style={{ marginLeft: 4 }} />
+                )}
               </View>
-            </View>
-          </View>
+            </TouchableOpacity>
+          )}
 
-
+          <View style={{ width: 40 }} />
         </View>
 
         {error && (
@@ -414,7 +404,6 @@ export default function UserProfileScreen() {
           </View>
         )}
 
-        {/* Enhanced Messages Container */}
         <ScrollView 
           ref={scrollViewRef}
           style={styles.messagesContainer}
@@ -493,7 +482,6 @@ export default function UserProfileScreen() {
           )}
         </ScrollView>
 
-        {/* Enhanced Input Container */}
         <View style={[styles.inputContainer, { 
           borderTopColor: colors.border,
           backgroundColor: colors.background
@@ -542,61 +530,35 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 50,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderBottomWidth: 1,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
   },
   backButton: {
     padding: 8,
     marginRight: 12,
   },
-  profileSection: {
+  profileHeader: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 12,
+    justifyContent: 'center',
+    marginHorizontal: Spacing.md,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: Spacing.sm,
   },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  usernameContainer: {
+  usernameWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   username: {
     fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '400',
-    marginTop: 2,
+    fontWeight: 'bold',
   },
   loadingContainer: {
     flex: 1,
