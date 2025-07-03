@@ -54,4 +54,13 @@ export const Typography = {
     fontWeight: '600' as const, 
     lineHeight: 18 
   },
+  
+  // Logo
+  logo: {
+    fontSize: 28,
+    fontWeight: '800' as const,
+    lineHeight: 36,
+    fontFamily: 'System',
+    letterSpacing: -0.5,
+  },
 }; 

@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedInput } from '../components/ThemedInput';
 import { ThemedButton } from '../components/ThemedButton';
 import { useAuth } from '../hooks/useAuth';
+import { goBack } from '@/lib/goBack';
 
 export default function AuthScreen() {
   const params = useLocalSearchParams();
@@ -271,7 +272,7 @@ export default function AuthScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}>
+            onPress={goBack}>
             <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
         </View>

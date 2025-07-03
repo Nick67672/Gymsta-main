@@ -6,9 +6,17 @@ import { Session, User } from '@supabase/supabase-js';
 import { useTheme } from './ThemeContext';
 import Colors from '@/constants/Colors';
 
+// Define a type for the profile for better type-safety
+interface Profile {
+  username: string;
+  avatar_url: string;
+  // Add other profile fields as needed
+}
+
 interface AuthContextType {
   session: Session | null;
   user: User | null;
+  profile: Profile | null; // Add profile to the context type
   loading: boolean;
   showAuthModal: () => void;
   signOut: () => Promise<void>;
@@ -19,6 +27,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
+  profile: null, // Initialize profile as null
   loading: true,
   showAuthModal: () => {},
   signOut: async () => {},
@@ -30,6 +39,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null); // State for profile
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const { theme } = useTheme();
@@ -68,6 +78,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        // Fetch profile when session is updated
+        fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+      }
       setLoading(false);
     });
 
@@ -76,6 +92,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Function to fetch the user's profile
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error, status } = await supabase
+        .from('profiles')
+        .select(`username, avatar_url`)
+        .eq('id', userId)
+        .single();
+      if (error && status !== 406) {
+        throw error;
+      }
+      if (data) {
+        setProfile(data);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
 
   const showAuthModal = () => {
     setModalVisible(true);
@@ -104,6 +139,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       value={{ 
         session, 
         user: session?.user ?? null,
+        profile, // Provide profile through context
         loading, 
         showAuthModal, 
         signOut,

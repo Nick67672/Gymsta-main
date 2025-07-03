@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { goBack } from '@/lib/goBack';
 
 export default function NutritionHubScreen() {
   const { theme } = useTheme();
@@ -16,7 +17,7 @@ export default function NutritionHubScreen() {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={goBack}
           activeOpacity={0.7}
         >
           <ArrowLeft size={24} color={colors.text} />

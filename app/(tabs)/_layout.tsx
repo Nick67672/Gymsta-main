@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Chrome as Home, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -16,6 +16,8 @@ export default function TabLayout() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, session } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -72,11 +74,11 @@ export default function TabLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarStyle: {
-          height: 70,
+          height: 90,
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: 'rgba(0,0,0,0.05)',
-          paddingBottom: 0,
+          paddingBottom: Spacing.lg,
           paddingTop: Spacing.sm,
           paddingHorizontal: Spacing.sm,
         },
@@ -169,6 +171,29 @@ export default function TabLayout() {
               )}
             </GradientTabIcon>
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            if (!isAuthenticated) {
+              e.preventDefault();
+              showAuthModal();
+              return;
+            }
+
+            const isProfileTab = segments[0] === 'profile';
+
+            // If on a nested screen in the profile tab, navigate to the root.
+            if (isProfileTab && segments.length > 1) {
+              e.preventDefault();
+              router.push('/(tabs)/profile');
+            }
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="post/[id]"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen

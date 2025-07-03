@@ -8,8 +8,11 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
+import Layout from '@/constants/Layout';
 import StoryViewer from '@/components/StoryViewer';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
+import { ThemedButton } from '@/components/ThemedButton';
+import { goBack } from '@/lib/goBack';
 
 interface ProfileStory {
   id: string;
@@ -306,8 +309,34 @@ export default function UserProfileScreen() {
         if (error) throw error;
           }
 
-      // After any action, reload the profile to get the definitive state from the DB.
-      await loadProfile();
+      // Optimistically update the profile state instead of reloading
+      if (profile.is_following) {
+        // Just unfollowed
+        setProfile(prev => prev ? {
+          ...prev,
+          is_following: false,
+          _count: {
+            ...prev._count,
+            followers: prev._count.followers - 1
+          }
+        } : null);
+      } else if (profile.is_private) {
+        // Private profile - toggle follow request state
+        setProfile(prev => prev ? {
+          ...prev,
+          follow_request_sent: !prev.follow_request_sent
+        } : null);
+      } else {
+        // Public profile - just followed
+        setProfile(prev => prev ? {
+          ...prev,
+          is_following: true,
+          _count: {
+            ...prev._count,
+            followers: prev._count.followers + 1
+          }
+        } : null);
+      }
 
     } catch (error) {
       const errorMessage = (error as Error).message;
@@ -825,7 +854,7 @@ export default function UserProfileScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={goBack}>
           <Text style={[styles.logo, { color: colors.tint }]}>← Back</Text>
           </TouchableOpacity>
       </View>
@@ -866,49 +895,43 @@ export default function UserProfileScreen() {
               styles.buttonContainer,
               styles.singleButtonContainer
             ]}>
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  styles.primaryButton,
-                  (profile.is_following || profile.follow_request_sent) && [styles.followingButton, { backgroundColor: colors.background, borderColor: colors.tint }],
-                  followLoading && styles.buttonDisabled
-                ]}
+              <ThemedButton
+                title={profile.is_following ? 'Following' : profile.follow_request_sent ? 'Requested' : 'Follow'}
                 onPress={handleFollow}
-                disabled={followLoading}>
-                {followLoading ? (
-                  <ActivityIndicator size="small" color={(profile.is_following || profile.follow_request_sent) ? colors.tint : '#fff'} />
-                ) : (
-                  <View style={styles.buttonContent}>
-                    {profile.is_following ? (
-                      <UserCheck size={18} color={colors.tint} />
-                    ) : profile.follow_request_sent ? (
-                      <UserPlus size={18} color={colors.tint} />
-                    ) : (
-                      <UserPlus size={18} color="#fff" />
-                    )}
-                    <Text style={[
-                      styles.buttonText,
-                      (profile.is_following || profile.follow_request_sent) && { color: colors.tint }
-                    ]}>
-                      {profile.is_following ? 'Following' : profile.follow_request_sent ? 'Requested' : 'Follow'}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                variant={(profile.is_following || profile.follow_request_sent) ? 'secondary' : 'primary'}
+                size="medium"
+                disabled={followLoading}
+                loading={followLoading}
+                icon={
+                  profile.is_following ? (
+                    <UserCheck size={18} color={colors.tint} />
+                  ) : profile.follow_request_sent ? (
+                    <UserPlus size={18} color={colors.tint} />
+                  ) : (
+                    <UserPlus size={18} color="#fff" />
+                  )
+                }
+                style={{ 
+                  flex: 1, 
+                  borderColor: colors.tint, 
+                  borderWidth: (profile.is_following || profile.follow_request_sent) ? 1.5 : 0, 
+                  minWidth: 120,
+                  maxWidth: 120
+                }}
+                textStyle={(profile.is_following || profile.follow_request_sent) ? { color: colors.tint } : undefined}
+              />
 
-              <TouchableOpacity
-                style={[styles.button, styles.secondaryButton, { backgroundColor: colors.background, borderColor: colors.tint }, chatLoading && styles.buttonDisabled]}
+              <ThemedButton
+                title="Message"
                 onPress={startChat}
-                disabled={chatLoading}>
-                {chatLoading ? (
-                  <ActivityIndicator size="small" color={colors.tint} />
-                ) : (
-                  <View style={styles.buttonContent}>
-                    <MessageSquare size={18} color={colors.tint} />
-                    <Text style={[styles.buttonText, styles.secondaryButtonText, { color: colors.tint }]}>Message</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+                variant="secondary"
+                size="medium"
+                disabled={chatLoading}
+                loading={chatLoading}
+                icon={<MessageSquare size={18} color={colors.tint} />}
+                style={{ flex: 1, borderColor: colors.tint, borderWidth: 1.5 }}
+                textStyle={{ color: colors.tint }}
+              />
               
               <TouchableOpacity
                 style={styles.moreButton}
@@ -1291,7 +1314,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: Layout.horizontalPadding,
     paddingTop: 50,
     paddingBottom: 20,
   },
@@ -1317,7 +1340,7 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: Layout.horizontalPadding,
     marginTop: 15,
   },
   username: {
@@ -1347,8 +1370,8 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     marginTop: 25,
-    paddingHorizontal: 20,
-    gap: 12,
+    paddingHorizontal: Layout.horizontalPadding,
+    gap: Layout.gap,
     alignItems: 'center',
   },
   singleButtonContainer: {
@@ -1404,7 +1427,7 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 15,
+    paddingHorizontal: Layout.horizontalPadding - 1,
     paddingVertical: 15,
     marginTop: 15,
     marginBottom: 5,
@@ -1533,7 +1556,7 @@ const styles = StyleSheet.create({
   },
   toggleContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 15,
+    paddingHorizontal: Layout.horizontalPadding - 1,
     marginTop: 10,
     marginBottom: 10,
   },

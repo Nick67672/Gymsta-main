@@ -33,3 +33,13 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 .env
+
+# native dirs
+/android
+/ios
+
+# Local environment variables
+# ---------------------------
+.env
+.env.*
+!/.env.example

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, Platform, PanResponder, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, Platform, PanResponder, RefreshControl, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
-import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell } from 'lucide-react-native';
+import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell, Folder } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
@@ -10,13 +10,19 @@ import StoryViewer from '@/components/StoryViewer';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
+import Layout from '@/constants/Layout';
+import { Typography } from '@/constants/Typography';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Spacing } from '@/constants/Spacing';
 
 interface ProfileStory {
   id: string;
   media_url: string;
   user_id: string;
   created_at?: string;
+  following: Following[];
+  [x: string]: any;
 }
 
 interface Profile {
@@ -85,6 +91,8 @@ interface Following {
   } | null;
 }
 
+const DRAFTS_KEY_PREFIX = 'post_drafts_';
+
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -118,6 +126,7 @@ export default function ProfileScreen() {
   const [following, setFollowing] = useState<Following[]>([]);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
+  const [drafts, setDrafts] = useState<Post[]>([]);
 
   // Format numbers for better display (e.g., 1.2K, 1.5M)
   const formatNumber = (num: number): string => {
@@ -128,6 +137,20 @@ export default function ProfileScreen() {
       return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
     }
     return num.toString();
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    // Optimistically update the UI
+    setPosts(prevPosts => prevPosts.filter(p => p.id !== postId));
+
+    // Perform the deletion in the database
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+
+    if (error) {
+      Alert.alert('Error', 'Failed to delete post. Please try again.');
+      // If the deletion fails, we should probably reload the posts to be safe
+      loadProfile(); 
+    }
   };
 
   const loadProfile = async () => {
@@ -375,12 +398,14 @@ export default function ProfileScreen() {
     loadProfile();
     loadWorkouts();
     loadLifts();
+    loadDrafts();
   }, []);
 
   // Reload profile when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadProfile();
+      loadDrafts();
     }, [])
   );
 
@@ -638,6 +663,35 @@ export default function ProfileScreen() {
     };
   }, []);
 
+  // Real-time subscription for post inserts and deletes so the UI stays up-to-date
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const postsChannel = supabase.channel('profile-posts-channel-' + Date.now())
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'posts',
+          filter: `user_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
+          } else if (payload.eventType === 'INSERT') {
+            // Prepend the new post so it shows up first
+            setPosts(currentPosts => [payload.new as any, ...currentPosts]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      postsChannel.unsubscribe();
+    };
+  }, [profile?.id]);
+
   const handleLike = async (postId: string) => {
     if (!isAuthenticated) return;
     
@@ -765,6 +819,19 @@ export default function ProfileScreen() {
     }
   };
 
+  const loadDrafts = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const DRAFTS_KEY = `${DRAFTS_KEY_PREFIX}${user.id}`;
+    const draftsString = await AsyncStorage.getItem(DRAFTS_KEY);
+    const drafts = draftsString ? JSON.parse(draftsString) : [];
+    setDrafts(drafts);
+  };
+
+  const handleViewPost = (postId: string) => {
+    router.push(`/post/${postId}`);
+  };
+
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
@@ -830,7 +897,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: Layout.horizontalPadding }}>
         <TouchableOpacity 
           onPress={handleViewStories}
           style={[
@@ -866,16 +933,27 @@ export default function ProfileScreen() {
             !hasProducts && styles.singleButtonContainer
           ]}>
             <TouchableOpacity 
-              style={[styles.button, styles.primaryButton, { backgroundColor: colors.button }]}
-              onPress={() => router.push('/profile/edit')}>
-              <Text style={styles.buttonText}>Edit Profile</Text>
+              style={styles.button}
+              onPress={() => router.push('/profile/edit')}
+              activeOpacity={0.8}>
+              <LinearGradient
+                colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButton}
+              >
+                <Text style={styles.buttonText}>Edit Profile</Text>
+              </LinearGradient>
             </TouchableOpacity>
             
             {hasProducts && (
               <TouchableOpacity 
-                style={[styles.button, styles.secondaryButton, { backgroundColor: colors.background, borderColor: colors.tint }]}
-                onPress={() => setShowProductsModal(true)}>
-                <Text style={[styles.buttonText, styles.secondaryButtonText, { color: colors.tint }]}>See Products</Text>
+                style={styles.button}
+                onPress={() => setShowProductsModal(true)}
+                activeOpacity={0.8}>
+                <View style={[styles.secondaryButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.tint }]}>
+                  <Text style={[styles.buttonText, styles.secondaryButtonText, { color: colors.tint }]}>See Products</Text>
+                </View>
               </TouchableOpacity>
             )}
           </View>
@@ -943,26 +1021,46 @@ export default function ProfileScreen() {
         </View>
 
         {/* Content based on active tab */}
-        {activeTab === 'posts' ? (
-          <View style={styles.postsGrid}>
-            {posts.map((post) => (
-              <TouchableOpacity
-                key={post.id}
-                style={styles.postContainer}
-                onPress={() => router.push(`/profile/${post.id}`)}>
-                <View style={styles.postImageContainer}>
-                  <Image source={{ uri: post.image_url }} style={styles.postImage} />
-                  <View style={styles.postOverlay}>
-                    <View style={styles.likeBadge}>
-                      <Heart size={14} color="#fff" fill="#fff" />
-                      <Text style={styles.likesText}>{formatNumber(post.likes?.length || 0)}</Text>
+        {activeTab === 'posts' && (
+          <FlatList
+            nestedScrollEnabled
+            data={[{ id: 'drafts' as const, isDraft: true }, ...posts]}
+            renderItem={({ item }: { item: (Post & { isDraft?: false }) | { id: 'drafts', isDraft: true } }) => {
+              if (item.isDraft) {
+                if (drafts.length === 0) return null;
+                return (
+                  <TouchableOpacity 
+                    style={styles.postItem} 
+                    onPress={() => router.push('/(tabs)/profile/drafts')}
+                  >
+                    <View style={[styles.draftsFolder, { backgroundColor: colors.card }]}>
+                      <Folder size={48} color={colors.textSecondary} />
+                      <Text style={[styles.draftsText, { color: colors.textSecondary }]}>
+                        Drafts ({drafts.length})
+                      </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
+                );
+              }
+              return (
+                <TouchableOpacity style={styles.postItem} onPress={() => handleViewPost(item.id)}>
+                  <Image source={{ uri: item.image_url }} style={styles.postImage} />
+                </TouchableOpacity>
+              );
+            }}
+            keyExtractor={item => item.id}
+            numColumns={3}
+            ListEmptyComponent={
+              drafts.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No posts yet.</Text>
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : activeTab === 'lifts' ? (
+              ) : null
+            }
+          />
+        )}
+
+        {activeTab === 'lifts' && (
           lifts.length === 0 ? (
             <View style={styles.progressContainer}>
               <Text style={[styles.progressText, { color: colors.textSecondary }]}>No lift records to show yet.</Text>
@@ -989,7 +1087,9 @@ export default function ProfileScreen() {
               ))}
             </View>
           )
-        ) : (
+        )}
+
+        {activeTab === 'workouts' && (
           workouts.length === 0 ? (
             <View style={styles.progressContainer}>
               <Text style={[styles.progressText, { color: colors.textSecondary }]}>No workouts to show yet.</Text>
@@ -1374,12 +1474,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Layout.horizontalPadding,
     paddingTop: 50,
-    paddingHorizontal: 15,
+    paddingBottom: 20,
   },
   logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    ...Typography.logo,
     marginBottom: 15,
   },
   headerButtons: {
@@ -1413,7 +1516,8 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: Layout.horizontalPadding,
+    marginTop: 15,
   },
   usernameContainer: {
     flexDirection: 'row',
@@ -1445,36 +1549,56 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 12,
-    gap: 10,
-    width: '100%',
+    marginTop: 25,
+    paddingHorizontal: Layout.horizontalPadding,
+    gap: 12,
+    alignItems: 'center',
   },
   singleButtonContainer: {
     justifyContent: 'center',
   },
   button: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignItems: 'center',
+    borderRadius: 25,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
   },
   primaryButton: {
-    // Background color set through component
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryButton: {
-    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderRadius: 25,
   },
   buttonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
   secondaryButtonText: {
-    // Color set through component
+    fontWeight: '600',
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 15,
+    paddingHorizontal: Layout.horizontalPadding - 1,
     paddingVertical: 15,
     marginTop: 15,
     marginBottom: 5,
@@ -1522,8 +1646,8 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 8,
+    height: '100%',
+    borderRadius: 2,
   },
   postOverlay: {
     position: 'absolute',
@@ -1643,7 +1767,7 @@ const styles = StyleSheet.create({
   },
   toggleContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 15,
+    paddingHorizontal: Layout.horizontalPadding - 1,
     marginTop: 10,
     marginBottom: 10,
   },
@@ -1800,5 +1924,31 @@ const styles = StyleSheet.create({
   followerUsername: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  draftsFolder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  draftsText: {
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 50,
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  postItem: {
+    width: '33.333%',
+    aspectRatio: 1,
+    padding: 1,
   },
 });

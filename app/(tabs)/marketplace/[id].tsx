@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
+import { goBack } from '@/lib/goBack';
 
 interface Product {
   id: string;
@@ -98,7 +99,7 @@ export default function ProductDetailScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TouchableOpacity
         style={[styles.backButton, { backgroundColor: 'rgba(255, 255, 255, 0.9)' }]}
-        onPress={() => router.back()}>
+        onPress={goBack}>
         <Text style={styles.backButtonText}>←</Text>
       </TouchableOpacity>
 

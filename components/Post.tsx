@@ -7,6 +7,8 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { Post } from '../types/social';
 import { BorderRadius, Spacing } from '@/constants/Spacing';
+import { ConfirmModal } from './ConfirmModal';
+import { ThemedButton } from './ThemedButton';
 
 // Temporary alias to bypass missing TS prop typings for expo-video
 const Video: any = VideoView;
@@ -28,7 +30,6 @@ interface PostProps {
   handleUnlike: (postId: string) => void;
   videoRefs: React.MutableRefObject<{ [key: string]: any }>;
   handleDeletePost: (postId: string) => void;
-  onDelete?: (postId: string) => void;
 }
 
 const PostComponent: React.FC<PostProps> = ({
@@ -48,24 +49,7 @@ const PostComponent: React.FC<PostProps> = ({
   handleUnlike,
   videoRefs,
   handleDeletePost,
-  onDelete,
 }) => {
-  // --- DEBUGGING LOG ---
-  // This will print the values being compared for the delete button logic.
-  // Please check your console/terminal output for these logs.
-  console.log(`[Post ID: ${post.id}] -- Comparing post owner ID: ${post.user_id} with current user ID: ${currentUserId}. Match: ${post.user_id === currentUserId}`);
-  console.log(`[Post ID: ${post.id}] -- Post object:`, JSON.stringify({
-    id: post.id,
-    user_id: post.user_id,
-    profiles: post.profiles,
-    caption: post.caption?.substring(0, 50) + '...'
-  }, null, 2));
-  console.log(`[Post ID: ${post.id}] -- Current User ID type:`, typeof currentUserId, 'Post User ID type:', typeof post.user_id);
-  console.log(`[Post ID: ${post.id}] -- Current User ID value:`, JSON.stringify(currentUserId));
-  console.log(`[Post ID: ${post.id}] -- Post User ID value:`, JSON.stringify(post.user_id));
-  console.log(`[Post ID: ${post.id}] -- Strict equality check:`, post.user_id === currentUserId);
-  console.log(`[Post ID: ${post.id}] -- Loose equality check:`, post.user_id == currentUserId);
-
   const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
   const [likeAnimation] = useState(new Animated.Value(1));
   const [doubleTapAnimation] = useState(new Animated.Value(0));
@@ -73,6 +57,7 @@ const PostComponent: React.FC<PostProps> = ({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [lastTap, setLastTap] = useState<number>(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [isProcessingLike, setIsProcessingLike] = useState(false);
   const likeActionRef = useRef(false);
@@ -243,21 +228,13 @@ const PostComponent: React.FC<PostProps> = ({
   }, [flaggedPosts, flagging, post.id]);
 
   const showDeleteConfirmation = () => {
-    // Hide the flag modal first
     setShowMenu(false);
-    
-    Alert.alert(
-      "Delete Post",
-      "Are you sure you want to delete this post?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: () => handleDeletePost(post.id),
-        },
-      ]
-    );
+    setShowDeleteConfirm(true);
+  };
+
+  const onConfirmDelete = () => {
+    setShowDeleteConfirm(false);
+    handleDeletePost(post.id);
   };
 
   // Get dynamic aspect ratio based on content
@@ -485,49 +462,47 @@ const PostComponent: React.FC<PostProps> = ({
 
       {/* Report Menu Modal */}
       <Modal
+        transparent={true}
         visible={showMenu}
-        transparent
-        animationType="fade"
         onRequestClose={() => setShowMenu(false)}
+        animationType="slide"
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowMenu(false)}
-        >
-          <View style={[styles.menuModal, { backgroundColor: colors.backgroundSecondary }]}>
-            <Text style={[styles.menuTitle, { color: colors.text }]}>Post Options</Text>
-            
-            {(() => {
-              console.log('🔘 Rendering menu - Should show delete:', post.user_id === currentUserId);
-              return null;
-            })()}
-            
-            {post.user_id === currentUserId && (
+        <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowMenu(false)}>
+          <View style={[styles.bottomSheetContainer, { backgroundColor: colors.card }]}>
+            <View style={styles.handle} />
+            {currentUserId === post.user_id ? (
               <TouchableOpacity
                 style={styles.menuItem}
-                onPress={() => {
-                  console.log('🔘 Delete button pressed for post:', post.id);
-                  console.log('🔘 onDelete function exists:', !!onDelete);
-                  setShowMenu(false);
-                  onDelete?.(post.id);
-                }}
+                onPress={showDeleteConfirmation}
               >
-                <Trash2 size={20} color="#ff4444" />
-                <Text style={[styles.menuItemText, { color: '#ff4444' }]}>Delete Post</Text>
+                <Trash2 size={22} color={colors.error} />
+                <Text style={[styles.menuItemText, { color: colors.error }]}>Delete Post</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.menuItem} onPress={onReportPress}>
+                <CheckCircle2 size={22} color={colors.text} />
+                <Text style={styles.menuItemText}>Report Post</Text>
               </TouchableOpacity>
             )}
-            
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setShowMenu(false)}
-            >
-              <X size={20} color={colors.textSecondary} />
-              <Text style={[styles.menuItemText, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
+             <ThemedButton
+                title="Cancel"
+                onPress={() => setShowMenu(false)}
+                variant="secondary"
+                style={{marginTop: Spacing.md}}
+              />
           </View>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
+
+      <ConfirmModal
+        visible={showDeleteConfirm}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={onConfirmDelete}
+        confirmButtonTitle="Delete"
+        isDestructive={true}
+      />
     </View>
   );
 };
@@ -735,29 +710,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  modalOverlay: {
+  bottomSheetOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  menuModal: {
-    backgroundColor: 'white',
-    borderRadius: Spacing.md,
-    padding: Spacing.sm,
-    minWidth: 200,
+  bottomSheetContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 20,
   },
-  menuTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: Spacing.sm,
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ccc',
+    alignSelf: 'center',
+    marginBottom: Spacing.lg,
   },
   menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
   },
   menuItemText: {
-    fontSize: 16,
-    textAlign: 'center',
+    marginLeft: Spacing.md,
+    fontSize: 18,
   },
 }); 

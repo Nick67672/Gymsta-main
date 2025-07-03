@@ -21,7 +21,8 @@
       ],
       "expo-web-browser",
       "expo-video",
-      "expo-audio"
+      "expo-audio",
+      "expo-font"
     ],
     "ios": {
       "bundleIdentifier": "com.vanta.gymsta",

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView, Modal, RefreshControl } from 'react-native';
-import { Plus, CircleCheck as CheckCircle2, Clock, MessageCircle } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView, Modal, RefreshControl, Alert } from 'react-native';
+import { Plus, CircleCheck as CheckCircle2, Clock, MessageCircle, Trash2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -56,6 +56,7 @@ export default function ChatScreen() {
   const [selectedStories, setSelectedStories] = useState<Story[]>([]);
   const [showingStories, setShowingStories] = useState(false);
   const [navigating, setNavigating] = useState(false);
+  const [deletingChat, setDeletingChat] = useState<string | null>(null);
 
   // Keep references to active realtime channels so we can clean them up and
   // avoid subscribing to the same channel instance multiple times.
@@ -406,6 +407,57 @@ export default function ChatScreen() {
     router.push(`/${username}`);
   };
 
+  const handleDeleteChat = async (chatId: string) => {
+    Alert.alert(
+      'Delete Conversation',
+      'Are you sure you want to delete this conversation? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingChat(chatId);
+              
+              // Delete all messages in the chat
+              const { error: messagesError } = await supabase
+                .from('a_chat_messages')
+                .delete()
+                .eq('chat_id', chatId);
+
+              if (messagesError) throw messagesError;
+
+              // Delete chat users
+              const { error: chatUsersError } = await supabase
+                .from('a_chat_users')
+                .delete()
+                .eq('chat_id', chatId);
+
+              if (chatUsersError) throw chatUsersError;
+
+              // Delete the chat itself
+              const { error: chatError } = await supabase
+                .from('a_chat')
+                .delete()
+                .eq('id', chatId);
+
+              if (chatError) throw chatError;
+
+              // Remove from local state
+              setChats(prev => prev.filter(chat => chat.id !== chatId));
+            } catch (error) {
+              console.error('Error deleting chat:', error);
+              Alert.alert('Error', 'Failed to delete conversation. Please try again.');
+            } finally {
+              setDeletingChat(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Modern Header */}
@@ -510,7 +562,7 @@ export default function ChatScreen() {
                       styles.chatPreview, 
                       { 
                         backgroundColor: colors.card,
-                        marginBottom: index === chats.length - 1 ? 0 : 12
+                        marginBottom: index === chats.length - 1 ? 0 : 16
                       }
                     ]}
                     onPress={() => {
@@ -518,23 +570,26 @@ export default function ChatScreen() {
                       setNavigating(true);
                       router.push(`/chat/${otherParticipant.username}`);
                     }}
+                    onLongPress={() => handleDeleteChat(chat.id)}
                     activeOpacity={0.95}>
                     
                     <View style={styles.chatRow}>
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation(); // Stop the chat row press
-                          handleAvatarPress(otherParticipant.username);
-                        }}
-                        activeOpacity={0.8}>
-                        <Image
-                          source={{
-                            uri: otherParticipant.avatar_url ||
-                              `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
+                      <View style={styles.avatarContainer}>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation(); // Stop the chat row press
+                            handleAvatarPress(otherParticipant.username);
                           }}
-                          style={styles.avatar}
-                        />
-                      </TouchableOpacity>
+                          activeOpacity={0.8}>
+                          <Image
+                            source={{
+                              uri: otherParticipant.avatar_url ||
+                                `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
+                            }}
+                            style={styles.avatar}
+                          />
+                        </TouchableOpacity>
+                      </View>
                       <View style={styles.chatInfo}>
                         <View style={styles.topLine}>
                           <View style={styles.usernameContainer}>
@@ -682,23 +737,27 @@ const styles = StyleSheet.create({
   },
   chatPreview: {
     flexDirection: 'row',
-    padding: Spacing.lg,
+    padding: 20,
     borderRadius: BorderRadius.xl,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     ...Shadows.light,
+    minHeight: 80,
   },
   chatRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    flex: 1,
+    width: '100%',
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: Spacing.md,
+    marginRight: 16,
+    marginTop: 2,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -712,35 +771,44 @@ const styles = StyleSheet.create({
   },
   chatInfo: {
     flex: 1,
+    justifyContent: 'center',
+    minHeight: 56,
+    paddingVertical: 2,
   },
   topLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
+    alignItems: 'flex-start',
+    marginBottom: 6,
   },
   usernameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: 6,
+    flex: 1,
+    marginRight: 8,
   },
   username: {
-    ...Typography.bodyLarge,
+    fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.2,
+    lineHeight: 22,
   },
   timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: 4,
+    flexShrink: 0,
   },
   time: {
-    ...Typography.caption,
+    fontSize: 13,
     fontWeight: '500',
+    lineHeight: 18,
   },
   lastMessage: {
-    ...Typography.bodyMedium,
+    fontSize: 15,
     lineHeight: 20,
+    marginTop: 2,
   },
   emptyContainer: {
     flex: 1,

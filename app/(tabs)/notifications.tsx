@@ -14,6 +14,7 @@ import StoryViewer from '@/components/StoryViewer';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import GradientButton from '@/components/GradientButton';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 
 interface Notification {
   id: string;
@@ -142,6 +143,21 @@ export default function NotificationsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   const [swipedNotifications, setSwipedNotifications] = useState<Set<string>>(new Set());
+
+  // Mark all notifications as read when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated) {
+        loadNotifications();
+        // Mark all unread notifications as read after a short delay
+        const timer = setTimeout(() => {
+          markAllNotificationsAsRead();
+        }, 1000); // 1 second delay to let user see the notifications first
+
+        return () => clearTimeout(timer);
+      }
+    }, [isAuthenticated])
+  );
 
   const loadNotifications = useCallback(async () => {
     if (!isAuthenticated) {
@@ -528,10 +544,84 @@ export default function NotificationsScreen() {
     }
   };
 
-  const handleNotificationPress = (notification: Notification) => {
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Update the notification as read in the database
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error marking notification as read:', error);
+        return;
+      }
+
+      // Update local state to reflect the change immediately
+      setNotifications(prev => prev.map(notification => 
+        notification.id === notificationId 
+          ? { ...notification, read: true }
+          : notification
+      ));
+
+      console.log('✅ Marked notification as read:', notificationId);
+    } catch (error) {
+      console.error('Error in markNotificationAsRead:', error);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get all unread notifications
+      const unreadNotifications = notifications.filter(n => !n.read);
+      if (unreadNotifications.length === 0) return;
+
+      // Update all unread notifications in the database
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+
+      if (error) {
+        console.error('Error marking all notifications as read:', error);
+        return;
+      }
+
+      // Update local state
+      setNotifications(prev => prev.map(notification => ({
+        ...notification,
+        read: true
+      })));
+
+      console.log(`✅ Marked ${unreadNotifications.length} notifications as read`);
+    } catch (error) {
+      console.error('Error in markAllNotificationsAsRead:', error);
+    }
+  };
+
+  const handleNotificationPress = async (notification: Notification) => {
+    // Mark notification as read if it's unread
+    if (!notification.read) {
+      await markNotificationAsRead(notification.id);
+    }
+
+    // Navigate based on notification type
     if (notification.type === 'like' || notification.type === 'comment') {
       if (notification.post) {
-        router.push(`/profile/${notification.post.id}`);
+        router.push(`/post/${notification.post.id}`);
+      }
+    } else if (notification.type === 'workout_like') {
+      if (notification.workout) {
+        // Navigate to workout detail or profile
+        router.push(`/${notification.actor.username}`);
       }
     } else if (notification.type === 'follow') {
       router.push(`/${notification.actor.username}`);
@@ -618,7 +708,7 @@ export default function NotificationsScreen() {
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
           <TouchableOpacity 
-            onPress={() => router.back()} 
+            onPress={goBack} 
             style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
           >
             <ArrowLeft size={24} color={colors.text} />
@@ -646,7 +736,7 @@ export default function NotificationsScreen() {
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
           <TouchableOpacity 
-            onPress={() => router.back()} 
+            onPress={goBack} 
             style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
           >
             <ArrowLeft size={24} color={colors.text} />
@@ -778,7 +868,7 @@ export default function NotificationsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <TouchableOpacity 
-          onPress={() => router.back()} 
+          onPress={goBack} 
           style={[styles.backButton, { backgroundColor: colors.backgroundSecondary }]}
         >
           <ArrowLeft size={24} color={colors.text} />

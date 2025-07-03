@@ -11,7 +11,6 @@ import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
-import TestDeleteFunctionality from '../../test_delete_functionality';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
@@ -164,6 +163,10 @@ export default function HomeScreen() {
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
   
+  // State for badge counts
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  
   const [activeTab, setActiveTab] = useState<'explore' | 'following' | 'my-gym'>('explore');
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
@@ -183,7 +186,6 @@ export default function HomeScreen() {
   const [gymWorkouts, setGymWorkouts] = useState<Workout[]>([]);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
-  const [showTestMode, setShowTestMode] = useState(false);
   const videoRefs = useRef<{ [key: string]: any }>({});
   const [flaggedPosts, setFlaggedPosts] = useState<{ [postId: string]: boolean }>({});
   const [flagging, setFlagging] = useState<{ [postId: string]: boolean }>({});
@@ -191,6 +193,7 @@ export default function HomeScreen() {
     posts?: any;
     likes?: any;
     stories?: any;
+    notifications?: any;
   }>({});
   
   const loadFeed = useCallback(async () => {
@@ -480,6 +483,36 @@ export default function HomeScreen() {
     }
   };
 
+  const loadUnreadCounts = async () => {
+    if (!isAuthenticated || !user) {
+      setUnreadNotifications(0);
+      setUnreadMessages(0);
+      return;
+    }
+
+    try {
+      // Load unread notifications count
+      const { count: notificationCount, error: notificationError } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+
+      if (notificationError) {
+        console.error('Error loading notification count:', notificationError);
+      } else {
+        setUnreadNotifications(notificationCount || 0);
+      }
+
+      // Load unread messages count (you'll need to implement this based on your messages table structure)
+      // For now, setting a placeholder - you can implement based on your chat/messages schema
+      setUnreadMessages(0);
+      
+    } catch (error) {
+      console.error('Error loading unread counts:', error);
+    }
+  };
+
   const handleLike = async (postId: string) => {
     if (!isAuthenticated) {
       showAuthModal();
@@ -565,59 +598,25 @@ export default function HomeScreen() {
   };
 
   const handleDeletePost = async (postId: string) => {
-    console.log('🗑️ Attempting to delete post:', postId);
-    
-    try {
-      // Get current user to verify they can delete this post
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError) {
-        console.error('❌ Error getting current user:', userError);
-        Alert.alert('Error', 'Authentication error. Please try again.');
-        return;
-      }
-      
-      if (!user) {
-        console.error('❌ No authenticated user found');
-        Alert.alert('Error', 'You must be logged in to delete posts.');
-        return;
-      }
-      
-      console.log('👤 Current user ID:', user.id);
-      
-      // Find the post to check ownership
-      const postToDelete = posts.find(p => p.id === postId) || followingPosts.find(p => p.id === postId);
-      if (postToDelete) {
-        console.log('📝 Post owner ID:', postToDelete.user_id);
-        console.log('🔐 User can delete:', postToDelete.user_id === user.id);
-      }
-      
-      // Optimistically remove from UI
-      setPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
-      setFollowingPosts(currentPosts => currentPosts.filter(p => p.id !== postId));
-      
-      console.log('🔄 Sending delete request to Supabase...');
-      const { error } = await supabase.from('posts').delete().eq('id', postId);
-      
-      if (error) {
-        console.error('❌ Supabase delete error:', error);
-        console.error('Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
-        
-        Alert.alert('Error', `Could not delete post: ${error.message}`);
-        // Reload feed to restore the post in UI
-        loadFeed();
-      } else {
-        console.log('✅ Post deleted successfully');
-      }
-    } catch (err) {
-      console.error('❌ Unexpected error in handleDeletePost:', err);
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
-      // Reload feed to restore the post in UI
-      loadFeed();
+    // Keep a copy of the original posts lists in case we need to revert
+    const originalPosts = [...posts];
+    const originalFollowingPosts = [...followingPosts];
+
+    // Optimistically remove the post from the UI for a snappy response
+    setPosts(prev => prev.filter(p => p.id !== postId));
+    setFollowingPosts(prev => prev.filter(p => p.id !== postId));
+
+    // Attempt to delete from the database
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postId);
+
+    if (error) {
+      // If the delete fails, show an error and revert the UI changes
+      Alert.alert('Error', 'Failed to delete post. Please try again.');
+      setPosts(originalPosts);
+      setFollowingPosts(originalFollowingPosts);
     }
   };
 
@@ -653,6 +652,7 @@ export default function HomeScreen() {
       loadFeed();
       loadFollowing();
       loadGymWorkouts();
+      loadUnreadCounts();
 
       // Setup Supabase real-time subscriptions
       // ... (rest of the subscription logic remains the same)
@@ -681,6 +681,9 @@ export default function HomeScreen() {
     }
     if (channelsRef.current.stories) {
       channelsRef.current.stories.unsubscribe();
+    }
+    if (channelsRef.current.notifications) {
+      channelsRef.current.notifications.unsubscribe();
     }
 
     // Test real-time connection
@@ -800,11 +803,30 @@ export default function HomeScreen() {
       )
       .subscribe();
 
+    // Notifications channel for real-time badge updates
+    const notificationsChannel = supabase.channel('notifications-channel-' + Date.now())
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user?.id}`
+        },
+        (payload) => {
+          console.log('🔔 Notification change detected:', payload);
+          // Reload unread counts when notifications change
+          loadUnreadCounts();
+        }
+      )
+      .subscribe();
+
     // Store channels in ref
     channelsRef.current = {
       posts: postsChannel,
       likes: likesChannel,
-      stories: storiesChannel
+      stories: storiesChannel,
+      notifications: notificationsChannel
     };
 
     return () => {
@@ -812,6 +834,7 @@ export default function HomeScreen() {
       postsChannel.unsubscribe();
       likesChannel.unsubscribe();
       storiesChannel.unsubscribe();
+      notificationsChannel.unsubscribe();
     };
   }, [blockingLoading, isAuthenticated, blockedUserIds, following, user]);
 
@@ -833,6 +856,7 @@ export default function HomeScreen() {
     loadFeed();
     loadFollowing();
     loadGymWorkouts();
+    loadUnreadCounts();
     setRefreshing(false);
   };
 
@@ -897,51 +921,56 @@ export default function HomeScreen() {
   const renderExploreItem = ({ item }: { item: Post }) => (
     <FeedPost
       post={item}
-      currentUserId={user!.id}
-      toggleVideoPlayback={toggleVideoPlayback}
-      playingVideo={playingVideo}
-      videoRefs={videoRefs}
       colors={colors}
-      handleLike={handleLike}
-      handleUnlike={handleUnlike}
-      handleDeletePost={handleDeletePost}
-      onDelete={handleDeletePost}
+      playingVideo={playingVideo}
+      currentUserId={currentUserId}
+      flaggedPosts={flaggedPosts}
+      flagging={flagging}
       setFlagging={setFlagging}
       setFlaggedPosts={setFlaggedPosts}
       isAuthenticated={isAuthenticated}
       showAuthModal={showAuthModal}
+      toggleVideoPlayback={toggleVideoPlayback}
       navigateToProfile={navigateToProfile}
-      flaggedPosts={flaggedPosts}
-      flagging={flagging}
+      handleLike={handleLike}
+      handleUnlike={handleUnlike}
+      videoRefs={videoRefs}
+      handleDeletePost={handleDeletePost}
     />
   );
 
   const renderFollowingItem = ({ item }: { item: Post | Workout }) => {
-    if (item.hasOwnProperty('caption')) {
-      const post = item as Post;
+    if ('caption' in item) { // It's a Post
       return (
         <FeedPost
-          post={post}
-          currentUserId={user!.id}
-          toggleVideoPlayback={toggleVideoPlayback}
-          playingVideo={playingVideo}
-          videoRefs={videoRefs}
+          post={item}
           colors={colors}
-          handleLike={handleLike}
-          handleUnlike={handleUnlike}
-          handleDeletePost={handleDeletePost}
-          onDelete={handleDeletePost}
+          playingVideo={playingVideo}
+          currentUserId={currentUserId}
+          flaggedPosts={flaggedPosts}
+          flagging={flagging}
           setFlagging={setFlagging}
           setFlaggedPosts={setFlaggedPosts}
           isAuthenticated={isAuthenticated}
           showAuthModal={showAuthModal}
+          toggleVideoPlayback={toggleVideoPlayback}
           navigateToProfile={navigateToProfile}
-          flaggedPosts={flaggedPosts}
-          flagging={flagging}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          videoRefs={videoRefs}
+          handleDeletePost={handleDeletePost}
+        />
+      );
+    } else {
+      // It's a Workout
+      return (
+        <WorkoutCard
+          workout={item}
+          theme={theme}
+          onPress={handleWorkoutPress}
         />
       );
     }
-    // ... workout card rendering
   };
 
   if (error) {
@@ -978,16 +1007,30 @@ export default function HomeScreen() {
           {isAuthenticated && (
             <>
               <TouchableOpacity 
-                style={styles.notificationButton}
+                style={[styles.headerIconButton, { backgroundColor: colors.backgroundSecondary }]}
                 onPress={() => router.push('/notifications')}
-                activeOpacity={0.7}>
-                <Bell size={22} color={colors.tint} />
+                activeOpacity={0.8}>
+                <Bell size={20} color={colors.text} />
+                {unreadNotifications > 0 && (
+                  <View style={[styles.notificationBadge, { backgroundColor: colors.error }]}>
+                    <Text style={styles.badgeText}>
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.messageButton}
+                style={[styles.headerIconButton, { backgroundColor: colors.backgroundSecondary }]}
                 onPress={() => router.push('/chat')}
-                activeOpacity={0.7}>
-                <MessageSquare size={22} color={colors.tint} />
+                activeOpacity={0.8}>
+                <MessageSquare size={20} color={colors.text} />
+                {unreadMessages > 0 && (
+                  <View style={[styles.messageBadge, { backgroundColor: colors.success }]}>
+                    <Text style={styles.badgeText}>
+                      {unreadMessages > 99 ? '99+' : unreadMessages}
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </>
           )}
@@ -1028,7 +1071,7 @@ export default function HomeScreen() {
               data={filteredPosts}
               renderItem={renderExploreItem}
               keyExtractor={(item) => item.id}
-              estimatedItemSize={600}
+              estimatedItemSize={700}
               refreshing={refreshing}
               onRefresh={onRefresh}
               onScrollBeginDrag={handleScroll}
@@ -1056,39 +1099,16 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : followingPosts.length > 0 || followingWorkouts.length > 0 ? (
-            <View style={styles.gymWorkoutsContainer}>
-              {followingPosts.map((post) => (
-                <FeedPost
-                  key={post.id}
-                  post={post}
-                  colors={colors}
-                  playingVideo={playingVideo}
-                  currentUserId={currentUserId}
-                  flaggedPosts={flaggedPosts}
-                  flagging={flagging}
-                  setFlagging={setFlagging}
-                  setFlaggedPosts={setFlaggedPosts}
-                  isAuthenticated={isAuthenticated}
-                  showAuthModal={showAuthModal}
-                  toggleVideoPlayback={toggleVideoPlayback}
-                  navigateToProfile={navigateToProfile}
-                  handleLike={handleLike}
-                  handleUnlike={handleUnlike}
-                  handleDeletePost={handleDeletePost}
-                  onDelete={handleDeletePost}
-                  videoRefs={videoRefs}
-                />
-              ))}
-              
-              {followingWorkouts.map((workout) => (
-                <WorkoutCard
-                  key={workout.id}
-                  workout={workout}
-                  theme={theme}
-                  onPress={handleWorkoutPress}
-                />
-              ))}
-            </View>
+            <FlashList
+              data={[...followingPosts, ...followingWorkouts]}
+              renderItem={renderFollowingItem}
+              keyExtractor={(item) => item.id}
+              estimatedItemSize={700}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              onScrollBeginDrag={handleScroll}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
           ) : (
             <View style={styles.emptyGymContainer}>
               <Text style={[styles.emptyGymText, { color: colors.textSecondary }]}>
@@ -1175,44 +1195,6 @@ export default function HomeScreen() {
           setSelectedWorkoutId(null);
         }}
       />
-
-      {/* Debug Test Modal */}
-      <Modal
-        visible={showTestMode}
-        animationType="slide"
-        onRequestClose={() => setShowTestMode(false)}>
-        <View style={{ flex: 1, backgroundColor: colors.background }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 50 }}>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.text }}>Delete Test Mode</Text>
-            <TouchableOpacity onPress={() => setShowTestMode(false)}>
-              <Text style={{ color: colors.tint, fontSize: 16 }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-          <TestDeleteFunctionality />
-        </View>
-      </Modal>
-
-      {/* Debug Button - Only show in development */}
-      {__DEV__ && (
-        <TouchableOpacity
-          style={{
-            position: 'absolute',
-            bottom: 100,
-            right: 20,
-            backgroundColor: colors.tint,
-            padding: 12,
-            borderRadius: 25,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.25,
-            shadowRadius: 4,
-            elevation: 5,
-          }}
-          onPress={() => setShowTestMode(true)}
-        >
-          <Text style={{ color: 'white', fontWeight: 'bold' }}>🧪 Test Delete</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -1227,7 +1209,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xs,
   },
   logo: {
-    ...Typography.h2,
+    ...Typography.logo,
     marginBottom: Spacing.xs,
   },
   headerButtons: {
@@ -1237,7 +1219,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 10,
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   signInButton: {
     borderRadius: BorderRadius.lg,
@@ -1254,11 +1236,46 @@ const styles = StyleSheet.create({
     ...Typography.buttonSmall,
     color: '#fff',
   },
-  notificationButton: {
-    padding: Spacing.sm,
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    position: 'relative',
   },
-  messageButton: {
-    padding: Spacing.sm,
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  messageBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   error: {
     textAlign: 'center',
@@ -1503,6 +1520,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadMoreButton: {
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    ...Typography.bodyMedium,
+    color: 'white',
   },
 });
 

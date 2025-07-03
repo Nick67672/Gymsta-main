@@ -12,6 +12,7 @@ import { ThemedView, ThemedCardView, ThemedSurfaceView } from '@/components/Them
 import { ThemedText, ThemedSecondaryText, ThemedH2, ThemedH3 } from '@/components/ThemedText';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
+import { goBack } from '@/lib/goBack';
 
 export default function EditProfileScreen() {
   const { theme } = useTheme();
@@ -210,7 +211,7 @@ export default function EditProfileScreen() {
 
       // Success - navigate back to profile
       Alert.alert('Success', 'Profile updated successfully!', [
-        { text: 'OK', onPress: () => router.back() }
+        { text: 'OK', onPress: goBack }
       ]);
     } catch (err) {
       console.error('Profile update error:', err);
@@ -393,7 +394,7 @@ export default function EditProfileScreen() {
           <View style={styles.buttonContainer}>
              <ThemedButton
                title="Cancel"
-               onPress={() => router.back()}
+               onPress={goBack}
                variant="outline"
                size="medium"
                disabled={loading || uploadingAvatar}

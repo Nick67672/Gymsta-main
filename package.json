@@ -10,6 +10,13 @@
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "listUnknownPackages": false
+      }
+    }
+  },
   "dependencies": {
     "@expo/ngrok": "^4.1.3",
     "@expo/vector-icons": "^14.1.0",
@@ -22,18 +29,20 @@
     "@supabase/supabase-js": "^2.38.0",
     "buffer": "^6.0.3",
     "events": "^3.3.0",
-    "expo": "53.0.12",
-    "expo-audio": "~0.4.6",
+    "expo": "53.0.15",
+    "expo-audio": "~0.4.7",
+    "expo-av": "15.1.7",
     "expo-blur": "~14.1.5",
-    "expo-camera": "~16.1.8",
+    "expo-camera": "16.1.10",
     "expo-constants": "~17.1.6",
     "expo-crypto": "~14.1.5",
-    "expo-font": "^13.0.3",
+    "expo-font": "13.3.2",
     "expo-haptics": "~14.1.4",
+    "expo-image-manipulator": "^13.1.7",
     "expo-image-picker": "~16.1.4",
     "expo-linear-gradient": "~14.1.5",
-    "expo-linking": "~7.1.5",
-    "expo-router": "~5.1.0",
+    "expo-linking": "7.1.6",
+    "expo-router": "5.1.2",
     "expo-splash-screen": "~0.30.9",
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "~0.4.5",
@@ -46,6 +55,8 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.4",
+    "react-native-calendars": "^1.1313.0",
+    "react-native-chart-kit": "^6.12.0",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-get-random-values": "^1.11.0",
     "react-native-polyfill-globals": "^3.1.0",

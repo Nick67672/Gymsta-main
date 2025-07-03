@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated } from 'react-native';
-import { ArrowLeft, Send, CircleCheck as CheckCircle2 } from 'lucide-react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated, Modal } from 'react-native';
+import { ArrowLeft, Send, CircleCheck as CheckCircle2, MoreVertical, Trash2, MessageSquareX } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
+import { goBack } from '@/lib/goBack';
 import { Spacing } from '@/constants/Spacing';
 
 interface Message {
@@ -42,6 +43,10 @@ export default function UserProfileScreen() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedByRecipient, setBlockedByRecipient] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [showMessageOptions, setShowMessageOptions] = useState(false);
+  const [deletingMessage, setDeletingMessage] = useState<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -317,6 +322,76 @@ export default function UserProfileScreen() {
     }
   };
 
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      setDeletingMessage(messageId);
+      
+      const { error } = await supabase
+        .from('a_chat_messages')
+        .delete()
+        .eq('id', messageId)
+        .eq('user_id', currentUserId); // Only allow deleting own messages
+
+      if (error) throw error;
+
+      // Remove message from local state
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      setShowMessageOptions(false);
+      setSelectedMessage(null);
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      Alert.alert('Error', 'Failed to delete message. Please try again.');
+    } finally {
+      setDeletingMessage(null);
+    }
+  };
+
+  const handleDeleteChat = async () => {
+    if (!chatId || !currentUserId) return;
+
+    Alert.alert(
+      'Delete Conversation',
+      'Are you sure you want to delete this entire conversation? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Delete the chat row *before* removing chat_user links so RLS still sees us as a participant.
+              const { error: chatError } = await supabase
+                .from('a_chat')
+                .delete()
+                .eq('id', chatId);
+
+              if (chatError) throw chatError;
+
+              // Finally, delete chat users (clean‐up; ignore error if already removed)
+              await supabase
+                .from('a_chat_users')
+                .delete()
+                .eq('chat_id', chatId);
+
+              // Navigate back to chat list
+              router.replace('/chat');
+            } catch (error) {
+              console.error('Error deleting chat:', error);
+              Alert.alert('Error', 'Failed to delete conversation. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleLongPressMessage = (message: Message) => {
+    if (message.user_id === currentUserId) {
+      setSelectedMessage(message);
+      setShowMessageOptions(true);
+    }
+  };
+
   if (!isAuthenticated) {
     return null; // Will be redirected in useEffect
   }
@@ -370,7 +445,7 @@ export default function UserProfileScreen() {
         enabled
       >
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                      <TouchableOpacity onPress={goBack} style={styles.backButton}>
               <ArrowLeft size={24} color={colors.text} />
             </TouchableOpacity>
             
@@ -395,7 +470,12 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           )}
 
-          <View style={{ width: 40 }} />
+          <TouchableOpacity 
+            style={styles.chatOptionsButton}
+            onPress={() => setShowChatOptions(true)}
+            activeOpacity={0.8}>
+            <MoreVertical size={20} color={colors.text} />
+          </TouchableOpacity>
         </View>
 
         {error && (
@@ -436,13 +516,17 @@ export default function UserProfileScreen() {
                   )}
                   
                   {/* Message Bubble */}
-                  <View style={[
-                    styles.messageBubble,
-                    isCurrentUser ? 
-                      [styles.sentMessage, { backgroundColor: colors.tint }] : 
-                      [styles.receivedMessage, { backgroundColor: colors.card }],
-                    !showAvatar && !isCurrentUser && styles.messageWithoutAvatar
-                  ]}>
+                  <TouchableOpacity
+                    style={[
+                      styles.messageBubble,
+                      isCurrentUser ? 
+                        [styles.sentMessage, { backgroundColor: colors.tint }] : 
+                        [styles.receivedMessage, { backgroundColor: colors.card }],
+                      !showAvatar && !isCurrentUser && styles.messageWithoutAvatar
+                    ]}
+                    onLongPress={() => handleLongPressMessage(msg)}
+                    activeOpacity={0.8}
+                    disabled={!isCurrentUser}>
                     <Text style={[
                       styles.messageText,
                       isCurrentUser ? 
@@ -469,7 +553,7 @@ export default function UserProfileScreen() {
                         </View>
                       )}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               );
             })
@@ -516,6 +600,93 @@ export default function UserProfileScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Chat Options Modal */}
+      <Modal
+        visible={showChatOptions}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowChatOptions(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={{ flex: 1 }} 
+            onPress={() => setShowChatOptions(false)} 
+          />
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <TouchableOpacity
+              style={[styles.modalOption, { backgroundColor: colors.error + '20' }]}
+              onPress={() => {
+                setShowChatOptions(false);
+                handleDeleteChat();
+              }}>
+              <MessageSquareX size={20} color={colors.error} />
+              <Text style={[styles.modalOptionText, { color: colors.error }]}>
+                Delete Conversation
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setShowChatOptions(false)}>
+              <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Message Options Modal */}
+      <Modal
+        visible={showMessageOptions}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowMessageOptions(false)}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={{ flex: 1 }} 
+            onPress={() => setShowMessageOptions(false)} 
+          />
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <TouchableOpacity
+              style={[styles.modalOption, { backgroundColor: colors.error + '20' }]}
+              onPress={() => {
+                if (selectedMessage) {
+                  Alert.alert(
+                    'Delete Message',
+                    'Are you sure you want to delete this message?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => handleDeleteMessage(selectedMessage.id)
+                      }
+                    ]
+                  );
+                }
+              }}
+              disabled={deletingMessage === selectedMessage?.id}>
+              {deletingMessage === selectedMessage?.id ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <Trash2 size={20} color={colors.error} />
+              )}
+              <Text style={[styles.modalOptionText, { color: colors.error }]}>
+                {deletingMessage === selectedMessage?.id ? 'Deleting...' : 'Delete Message'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setShowMessageOptions(false)}>
+              <Text style={[styles.modalCancelText, { color: colors.textSecondary }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 }
@@ -531,26 +702,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingTop: 60,
     borderBottomWidth: 1,
   },
   backButton: {
-    padding: 8,
-    marginRight: 12,
+    padding: 12,
+    marginRight: 16,
+    borderRadius: 12,
   },
   profileHeader: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: Spacing.md,
+    marginHorizontal: 16,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: Spacing.sm,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
   usernameWrapper: {
     flexDirection: 'row',
@@ -582,61 +755,66 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesContent: {
-    padding: 20,
-    paddingBottom: 10,
+    padding: 24,
+    paddingBottom: 20,
   },
   messageContainer: {
-    marginBottom: 12,
-    maxWidth: '85%',
+    marginBottom: 16,
+    maxWidth: '80%',
   },
   sentMessageContainer: {
     alignSelf: 'flex-end',
+    marginLeft: '20%',
   },
   receivedMessageContainer: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'flex-end',
+    marginRight: '20%',
   },
   messageAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    marginRight: 8,
-    marginBottom: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 12,
+    marginBottom: 6,
   },
   messageBubble: {
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   sentMessage: {
-    borderBottomRightRadius: 6,
+    borderBottomRightRadius: 8,
   },
   receivedMessage: {
-    borderBottomLeftRadius: 6,
+    borderBottomLeftRadius: 8,
   },
   messageWithoutAvatar: {
-    marginLeft: 36,
+    marginLeft: 44,
   },
   messageText: {
     fontSize: 16,
-    lineHeight: 20,
+    lineHeight: 22,
     fontWeight: '400',
   },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
+    marginTop: 8,
   },
   messageTime: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
+    opacity: 0.7,
   },
   messageStatus: {
     marginLeft: 8,
@@ -657,31 +835,42 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   inputContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
     borderTopWidth: 1,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minHeight: 40,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minHeight: 48,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    maxHeight: 80,
-    paddingVertical: 6,
+    fontSize: 16,
+    maxHeight: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   sendButtonDisabled: {
     opacity: 0.6,
@@ -699,5 +888,43 @@ const styles = StyleSheet.create({
   blockedText: {
     textAlign: 'center',
     fontSize: 16,
+  },
+  chatOptionsButton: {
+    padding: 12,
+    borderRadius: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  modalOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  modalCancel: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginTop: 8,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

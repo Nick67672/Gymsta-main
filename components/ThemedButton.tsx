@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, Pressable, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../constants/Colors';
@@ -7,12 +7,13 @@ import Colors from '../constants/Colors';
 interface ThemedButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'destructive';
   size?: 'small' | 'medium' | 'large';
   disabled?: boolean;
   loading?: boolean;
   style?: any;
   textStyle?: any;
+  icon?: React.ReactNode;
 }
 
 export function ThemedButton({
@@ -24,19 +25,24 @@ export function ThemedButton({
   loading = false,
   style,
   textStyle,
+  icon,
 }: ThemedButtonProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
 
   const buttonContent = (
     <>
-      {loading && <ActivityIndicator size="small" color={variant === 'primary' ? '#fff' : colors.text} style={styles.loader} />}
+      {loading ? (
+        <ActivityIndicator size="small" color={variant === 'primary' ? '#fff' : colors.text} style={styles.loader} />
+      ) : (
+        icon && <View style={styles.iconContainer}>{icon}</View>
+      )}
       <Text
         style={[
           styles.text,
           styles[`text${size.charAt(0).toUpperCase() + size.slice(1)}` as keyof typeof styles],
-          variant === 'secondary' && { color: colors.text },
-          variant === 'ghost' && { color: colors.text },
+          (variant === 'secondary' || variant === 'ghost') && { color: colors.text },
+          variant === 'destructive' && { color: '#fff' },
           disabled && styles.textDisabled,
           textStyle,
         ]}
@@ -71,7 +77,25 @@ export function ThemedButton({
     );
   }
 
-  // For secondary and ghost variants, use regular Pressable with gradient border effect
+  if (variant === 'destructive') {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={[
+          styles.button,
+          styles[size],
+          { backgroundColor: colors.error },
+          disabled && styles.disabled,
+          style,
+        ]}
+      >
+        {buttonContent}
+      </Pressable>
+    );
+  }
+
+  // For secondary and ghost variants, use regular Pressable
   return (
     <Pressable
       onPress={onPress}
@@ -79,26 +103,12 @@ export function ThemedButton({
       style={[
         styles.button,
         styles[size],
-        variant === 'secondary' && [styles.secondary, { backgroundColor: colors.background }],
+        variant === 'secondary' && [styles.secondary, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }],
         variant === 'ghost' && styles.ghost,
         disabled && styles.disabled,
         style,
       ]}
     >
-      {variant === 'secondary' && (
-        <LinearGradient
-          colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
-      {variant === 'secondary' && (
-        <LinearGradient
-          colors={[colors.background, colors.background]}
-          style={[StyleSheet.absoluteFill, { margin: 1 }]}
-        />
-      )}
       {buttonContent}
     </Pressable>
   );
@@ -159,6 +169,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   loader: {
+    marginRight: 8,
+  },
+  iconContainer: {
     marginRight: 8,
   },
 }); 
