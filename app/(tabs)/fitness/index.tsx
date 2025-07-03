@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Zap, Apple, TrendingUp, Calendar, Target, ChefHat, ChevronRight, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
@@ -10,6 +11,7 @@ import { Typography } from '@/constants/Typography';
 export default function FitnessHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const insets = useSafeAreaInsets();
 
   const navigateToWorkoutHub = () => {
     router.push('/fitness/workout-hub');
@@ -22,14 +24,14 @@ export default function FitnessHubScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Fitness Hub</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Choose your fitness journey
         </Text>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} showsVerticalScrollIndicator={false}>
         {/* Main Hub Options */}
         <View style={styles.hubSection}>
           {/* Workout Hub */}

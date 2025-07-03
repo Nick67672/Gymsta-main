@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { useAuth } from '@/hooks/useAuth';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
@@ -50,15 +51,17 @@ export default function RootLayout() {
   useFrameworkReady();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <BlockingProvider>
-            <AppContent />
-          </BlockingProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <AuthProvider>
+              <BlockingProvider>
+                <AppContent />
+              </BlockingProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

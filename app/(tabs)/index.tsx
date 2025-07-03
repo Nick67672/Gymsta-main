@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogIn, MessageSquare, Bell } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -162,6 +163,7 @@ export default function HomeScreen() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
+  const insets = useSafeAreaInsets();
   
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -983,7 +985,7 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
           <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
         </TouchableOpacity>
@@ -1053,14 +1055,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        onScrollBeginDrag={handleScroll}
-        style={{ backgroundColor: colors.background }}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         {activeTab === 'explore' ? (
           loading ? (
             <View style={styles.loadingContainer}>
@@ -1075,7 +1070,7 @@ export default function HomeScreen() {
               refreshing={refreshing}
               onRefresh={onRefresh}
               onScrollBeginDrag={handleScroll}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
               ListHeaderComponent={() => (
                 <StoriesRail
                   following={following}
@@ -1107,7 +1102,7 @@ export default function HomeScreen() {
               refreshing={refreshing}
               onRefresh={onRefresh}
               onScrollBeginDrag={handleScroll}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
             />
           ) : (
             <View style={styles.emptyGymContainer}>
@@ -1117,7 +1112,14 @@ export default function HomeScreen() {
             </View>
           )
         ) : (
-          <View style={styles.gymWorkoutsContainer}>
+          <ScrollView
+            style={styles.gymWorkoutsContainer}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            onScrollBeginDrag={handleScroll}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+          >
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.tint} />
@@ -1173,9 +1175,9 @@ export default function HomeScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </ScrollView>
         )}
-      </ScrollView>
+      </View>
 
       <Modal
         visible={showingStories}

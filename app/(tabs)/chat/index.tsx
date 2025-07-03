@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView, Modal, RefreshControl, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, CircleCheck as CheckCircle2, Clock, MessageCircle, Trash2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -46,6 +47,7 @@ export default function ChatScreen() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal } = useAuth();
   const { blockedUserIds } = useBlocking();
+  const insets = useSafeAreaInsets();
   
   const [chats, setChats] = useState<ChatPreview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -461,7 +463,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Modern Header */}
-      <View style={[styles.header, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <View style={styles.headerContent}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>Messages</Text>
@@ -505,7 +507,7 @@ export default function ChatScreen() {
       ) : (
         <ScrollView 
           style={[styles.chatList]} 
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
