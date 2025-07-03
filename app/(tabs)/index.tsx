@@ -32,6 +32,8 @@ interface TikTokStyleFeedSelectorProps {
   translateX: Animated.Value;
   colors: any;
   panRef: any;
+  /** Optional tint color override (e.g. white for Arete theme) */
+  overrideTintColor?: string;
 }
 
 const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
@@ -41,7 +43,8 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
   setActiveTabIndex,
   translateX,
   colors,
-  panRef
+  panRef,
+  overrideTintColor
 }) => {
   const tabs = [
     { key: 'explore', label: 'Explore' },
@@ -122,6 +125,8 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
 
   const rotatedTabs = getRotatedTabs();
 
+  const tintColor = overrideTintColor ?? colors.tint;
+
   return (
     <PanGestureHandler
       ref={panRef}
@@ -141,7 +146,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
                 style={[
                   tikTokStyles.tabText,
                   {
-                    color: tab.originalIndex === activeTabIndex ? colors.tint : colors.textSecondary,
+                    color: tab.originalIndex === activeTabIndex ? tintColor : colors.textSecondary,
                     fontWeight: tab.originalIndex === activeTabIndex ? '700' : '600'
                   }
                 ]}
@@ -151,14 +156,14 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
             </TouchableOpacity>
           ))}
         </View>
-        <View style={[tikTokStyles.indicator, { backgroundColor: colors.tint }]} />
+        <View style={[tikTokStyles.indicator, { backgroundColor: tintColor }]} />
       </Animated.View>
     </PanGestureHandler>
   );
 };
 
 export default function HomeScreen() {
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
@@ -197,10 +202,8 @@ export default function HomeScreen() {
   }>({});
   
   const loadFeed = useCallback(async () => {
+    // If the user is not authenticated, skip personalised feed loading.
     if (!isAuthenticated || !user) {
-      setLoading(false);
-      setPosts([]);
-      setFollowingPosts([]);
       return;
     }
 
@@ -647,6 +650,9 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Always load explore posts first (works for guests too)
+      loadPosts();
+
       if (blockingLoading) return;
 
       loadFeed();
@@ -657,7 +663,7 @@ export default function HomeScreen() {
       // Setup Supabase real-time subscriptions
       // ... (rest of the subscription logic remains the same)
 
-    }, [isAuthenticated, blockingLoading, loadFeed])
+    }, [isAuthenticated, blockingLoading, loadFeed, loadPosts])
   );
 
   // Separate useEffect for channel subscriptions to avoid multiple subscriptions
@@ -845,6 +851,40 @@ export default function HomeScreen() {
     }
   }, [currentUserGym]);
 
+  // Ensure dark mode for Arete gym
+  useEffect(() => {
+    if (currentUserGym?.toLowerCase().includes('arete') && theme !== 'dark') {
+      setTheme('dark');
+    }
+  }, [currentUserGym, theme]);
+
+  // Fetch current user's gym on mount and whenever the Supabase user changes
+  useEffect(() => {
+    const fetchUserGym = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setCurrentUserGym(null);
+          return;
+        }
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('gym')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+
+        setCurrentUserGym(profile?.gym || null);
+      } catch (err) {
+        console.error('Error fetching user gym:', err);
+        setCurrentUserGym(null);
+      }
+    };
+
+    fetchUserGym();
+  }, [user]);
+
   const handleScroll = () => {
     if (playingVideo) {
       setPlayingVideo(null);
@@ -853,6 +893,7 @@ export default function HomeScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    loadPosts();
     loadFeed();
     loadFollowing();
     loadGymWorkouts();
@@ -984,9 +1025,21 @@ export default function HomeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
-          <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
-        </TouchableOpacity>
+        {/* If the user's gym is Arete (case-insensitive, allows variations like "Arete Fitness"), switch header to white */}
+        {currentUserGym?.toLowerCase().includes('arete') ? (
+          <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Image
+              source={require('../../assets/images/logo_arete.png')}
+              style={{ width: 80, height: 90, resizeMode: 'contain', marginRight: 4 }}
+            />
+            <Text style={[styles.logo, { color: '#FFFFFF', marginHorizontal: 4, fontSize: 24 }]}>x</Text>
+            <Text style={[styles.logo, { color: '#FFFFFF', marginLeft: 4, fontSize: 24 }]}>Gymsta</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
+            <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
+          </TouchableOpacity>
+        )}
         <View style={styles.headerButtons}>
           {!isAuthenticated && (
             <TouchableOpacity 
@@ -1037,21 +1090,16 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {isAuthenticated && user ? (
-        <TikTokStyleFeedSelector
-          activeTab={activeTab}
-          activeTabIndex={activeTabIndex}
-          setActiveTab={setActiveTab}
-          setActiveTabIndex={setActiveTabIndex}
-          translateX={translateX}
-          colors={colors}
-          panRef={panRef}
-        />
-      ) : (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.tint} />
-        </View>
-      )}
+      <TikTokStyleFeedSelector
+        activeTab={activeTab}
+        activeTabIndex={activeTabIndex}
+        setActiveTab={setActiveTab}
+        setActiveTabIndex={setActiveTabIndex}
+        translateX={translateX}
+        colors={colors}
+        panRef={panRef}
+        overrideTintColor={currentUserGym?.toLowerCase().includes('arete') ? '#FFFFFF' : undefined}
+      />
 
       <ScrollView
         refreshControl={
