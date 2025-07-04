@@ -20,10 +20,12 @@ import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { useWorkoutStats } from '@/hooks/useWorkoutStats';
 
 export default function WorkoutHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { stats, loading: statsLoading } = useWorkoutStats();
   
   // Leaderboard state
   const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
@@ -118,7 +120,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: colors.tint + '15' }]}>
                 <Play size={20} color={colors.tint} />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.weeklyWorkouts ?? 0}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Workouts This Week</Text>
             </View>
             
@@ -126,7 +128,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#4CAF50' + '15' }]}>
                 <BarChart3 size={20} color="#4CAF50" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0kg</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${(stats?.totalVolume ?? 0).toFixed(0)}kg`}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
             </View>
             
@@ -134,7 +136,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#FF9800' + '15' }]}>
                 <Clock size={20} color="#FF9800" />
           </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0min</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${stats?.averageDuration ?? 0}min`}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg Duration</Text>
         </View>
 
@@ -142,7 +144,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#9C27B0' + '15' }]}>
                 <Award size={20} color="#9C27B0" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.personalRecords ?? 0}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Personal Records</Text>
             </View>
           </View>
