@@ -3,7 +3,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LogIn, MessageSquare, Bell } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -163,7 +162,6 @@ export default function HomeScreen() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
-  const insets = useSafeAreaInsets();
   
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -525,18 +523,34 @@ export default function HomeScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // The real-time listener will handle the UI update.
-      const { error } = await supabase
+      // optimistic: add like to UI immediately
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const originalPosts = [...posts];
+      const addLikeLocal = (arr: Post[]) => arr.map(post => post.id===postId && !post.likes.some(l=>l.user_id===user.id)?{...post,likes:[...post.likes,tempLike]}:post);
+      setPosts(addLikeLocal);
+      setFollowingPosts(addLikeLocal);
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        // Log the error but don't worry about reverting UI,
-        // as no optimistic update was made.
         console.error('Error liking post:', error);
+        // rollback
+        setPosts(originalPosts);
+        setFollowingPosts(originalPosts);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        const replaceTemp = (posts: Post[]) => posts.map(post => {
+          if (post.id === postId) {
+            const filtered = post.likes.filter(l => l.user_id !== user.id); // remove any previous
+            return { ...post, likes: [...filtered, newLike] };
+          }
+          return post;
+        });
+        setPosts(replaceTemp);
+        setFollowingPosts(replaceTemp);
       }
     } catch (err) {
       console.error('Error in handleLike function:', err);
@@ -553,15 +567,33 @@ export default function HomeScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
-      // The real-time listener will handle the UI update.
-      const { error } = await supabase
-        .from('likes')
-        .delete()
-        .eq('post_id', postId)
-        .eq('user_id', user.id);
+      const originalPosts = [...posts];
+      let likeId: string | null = null;
+      const removeLocal = (arr: Post[]) => arr.map(post => {
+        if (post.id === postId) {
+          const targetLike = post.likes.find(l => l.user_id === user.id);
+          if (targetLike) likeId = targetLike.id;
+          return { ...post, likes: post.likes.filter(l => l.user_id !== user.id) };
+        }
+        return post;
+      });
+      setPosts(removeLocal);
+      setFollowingPosts(removeLocal);
+
+      let query = supabase.from('likes').delete();
+      if (likeId) {
+        query = query.eq('id', likeId);
+      } else {
+        query = query.eq('post_id', postId).eq('user_id', user.id);
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error('Error unliking post:', error);
+        // rollback
+        setPosts(originalPosts);
+        setFollowingPosts(originalPosts);
       }
     } catch (err) {
       console.error('Error in handleUnlike function:', err);
@@ -985,7 +1017,7 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={[styles.header, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
           <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
         </TouchableOpacity>
@@ -1070,7 +1102,7 @@ export default function HomeScreen() {
               refreshing={refreshing}
               onRefresh={onRefresh}
               onScrollBeginDrag={handleScroll}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
               ListHeaderComponent={() => (
                 <StoriesRail
                   following={following}
@@ -1102,7 +1134,7 @@ export default function HomeScreen() {
               refreshing={refreshing}
               onRefresh={onRefresh}
               onScrollBeginDrag={handleScroll}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
             />
           ) : (
             <View style={styles.emptyGymContainer}>
@@ -1118,7 +1150,7 @@ export default function HomeScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }
             onScrollBeginDrag={handleScroll}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+            contentContainerStyle={{ paddingBottom: 20 }}
           >
             {loading ? (
               <View style={styles.loadingContainer}>

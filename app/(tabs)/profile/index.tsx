@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, Platform, PanResponder, RefreshControl, FlatList } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell, Folder } from 'lucide-react-native';
@@ -97,8 +96,7 @@ const DRAFTS_KEY_PREFIX = 'post_drafts_';
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { isAuthenticated } = useAuth();
-  const insets = useSafeAreaInsets();
+  const { isAuthenticated, showAuthModal } = useAuth();
   
   const [profile, setProfile] = useState<Profile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -695,102 +693,61 @@ export default function ProfileScreen() {
   }, [profile?.id]);
 
   const handleLike = async (postId: string) => {
-    if (!isAuthenticated) return;
-    
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            const newLike = { id: `temp-${Date.now()}`, user_id: user.id };
-            return {
-              ...post,
-              likes: [...post.likes, newLike]
-            };
-          }
-          return post;
-        })
-      );
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const originalPosts = [...posts];
 
-      const { error } = await supabase
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId && !post.likes.some(l => l.user_id === user.id)
+        ? { ...post, likes: [...post.likes, tempLike] }
+        : post
+      ));
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        // Revert optimistic update on error
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: post.likes.filter(like => !like.id.toString().startsWith('temp-'))
-              };
-            }
-            return post;
-          })
-        );
-        throw error;
+        console.error('Error liking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        // Replace temporary like with real one
+        setPosts(arr => arr.map(post => post.id === postId
+          ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id).concat(newLike) }
+          : post
+        ));
       }
-
-      // Refresh the post data to get the real like ID from database
-      const { data: updatedPost } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .eq('id', postId)
-        .single();
-
-      if (updatedPost) {
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: updatedPost.likes
-              };
-            }
-            return post;
-          })
-        );
-      }
-
     } catch (err) {
-      console.error('Error liking post:', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Find the like to remove for optimistic update
-      const currentPost = posts.find(p => p.id === postId);
-      const likeToRemove = currentPost?.likes.find(like => like.user_id === user.id);
-      
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likes: post.likes.filter(like => like.user_id !== user.id)
-            };
-          }
-          return post;
-        })
-      );
+      const originalPosts = [...posts];
+
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId
+        ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id) }
+        : post
+      ));
 
       const { error } = await supabase
         .from('likes')
@@ -799,25 +756,12 @@ export default function ProfileScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        // Revert optimistic update on error
-        if (likeToRemove) {
-          setPosts(currentPosts => 
-            currentPosts.map(post => {
-              if (post.id === postId) {
-                return {
-                  ...post,
-                  likes: [...post.likes, likeToRemove]
-                };
-              }
-              return post;
-            })
-          );
-        }
-        throw error;
+        console.error('Error unliking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
       }
-
     } catch (err) {
-      console.error('Error unliking post:', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 
@@ -881,16 +825,11 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.push('/')}>
           <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
         </TouchableOpacity>
         <View style={styles.headerButtons}>
-          <TouchableOpacity 
-            style={styles.notificationButton} 
-            onPress={() => router.push('/notifications')}>
-            <Bell size={24} color={colors.tint} />
-          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.settingsButton} 
             onPress={navigateToSettings}>
@@ -1054,7 +993,7 @@ export default function ProfileScreen() {
             }}
             keyExtractor={item => item.id}
             numColumns={3}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 20, paddingHorizontal: Layout.horizontalPadding }}
+            contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: Layout.horizontalPadding }}
             ListEmptyComponent={
               drafts.length === 0 ? (
                 <View style={styles.emptyContainer}>
@@ -1072,7 +1011,7 @@ export default function ProfileScreen() {
               <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
             </View>
           ) : (
-            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
+            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
               <View style={styles.postsGrid}>
                 {lifts.map((lift) => (
                   <TouchableOpacity
@@ -1102,7 +1041,7 @@ export default function ProfileScreen() {
               <Text style={[styles.progressText, { color: colors.textSecondary }]}>No workouts to show yet.</Text>
             </View>
           ) : (
-            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
+            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
               <View style={styles.postsGrid}>
                 {workouts.map((workout) => (
                   <TouchableOpacity
@@ -1483,12 +1422,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Layout.horizontalPadding,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xs,
   },
   logo: {
     ...Typography.logo,
@@ -1496,11 +1432,12 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     position: 'absolute',
-    right: 15,
+    right: Spacing.lg,
     top: 50,
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 10,
+    gap: Spacing.md,
   },
   notificationButton: {
     padding: 8,
@@ -1511,7 +1448,7 @@ const styles = StyleSheet.create({
   },
   profileImageContainer: {
     alignSelf: 'center',
-    marginVertical: 20,
+    marginVertical: 12,
     padding: 3,
     borderRadius: 45,
     boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.2)',
@@ -1526,7 +1463,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    marginTop: 15,
+    marginTop: 10,
   },
   usernameContainer: {
     flexDirection: 'row',
@@ -1558,7 +1495,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 25,
+    marginTop: 15,
     paddingHorizontal: Layout.horizontalPadding,
     gap: 12,
     alignItems: 'center',
@@ -1608,8 +1545,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    paddingVertical: 15,
-    marginTop: 15,
+    paddingVertical: 10,
+    marginTop: 10,
     marginBottom: 5,
   },
   statItem: {
@@ -1777,13 +1714,13 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 6,
   },
   toggleButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     position: 'relative',
   },
   toggleText: {

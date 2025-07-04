@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, ActivityIndicator, Modal, Alert, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Search, ShoppingBag, LayoutGrid, Camera, CircleAlert as AlertCircle, Plus, Edit3, Trash2, Package, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -39,7 +38,6 @@ export default function MarketplaceScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { isAuthenticated, session } = useAuth();
-  const insets = useSafeAreaInsets();
   
   const [view, setView] = useState<'browse' | 'orders' | 'sales'>('browse');
   const [sellerView, setSellerView] = useState<'dashboard' | 'add' | 'edit'>('dashboard');
@@ -378,7 +376,7 @@ export default function MarketplaceScreen() {
   const renderBuyerDashboard = () => (
     <ScrollView 
       style={styles.container}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+      contentContainerStyle={{ paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
     >
       {/* Featured Products */}
@@ -425,7 +423,7 @@ export default function MarketplaceScreen() {
 
   return (
     <LinearGradient colors={[colors.background, colors.card]} style={styles.container}>
-      <View style={[styles.header, { backgroundColor: colors.background, paddingTop: insets.top + Spacing.md }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
         <View style={[styles.searchContainer, {backgroundColor: colors.inputBackground}]}>
           <Search color={colors.textSecondary} size={20} />
           <TextInput

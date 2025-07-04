@@ -43,21 +43,52 @@ export default function PostDetailScreen() {
       return;
     }
     try {
-      await supabase.from('likes').insert({ post_id: postId, user_id: currentUserId });
-      // Refresh post data to update like count
-      setPost(prev => prev ? { ...prev, likes: [...prev.likes, { id: 'temp', user_id: currentUserId }] } : prev);
+      const tempLike = { id: String(Date.now()), user_id: currentUserId };
+      // Optimistically add like locally
+      setPost(prev => prev ? { ...prev, likes: [...prev.likes, tempLike] } : prev);
+
+      const { data: insertedRows, error } = await supabase
+        .from('likes')
+        .insert({ post_id: postId, user_id: currentUserId })
+        .select('id, user_id');
+
+      if (error) {
+        console.error('Error liking post:', error);
+        // Rollback on failure
+        setPost(prev => prev ? { ...prev, likes: prev.likes.filter(l => l.id !== tempLike.id) } : prev);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        // Replace the temp like with the real one returned from DB
+        setPost(prev => prev ? { ...prev, likes: prev.likes.map(l => l.id === tempLike.id ? newLike : l) } : prev);
+      }
     } catch (err) {
-      console.error('Error liking post', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
-    if (!isAuthenticated || !currentUserId) return;
+    if (!isAuthenticated || !currentUserId) {
+      showAuthModal();
+      return;
+    }
     try {
-      await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', currentUserId);
+      const originalLikesRef = post?.likes || [];
+      // Optimistically remove like locally
       setPost(prev => prev ? { ...prev, likes: prev.likes.filter(l => l.user_id !== currentUserId) } : prev);
+
+      const { error } = await supabase
+        .from('likes')
+        .delete()
+        .eq('post_id', postId)
+        .eq('user_id', currentUserId);
+
+      if (error) {
+        console.error('Error unliking post:', error);
+        // Rollback on failure
+        setPost(prev => prev ? { ...prev, likes: originalLikesRef } : prev);
+      }
     } catch (err) {
-      console.error('Error unliking post', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 

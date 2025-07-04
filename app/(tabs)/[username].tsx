@@ -483,102 +483,61 @@ export default function UserProfileScreen() {
   };
 
   const handleLike = async (postId: string) => {
-    if (!isAuthenticated) return;
-    
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            const newLike = { id: `temp-${Date.now()}`, user_id: user.id };
-            return {
-              ...post,
-              likes: [...post.likes, newLike]
-            };
-          }
-          return post;
-        })
-      );
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const originalPosts = [...posts];
 
-      const { error } = await supabase
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId && !post.likes.some(l => l.user_id === user.id)
+        ? { ...post, likes: [...post.likes, tempLike] }
+        : post
+      ));
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        // Revert optimistic update on error
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: post.likes.filter(like => !like.id.toString().startsWith('temp-'))
-              };
-            }
-            return post;
-          })
-        );
-        throw error;
+        console.error('Error liking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        // Replace temporary like with real one
+        setPosts(arr => arr.map(post => post.id === postId
+          ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id).concat(newLike) }
+          : post
+        ));
       }
-
-      // Refresh the post data to get the real like ID from database
-      const { data: updatedPost } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .eq('id', postId)
-        .single();
-
-      if (updatedPost) {
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: updatedPost.likes
-              };
-            }
-            return post;
-          })
-        );
-      }
-
     } catch (err) {
-      console.error('Error liking post:', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Find the like to remove for optimistic update
-      const currentPost = posts.find(p => p.id === postId);
-      const likeToRemove = currentPost?.likes.find(like => like.user_id === user.id);
-      
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likes: post.likes.filter(like => like.user_id !== user.id)
-            };
-          }
-          return post;
-        })
-      );
+      const originalPosts = [...posts];
+
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId
+        ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id) }
+        : post
+      ));
 
       const { error } = await supabase
         .from('likes')
@@ -587,25 +546,12 @@ export default function UserProfileScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        // Revert optimistic update on error
-        if (likeToRemove) {
-          setPosts(currentPosts => 
-            currentPosts.map(post => {
-              if (post.id === postId) {
-                return {
-                  ...post,
-                  likes: [...post.likes, likeToRemove]
-                };
-              }
-              return post;
-            })
-          );
-        }
-        throw error;
+        console.error('Error unliking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
       }
-
     } catch (err) {
-      console.error('Error unliking post:', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 
@@ -785,55 +731,51 @@ export default function UserProfileScreen() {
     };
   }, [profile?.id, currentUserId]);
 
-  // Set up real-time subscription for likes changes
+  // --------------------------------------------------
+  // 🔴 Real-time likes sync for this profile's posts
+  // --------------------------------------------------
   useEffect(() => {
-    if (!profile?.id) return;
-    
-    const likesChannel = supabase.channel('username-profile-likes-channel-' + Date.now())
+    const channel = supabase
+      .channel(`user-profile-likes-${Date.now()}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'likes'
-        },
-        async (payload) => {
-          // When likes change, update the specific post in our posts array
-          if (payload.eventType === 'INSERT') {
-            const { post_id } = payload.new;
-            setPosts(currentPosts => 
-              currentPosts.map(post => {
-                if (post.id === post_id) {
-                  return {
-                    ...post,
-                    likes: [...post.likes, { id: payload.new.id, user_id: payload.new.user_id }]
-                  };
-                }
-                return post;
-              })
-            );
-          } else if (payload.eventType === 'DELETE') {
-            const { post_id } = payload.old;
-            setPosts(currentPosts => 
-              currentPosts.map(post => {
-                if (post.id === post_id) {
-                  return {
-                    ...post,
-                    likes: post.likes.filter(like => like.id !== payload.old.id)
-                  };
-                }
-                return post;
-              })
-            );
-          }
+        { event: '*', schema: 'public', table: 'likes' },
+        (payload) => {
+          setPosts((prev) =>
+            prev.map((post) => {
+              const affectedPostId = (payload.new as any)?.post_id ?? (payload.old as any)?.post_id;
+              if (post.id !== affectedPostId) return post;
+
+              if (payload.eventType === 'INSERT') {
+                // Ignore duplicate like already present
+                if (post.likes.some((l) => l.id === payload.new.id)) return post;
+                return {
+                  ...post,
+                  likes: [
+                    ...post.likes,
+                    { id: payload.new.id as string, user_id: payload.new.user_id as string },
+                  ],
+                };
+              }
+
+              if (payload.eventType === 'DELETE') {
+                return {
+                  ...post,
+                  likes: post.likes.filter((l) => l.id !== payload.old.id),
+                };
+              }
+
+              return post;
+            })
+          );
         }
       )
       .subscribe();
 
     return () => {
-      likesChannel.unsubscribe();
+      channel.unsubscribe();
     };
-  }, [profile?.id]);
+  }, []);
 
   if (loading) {
     return (
@@ -1315,8 +1257,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    paddingTop: 50,
-    paddingBottom: 20,
+    paddingTop: 35,
+    paddingBottom: 12,
   },
   logo: {
     fontSize: 18,
@@ -1324,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   profileImageContainer: {
     alignSelf: 'center',
-    marginTop: 20,
+    marginTop: 12,
     padding: 5,
     borderRadius: 75,
     shadowColor: '#000',
@@ -1341,7 +1283,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    marginTop: 15,
+    marginTop: 10,
   },
   username: {
     fontSize: 24,
@@ -1369,7 +1311,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 25,
+    marginTop: 15,
     paddingHorizontal: Layout.horizontalPadding,
     gap: Layout.gap,
     alignItems: 'center',
@@ -1428,8 +1370,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    paddingVertical: 15,
-    marginTop: 15,
+    paddingVertical: 10,
+    marginTop: 10,
     marginBottom: 5,
   },
   statItem: {
@@ -1557,13 +1499,13 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 6,
   },
   toggleButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     position: 'relative',
   },
   toggleText: {

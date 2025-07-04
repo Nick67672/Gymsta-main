@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, Upload, Search, X, MapPin, AtSign, Save } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -69,7 +68,6 @@ export default function UploadScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -444,7 +442,7 @@ export default function UploadScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={styles.header}>
         <ThemedH2>Create Post</ThemedH2>
       </View>
 
@@ -524,7 +522,7 @@ export default function UploadScreen() {
         </View>
       </ScrollView>
       
-      <View style={[styles.actionButtonsContainer, { borderTopColor: colors.border, paddingBottom: insets.bottom }]}>
+      <View style={[styles.actionButtonsContainer, { borderTopColor: colors.border }]}>
         <ThemedButton 
           title="Post"
           onPress={handleUpload}
