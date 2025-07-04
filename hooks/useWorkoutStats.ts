@@ -44,6 +44,26 @@ export function useWorkoutStats() {
 
         if (weeklyErr) throw weeklyErr;
 
+        // 3. Personal Records – distinct exercises where this user has at least one completed workout
+        let prCount = 0;
+        try {
+          const { data: prData, error: prErr } = await supabase
+            .from('workout_exercises')
+            .select('name, weight, workout_id, workouts!inner(user_id, is_completed)')
+            .eq('workouts.user_id', user.id)
+            .eq('workouts.is_completed', true);
+          if (prErr) throw prErr;
+          if (prData) {
+            const uniqueExercises = new Set<string>();
+            prData.forEach((row: any) => {
+              if (row.name) uniqueExercises.add(row.name);
+            });
+            prCount = uniqueExercises.size;
+          }
+        } catch (e) {
+          console.warn('PR query failed', e);
+        }
+
         // NOTE: avg_duration from RPC is interval text, convert mins if provided else 0
         const avgDurationMinutes = lifetimeStats?.avg_duration ? parseInt(lifetimeStats.avg_duration) || 0 : 0;
 
@@ -51,7 +71,7 @@ export function useWorkoutStats() {
           weeklyWorkouts: weeklyCount || 0,
           totalVolume: Number(lifetimeStats?.total_volume || 0),
           averageDuration: avgDurationMinutes,
-          personalRecords: 0, // TODO: derive real PR metric
+          personalRecords: prCount,
         });
       } catch (err: any) {
         console.error('useWorkoutStats error', err);
