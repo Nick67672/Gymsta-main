@@ -21,6 +21,7 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { useWorkoutStats } from '@/hooks/useWorkoutStats';
+import { useLeaderboard } from '@/hooks/useLeaderboard';
 
 export default function WorkoutHubScreen() {
   const { theme } = useTheme();
@@ -32,6 +33,8 @@ export default function WorkoutHubScreen() {
   const [leaderboardType, setLeaderboardType] = useState('Total Volume of PBs');
   const [showDropdown, setShowDropdown] = useState(false);
   
+  const { data: leaderboardData, loading: leaderboardLoading } = useLeaderboard(leaderboardScope, leaderboardType as any);
+
   const leaderboardTypes = [
     'Total Volume of PBs',
     'Bench Press',
@@ -39,17 +42,6 @@ export default function WorkoutHubScreen() {
     'Deadlift',
     'Highest Streak'
   ];
-
-  // Placeholder for real leaderboard data (replace with your backend data)
-  // Each entry: { rank, userId, name, value, avatarUrl? }
-  type LeaderboardEntry = {
-    rank: number;
-    userId: string;
-    name: string;
-    value: string;
-    avatarUrl?: string;
-  };
-  const leaderboardData: LeaderboardEntry[] = [];
 
   // Example usage: router.push(`/profile/${userId}`)
   const handleProfilePress = (userId: string) => {
