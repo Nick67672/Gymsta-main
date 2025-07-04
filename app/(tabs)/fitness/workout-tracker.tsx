@@ -523,113 +523,28 @@ export default function WorkoutTrackerScreen() {
     return () => clearTimeout(delayedSearch);
   }, [exerciseName, loadExerciseSuggestions]);
 
-  // Create or update workout
-  const saveWorkout = async (isCompleted = false) => {
-    if (!user) return;
-
-    try {
-      let workoutId = currentWorkout?.id;
-
-      if (!workoutId) {
-        // Create new workout
-        const { data: newWorkout, error: workoutError } = await supabase
-          .from('workouts')
-          .insert({
-            user_id: user.id,
-            date: selectedDate,
-            is_completed: isCompleted,
-            name: `Workout ${selectedDate}`,
-          })
-          .select()
-          .single();
-
-        if (workoutError) throw workoutError;
-        workoutId = newWorkout.id;
-      } else if (currentWorkout && isCompleted !== currentWorkout.is_completed) {
-        // Update completion status
-        const { error: updateError } = await supabase
-          .from('workouts')
-          .update({ is_completed: isCompleted })
-          .eq('id', workoutId);
-
-        if (updateError) throw updateError;
-      }
-
-      // If marking completed compute volume & PBs
-      if(isCompleted && currentWorkout){
-        for(const ex of currentWorkout.exercises){
-          const perSet = perSetData[ex.id];
-          const repsArr = perSet?.reps && perSet.reps.length? perSet.reps : Array(ex.sets).fill(ex.reps);
-          const wtArr = perSet?.weight && perSet.weight.length? perSet.weight : Array(ex.sets).fill(ex.weight);
-          const setsCompleted = repsArr.length;
-          const totalReps = repsArr.reduce((a,b)=>a+(Number(b)||0),0);
-          const maxWeight = Math.max(...wtArr.map(w=>Number(w)||0));
-          const totalVolume = repsArr.reduce((sum, r,i)=> sum + (Number(r)||0)*(Number(wtArr[i])||0),0);
-          await supabase.from('workout_exercises').update({
-            sets: setsCompleted,
-            reps: totalReps/setsCompleted,
-            weight: maxWeight,
-            volume: totalVolume,
-          }).eq('id', ex.id);
-        }
-      }
-
-      await loadWorkouts();
-
-      // Clear stored session on completion
-      if(isCompleted){ await AsyncStorage.removeItem(sessionKey); }
-
-      Alert.alert('Success', isCompleted ? 'Workout completed!' : 'Workout saved!');
-
-      // ---- Post to feed ----
-      if(isCompleted && postAction){
-        let mediaUrl: string | null = null;
-        if(postImage){
-          try{
-            if(postImage.startsWith('file://')){
-              const fileExt = postImage.split('.').pop() || 'jpg';
-              const fileName = `${Date.now()}.${fileExt}`;
-              const response = await fetch(postImage);
-              const blob = await response.blob();
-              const { error: uploadErr } = await supabase.storage
-                .from('post-images')
-                .upload(fileName, blob, { contentType: blob.type, upsert:false });
-              if(uploadErr){ console.error('upload error', uploadErr); }
-              else {
-                const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(fileName);
-                mediaUrl = urlData.publicUrl;
-              }
-            } else {
-              mediaUrl = postImage; // already remote URL
-            }
-          } catch(e){ console.warn('image upload failed', e); }
-        }
-
-        const visibility = postAction==='feed' ? 'public' : postAction==='account' ? 'followers' : 'private';
-
-        const { error: postErr } = await supabase.from('posts').insert({
-          user_id: user.id,
-          caption: postCaption.trim() || null,
-          media_url: mediaUrl,
-          media_type: mediaUrl ? 'image' : null,
-          workout_id: workoutId,
-          visibility
-        });
-        if(postErr) console.error('create post error', postErr);
-      }
-
-      // reset post states
-      setPostImage(null); setPostCaption(''); setPostAction(null);
-
-    } catch (error) {
-      console.error('Error saving workout:', error);
-      Alert.alert('Error', 'Failed to save workout');
-    }
+  // Helper to validate positive integer
+  const isPositiveNumber = (val: string) => {
+    const num = Number(val);
+    return !isNaN(num) && num > 0;
   };
 
-  // Add exercise to workout
+  // Add exercise to workout with validation
   const addExercise = async () => {
-    if (!exerciseName.trim() || !currentWorkout) return;
+    if (!currentWorkout) return;
+
+    if (!exerciseName.trim()) {
+      Alert.alert('Validation', 'Exercise name is required');
+      return;
+    }
+    if (!isPositiveNumber(exerciseSets) || !isPositiveNumber(exerciseReps)) {
+      Alert.alert('Validation', 'Sets and reps must be positive numbers');
+      return;
+    }
+    if (!isPositiveNumber(exerciseWeight) && exerciseWeight.trim() !== '0') {
+      Alert.alert('Validation', 'Weight must be 0 or a positive number');
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -661,11 +576,33 @@ export default function WorkoutTrackerScreen() {
     }
   };
 
-  // Start new workout
+  // Helper to fetch existing workout for date
+  const getExistingWorkoutForDate = async (dateStr: string) => {
+    if (!user) return null;
+    const { data, error } = await supabase
+      .from('workouts')
+      .select('id, is_completed, name')
+      .eq('user_id', user.id)
+      .eq('date', dateStr)
+      .single();
+    if (error && error.code !== 'PGRST116') { // 116 = no rows found
+      console.warn('lookup workout error', error);
+    }
+    return data || null;
+  };
+
+  // Start new workout with duplicate check
   const startNewWorkout = async () => {
     if (!user) return;
 
     try {
+      const existing = await getExistingWorkoutForDate(selectedDate);
+      if (existing) {
+        Alert.alert('Already Planned', 'A workout is already planned for this date. Opening it now.');
+        await loadWorkouts();
+        return;
+      }
+
       const { data: newWorkout, error } = await supabase
         .from('workouts')
         .insert({
@@ -728,6 +665,12 @@ export default function WorkoutTrackerScreen() {
   const planWorkout = async () => {
     if (!user) return;
     try {
+      const existing = await getExistingWorkoutForDate(selectedDate);
+      if (existing) {
+        Alert.alert('Already Planned', 'A workout already exists for this date. You can edit it instead.');
+        return;
+      }
+
       const { error } = await supabase.from('workouts').insert({
         user_id: user.id,
         date: selectedDate,
@@ -745,6 +688,121 @@ export default function WorkoutTrackerScreen() {
     } catch (err) {
       console.error('Plan workout error', err);
       Alert.alert('Error', 'Failed to plan workout');
+    }
+  };
+
+  // Create or update workout (re-added)
+  const saveWorkout = async (isCompleted = false) => {
+    if (!user) return;
+
+    try {
+      let workoutId = currentWorkout?.id;
+
+      if (!workoutId) {
+        // Create new workout if none exists yet
+        const { data: newWorkout, error: workoutError } = await supabase
+          .from('workouts')
+          .insert({
+            user_id: user.id,
+            date: selectedDate,
+            is_completed: isCompleted,
+            name: `Workout ${selectedDate}`,
+          })
+          .select()
+          .single();
+
+        if (workoutError) throw workoutError;
+        workoutId = newWorkout.id;
+      } else if (currentWorkout && isCompleted !== currentWorkout.is_completed) {
+        // Update completion status
+        const { error: updateError } = await supabase
+          .from('workouts')
+          .update({ is_completed: isCompleted })
+          .eq('id', workoutId);
+
+        if (updateError) throw updateError;
+      }
+
+      // If marking completed compute volume & PBs per exercise
+      if (isCompleted && currentWorkout) {
+        for (const ex of currentWorkout.exercises) {
+          const perSet = perSetData[ex.id];
+          const repsArr = perSet?.reps && perSet.reps.length ? perSet.reps : Array(ex.sets).fill(ex.reps);
+          const wtArr = perSet?.weight && perSet.weight.length ? perSet.weight : Array(ex.sets).fill(ex.weight);
+          const setsCompleted = repsArr.length;
+          const totalReps = repsArr.reduce((a, b) => a + (Number(b) || 0), 0);
+          const maxWeight = Math.max(...wtArr.map((w) => Number(w) || 0));
+          const totalVolume = repsArr.reduce((sum, r, i) => sum + (Number(r) || 0) * (Number(wtArr[i]) || 0), 0);
+          await supabase
+            .from('workout_exercises')
+            .update({
+              sets: setsCompleted,
+              reps: totalReps / setsCompleted,
+              weight: maxWeight,
+              volume: totalVolume,
+            })
+            .eq('id', ex.id);
+        }
+      }
+
+      await loadWorkouts();
+
+      // Clear stored session on completion
+      if (isCompleted) {
+        await AsyncStorage.removeItem(sessionKey);
+      }
+
+      Alert.alert('Success', isCompleted ? 'Workout completed!' : 'Workout saved!');
+
+      // ---- Optional Post to feed ----
+      if (isCompleted && postAction) {
+        let mediaUrl: string | null = null;
+        if (postImage) {
+          try {
+            if (postImage.startsWith('file://')) {
+              const fileExt = postImage.split('.').pop() || 'jpg';
+              const fileName = `${Date.now()}.${fileExt}`;
+              const response = await fetch(postImage);
+              const blob = await response.blob();
+              const { error: uploadErr } = await supabase.storage.from('post-images').upload(fileName, blob, {
+                contentType: blob.type,
+                upsert: false,
+              });
+              if (uploadErr) {
+                console.error('upload error', uploadErr);
+              } else {
+                const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(fileName);
+                mediaUrl = urlData.publicUrl;
+              }
+            } else {
+              mediaUrl = postImage; // already remote URL
+            }
+          } catch (e) {
+            console.warn('image upload failed', e);
+          }
+        }
+
+        const visibility =
+          postAction === 'feed' ? 'public' : postAction === 'account' ? 'followers' : 'private';
+
+        const { error: postErr } = await supabase.from('posts').insert({
+          user_id: user.id,
+          caption: postCaption.trim() || null,
+          media_url: mediaUrl,
+          media_type: mediaUrl ? 'image' : null,
+          workout_id: workoutId,
+          visibility,
+        });
+        if (postErr) console.error('create post error', postErr);
+      }
+
+      // reset post states
+      setPostImage(null);
+      setPostCaption('');
+      setPostAction(null);
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      Alert.alert('Error', 'Failed to save workout');
     }
   };
 
