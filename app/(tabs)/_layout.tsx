@@ -181,8 +181,8 @@ export default function TabLayout() {
               return;
             }
 
-            // Always navigate to the root of the profile tab
-            router.push('/(tabs)/profile');
+            // Always navigate to the root of the profile tab (reset stack)
+            router.replace('/profile');
           },
         }}
       />
