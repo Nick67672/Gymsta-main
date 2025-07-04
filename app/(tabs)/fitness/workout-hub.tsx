@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Image } from 'react-native';
 import { 
   Calendar, 
   TrendingUp, 
@@ -9,7 +9,12 @@ import {
   Play,
   BarChart3, 
   Clock,
-  Award
+  Award,
+  Trophy,
+  Users,
+  Globe,
+  MapPin,
+  ChevronDown
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
@@ -20,6 +25,37 @@ export default function WorkoutHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   
+  // Leaderboard state
+  const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
+  const [leaderboardType, setLeaderboardType] = useState('Total Volume of PBs');
+  const [showDropdown, setShowDropdown] = useState(false);
+  
+  const leaderboardTypes = [
+    'Total Volume of PBs',
+    'Bench Press',
+    'Squat',
+    'Deadlift',
+    'Highest Streak'
+  ];
+
+  // Placeholder for real leaderboard data (replace with your backend data)
+  // Each entry: { rank, userId, name, value, avatarUrl? }
+  type LeaderboardEntry = {
+    rank: number;
+    userId: string;
+    name: string;
+    value: string;
+    avatarUrl?: string;
+  };
+  const leaderboardData: LeaderboardEntry[] = [];
+
+  // Example usage: router.push(`/profile/${userId}`)
+  const handleProfilePress = (userId: string) => {
+    if (userId) {
+      router.push(`/profile/${userId}`);
+    }
+  };
+
   const navigateToWorkoutTracker = () => {
     router.push('/fitness/workout-tracker');
   };
@@ -112,42 +148,158 @@ export default function WorkoutHubScreen() {
           </View>
         </View>
 
-        {/* Features Overview */}
-        <View style={styles.featuresSection}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Features</Text>
-          
-          <View style={styles.featuresList}>
-            <View style={[styles.featureCard, { backgroundColor: colors.card }]}>
-              <Calendar size={24} color={colors.tint} />
-              <View style={styles.featureContent}>
-                <Text style={[styles.featureTitle, { color: colors.text }]}>Calendar View</Text>
-                <Text style={[styles.featureDescription, { color: colors.textSecondary }]}>
-                  Plan and visualize your workouts on an interactive calendar
-            </Text>
-              </View>
-                </View>
-            
-            <View style={[styles.featureCard, { backgroundColor: colors.card }]}>
-              <TrendingUp size={24} color={colors.tint} />
-              <View style={styles.featureContent}>
-                <Text style={[styles.featureTitle, { color: colors.text }]}>Progress Tracking</Text>
-                <Text style={[styles.featureDescription, { color: colors.textSecondary }]}>
-                  Monitor your strength gains with detailed analytics and charts
-                </Text>
-              </View>
+        {/* Leaderboards Section */}
+        <View style={styles.leaderboardSection}>
+          <View style={styles.leaderboardHeader}>
+            <View style={styles.leaderboardTitleContainer}>
+              <Trophy size={24} color={colors.tint} />
+              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Leaderboards</Text>
             </View>
             
-            <View style={[styles.featureCard, { backgroundColor: colors.card }]}>
-              <Target size={24} color={colors.tint} />
-              <View style={styles.featureContent}>
-                <Text style={[styles.featureTitle, { color: colors.text }]}>Exercise Library</Text>
-                <Text style={[styles.featureDescription, { color: colors.textSecondary }]}>
-                  Access a comprehensive database of exercises with auto-suggestions
-                </Text>
-              </View>
-            </View>
+            {/* Dropdown for leaderboard type */}
+            <TouchableOpacity
+              style={[styles.dropdownButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => setShowDropdown(true)}
+            >
+              <Text style={[styles.dropdownText, { color: colors.text }]}>{leaderboardType}</Text>
+              <ChevronDown size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Scope Toggle */}
+          <View style={styles.scopeToggle}>
+            <TouchableOpacity
+              style={[
+                styles.scopeButton,
+                leaderboardScope === 'global' && styles.activeScopeButton,
+                { backgroundColor: leaderboardScope === 'global' ? colors.tint : colors.card }
+              ]}
+              onPress={() => setLeaderboardScope('global')}
+            >
+              <Globe size={16} color={leaderboardScope === 'global' ? '#fff' : colors.textSecondary} />
+              <Text style={[
+                styles.scopeButtonText,
+                { color: leaderboardScope === 'global' ? '#fff' : colors.textSecondary }
+              ]}>Global</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.scopeButton,
+                leaderboardScope === 'friends' && styles.activeScopeButton,
+                { backgroundColor: leaderboardScope === 'friends' ? colors.tint : colors.card }
+              ]}
+              onPress={() => setLeaderboardScope('friends')}
+            >
+              <Users size={16} color={leaderboardScope === 'friends' ? '#fff' : colors.textSecondary} />
+              <Text style={[
+                styles.scopeButtonText,
+                { color: leaderboardScope === 'friends' ? '#fff' : colors.textSecondary }
+              ]}>Friends</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.scopeButton,
+                leaderboardScope === 'my-gym' && styles.activeScopeButton,
+                { backgroundColor: leaderboardScope === 'my-gym' ? colors.tint : colors.card }
+              ]}
+              onPress={() => setLeaderboardScope('my-gym')}
+            >
+              <MapPin size={16} color={leaderboardScope === 'my-gym' ? '#fff' : colors.textSecondary} />
+              <Text style={[
+                styles.scopeButtonText,
+                { color: leaderboardScope === 'my-gym' ? '#fff' : colors.textSecondary }
+              ]}>My Gym</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Leaderboard List */}
+          <View style={styles.leaderboardList}>
+            {leaderboardData.length === 0 ? (
+              <View style={styles.leaderboardEmpty}><Text style={{ color: colors.textSecondary, textAlign: 'center' }}>No leaderboard data available.</Text></View>
+            ) : (
+              leaderboardData.map((item, index) => {
+                const isTop3 = item.rank <= 3;
+                return (
+                  <TouchableOpacity
+                    key={item.userId || index}
+                    style={[
+                      styles.leaderboardItem,
+                      { backgroundColor: isTop3 ? colors.tint + '10' : colors.card, borderWidth: isTop3 ? 2 : 1, borderColor: isTop3 ? colors.tint : colors.border, shadowColor: isTop3 ? colors.tint : colors.shadow },
+                      item.rank === 1 && styles.leaderboardFirst,
+                      item.rank === 2 && styles.leaderboardSecond,
+                      item.rank === 3 && styles.leaderboardThird,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => handleProfilePress(item.userId)}
+                  >
+                    <View style={styles.leaderboardRank}>
+                      <Text style={[
+                        styles.rankNumber,
+                        { color: isTop3 ? colors.tint : colors.textSecondary, fontSize: isTop3 ? 22 : 16 }
+                      ]}>#{item.rank}</Text>
+                    </View>
+                    <View style={styles.leaderboardAvatarWrap}>
+                      {item.avatarUrl ? (
+                        <View style={[styles.leaderboardAvatar, { borderColor: isTop3 ? colors.tint : colors.border }]}> 
+                          <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
+                        </View>
+                      ) : (
+                        <View style={[styles.leaderboardAvatar, { borderColor: isTop3 ? colors.tint : colors.border }]}> 
+                          <Text style={styles.avatarInitials}>{item.name ? item.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase() : '?'}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.leaderboardInfo}>
+                      <Text style={[styles.leaderboardName, { color: isTop3 ? colors.tint : colors.text }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.leaderboardValue, { color: isTop3 ? colors.tint : colors.textSecondary }]}>{item.value}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
         </View>
+
+        {/* Dropdown Modal */}
+        <Modal
+          visible={showDropdown}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowDropdown(false)}
+        >
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowDropdown(false)}
+          >
+            <View style={[styles.dropdownModal, { backgroundColor: colors.card }]}>
+              {leaderboardTypes.map((type, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[
+                    styles.dropdownOption,
+                    index === leaderboardTypes.length - 1 && styles.lastDropdownOption,
+                    { borderBottomColor: colors.border }
+                  ]}
+                  onPress={() => {
+                    setLeaderboardType(type);
+                    setShowDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownOptionText,
+                    { color: leaderboardType === type ? colors.tint : colors.text }
+                  ]}>
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
       </ScrollView>
     </View>
   );
@@ -271,30 +423,153 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-  featuresSection: {
+  // Leaderboard styles
+  leaderboardSection: {
     marginBottom: Spacing.xl,
   },
-  featuresList: {
-    gap: Spacing.md,
+  leaderboardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
-  featureCard: {
+  leaderboardTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    gap: Spacing.sm,
+    minWidth: 140,
+  },
+  dropdownText: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  scopeToggle: {
+    flexDirection: 'row',
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    gap: 2,
+  },
+  scopeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  activeScopeButton: {
+    // Additional styles for active state handled by backgroundColor
+  },
+  scopeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  leaderboardList: {
+    gap: Spacing.sm,
+  },
+  leaderboardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
     ...Shadows.light,
   },
-  featureContent: {
-    flex: 1,
-    marginLeft: Spacing.lg,
+  leaderboardRank: {
+    width: 40,
+    alignItems: 'center',
   },
-  featureTitle: {
+  rankNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  leaderboardAvatarWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: Spacing.md,
+  },
+  leaderboardAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 20,
+  },
+  avatarInitials: {
+    fontSize: 20,
+  },
+  leaderboardInfo: {
+    flex: 1,
+  },
+  leaderboardName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: Spacing.xs,
+    marginBottom: 2,
   },
-  featureDescription: {
+  leaderboardValue: {
     fontSize: 14,
-    lineHeight: 20,
+    fontWeight: '500',
+  },
+  leaderboardEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  leaderboardFirst: {
+    borderTopWidth: 2,
+  },
+  leaderboardSecond: {
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+  },
+  leaderboardThird: {
+    borderTopWidth: 2,
+    borderBottomWidth: 2,
+  },
+  // Dropdown modal styles
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  dropdownModal: {
+    borderRadius: BorderRadius.lg,
+    ...Shadows.heavy,
+    minWidth: 200,
+    maxWidth: 300,
+  },
+  dropdownOption: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderBottomWidth: 1,
+  },
+  lastDropdownOption: {
+    borderBottomWidth: 0,
+  },
+  dropdownOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

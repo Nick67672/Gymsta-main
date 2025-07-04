@@ -80,58 +80,26 @@ const PostComponent: React.FC<PostProps> = ({
   };
 
   // Centralized like handler to prevent double-firing
-  const performLikeAction = useCallback(() => {
+  const performLikeAction = useCallback(async () => {
     if (!isAuthenticated) {
       showAuthModal();
       return;
     }
 
-    const now = Date.now();
-    
-    // Debounce: prevent actions within 2 seconds of each other
-    if (now - lastLikeActionRef.current < 2000) {
-      console.log('Like action blocked - too soon after last action');
-      return;
-    }
-
-    // Prevent double-tapping using both state and ref
-    if (isProcessingLike || likeActionRef.current) {
-      console.log('Like action blocked - already processing');
-      return;
-    }
-
-    console.log('Performing like action for post:', post.id, 'isLiked:', isLiked);
-
-    // Update last action time
-    lastLikeActionRef.current = now;
-
-    // Set both flags to prevent any race conditions
+    if (isProcessingLike) return;
     setIsProcessingLike(true);
-    likeActionRef.current = true;
 
-    // Use a unique timestamp to track this specific action
-    const actionId = now;
-    console.log('Like action started with ID:', actionId);
-
-    // Perform the actual like/unlike action
     try {
       if (isLiked) {
-        console.log('Calling handleUnlike for action:', actionId);
-        handleUnlike(post.id);
+        await handleUnlike(post.id);
       } else {
-        console.log('Calling handleLike for action:', actionId);
-        handleLike(post.id);
+        await handleLike(post.id);
       }
     } catch (error) {
       console.error('Error in like action:', error);
-    }
-
-    // Reset processing flags after a delay
-    setTimeout(() => {
-      console.log('Resetting like processing flags for action:', actionId);
+    } finally {
       setIsProcessingLike(false);
-      likeActionRef.current = false;
-    }, 1500); // Increased delay to prevent rapid firing
+    }
   }, [isAuthenticated, isLiked, post.id, isProcessingLike, handleLike, handleUnlike, showAuthModal]);
 
   // Like button press handler

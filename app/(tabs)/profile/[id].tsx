@@ -130,26 +130,31 @@ export default function PostDetailScreen() {
       showAuthModal();
       return;
     }
-    
+    if (!post) return;
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // The real-time listener will handle UI updates.
-      // This page should also have a listener if it's meant to be real-time.
-      // For now, we just send the data.
-      const { error } = await supabase
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const currentPost = post; // non-null after guard
+
+      setPost({ ...currentPost, likes: [...currentPost.likes, tempLike] });
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        console.error('Error liking post on detail screen:', error);
+        console.error('Error liking post:', error);
+        setPost(currentPost); // rollback
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        setPost({ ...currentPost, likes: currentPost.likes.filter(l => l.user_id !== user.id).concat(newLike) });
       }
     } catch (err) {
-      console.error('Error in handleLike function on detail screen:', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
@@ -158,10 +163,16 @@ export default function PostDetailScreen() {
       showAuthModal();
       return;
     }
+    if (!post) return;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      const currentPost = post; // non-null
+      const originalLikes = [...currentPost.likes];
+
+      setPost({ ...currentPost, likes: currentPost.likes.filter(l => l.user_id !== user.id) });
 
       const { error } = await supabase
         .from('likes')
@@ -170,10 +181,11 @@ export default function PostDetailScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        console.error('Error unliking post on detail screen:', error);
+        console.error('Error unliking post:', error);
+        setPost({ ...currentPost, likes: originalLikes });
       }
     } catch (err) {
-      console.error('Error in handleUnlike function on detail screen:', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 
@@ -331,7 +343,6 @@ export default function PostDetailScreen() {
           handleUnlike={handleUnlike}
           videoRefs={videoRefs}
           handleDeletePost={handleDeletePost}
-          onDelete={handleDeletePost}
         />
       </ScrollView>
 

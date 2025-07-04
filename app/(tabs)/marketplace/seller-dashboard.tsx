@@ -19,6 +19,7 @@ import { ThemedButton } from "@/components/ThemedButton";
 import { Edit3, Trash2, ArrowLeft } from "lucide-react-native";
 import { useTheme } from "@/context/ThemeContext";
 import Colors from "@/constants/Colors";
+import { Spacing } from "@/constants/Spacing";
 import { goBack } from '@/lib/goBack';
 
 // Define the Order type based on our schema
@@ -251,7 +252,14 @@ const statusColorMap: Record<string, string> = {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradientHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 12 },
+  gradientHeader: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xxxl,
+    paddingBottom: Spacing.md,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    marginBottom: 12,
+  },
   headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 },
   headerActions: { flexDirection: 'row', gap: 8 },

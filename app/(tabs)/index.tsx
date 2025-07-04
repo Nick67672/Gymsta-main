@@ -526,18 +526,34 @@ export default function HomeScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // The real-time listener will handle the UI update.
-      const { error } = await supabase
+      // optimistic: add like to UI immediately
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const originalPosts = [...posts];
+      const addLikeLocal = (arr: Post[]) => arr.map(post => post.id===postId && !post.likes.some(l=>l.user_id===user.id)?{...post,likes:[...post.likes,tempLike]}:post);
+      setPosts(addLikeLocal);
+      setFollowingPosts(addLikeLocal);
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        // Log the error but don't worry about reverting UI,
-        // as no optimistic update was made.
         console.error('Error liking post:', error);
+        // rollback
+        setPosts(originalPosts);
+        setFollowingPosts(originalPosts);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        const replaceTemp = (posts: Post[]) => posts.map(post => {
+          if (post.id === postId) {
+            const filtered = post.likes.filter(l => l.user_id !== user.id); // remove any previous
+            return { ...post, likes: [...filtered, newLike] };
+          }
+          return post;
+        });
+        setPosts(replaceTemp);
+        setFollowingPosts(replaceTemp);
       }
     } catch (err) {
       console.error('Error in handleLike function:', err);
@@ -554,15 +570,33 @@ export default function HomeScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
-      // The real-time listener will handle the UI update.
-      const { error } = await supabase
-        .from('likes')
-        .delete()
-        .eq('post_id', postId)
-        .eq('user_id', user.id);
+      const originalPosts = [...posts];
+      let likeId: string | null = null;
+      const removeLocal = (arr: Post[]) => arr.map(post => {
+        if (post.id === postId) {
+          const targetLike = post.likes.find(l => l.user_id === user.id);
+          if (targetLike) likeId = targetLike.id;
+          return { ...post, likes: post.likes.filter(l => l.user_id !== user.id) };
+        }
+        return post;
+      });
+      setPosts(removeLocal);
+      setFollowingPosts(removeLocal);
+
+      let query = supabase.from('likes').delete();
+      if (likeId) {
+        query = query.eq('id', likeId);
+      } else {
+        query = query.eq('post_id', postId).eq('user_id', user.id);
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error('Error unliking post:', error);
+        // rollback
+        setPosts(originalPosts);
+        setFollowingPosts(originalPosts);
       }
     } catch (err) {
       console.error('Error in handleUnlike function:', err);
@@ -1101,14 +1135,7 @@ export default function HomeScreen() {
         overrideTintColor={currentUserGym?.toLowerCase().includes('arete') ? '#FFFFFF' : undefined}
       />
 
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        onScrollBeginDrag={handleScroll}
-        style={{ backgroundColor: colors.background }}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         {activeTab === 'explore' ? (
           loading ? (
             <View style={styles.loadingContainer}>
@@ -1165,7 +1192,14 @@ export default function HomeScreen() {
             </View>
           )
         ) : (
-          <View style={styles.gymWorkoutsContainer}>
+          <ScrollView
+            style={styles.gymWorkoutsContainer}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            onScrollBeginDrag={handleScroll}
+            contentContainerStyle={{ paddingBottom: 20 }}
+          >
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.tint} />
@@ -1221,9 +1255,9 @@ export default function HomeScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </ScrollView>
         )}
-      </ScrollView>
+      </View>
 
       <Modal
         visible={showingStories}

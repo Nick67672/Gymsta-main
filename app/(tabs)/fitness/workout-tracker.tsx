@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Modal,
   ActivityIndicator,
   Dimensions,
+  Image,
+  Platform,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { LineChart } from 'react-native-chart-kit';
@@ -22,13 +24,21 @@ import {
   Play,
   CheckCircle,
   BarChart3,
+  ChevronDown,
+  CalendarRange,
+  FilePlus,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { ThemedButton } from '@/components/ThemedButton';
 import { ThemedInput } from '@/components/ThemedInput';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { format } from 'date-fns';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -86,6 +96,165 @@ export default function WorkoutTrackerScreen() {
   const [daysPeriod, setDaysPeriod] = useState(30);
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
   const [availableExercises, setAvailableExercises] = useState<string[]>([]);
+
+  // Add new state for exercise modal and post-workout modal
+  const [selectedExerciseBox, setSelectedExerciseBox] = useState<SimpleExercise | null>(null);
+  const [showExerciseBoxModal, setShowExerciseBoxModal] = useState(false);
+  const [showPostWorkoutModal, setShowPostWorkoutModal] = useState(false);
+  const [exerciseSetCompletion, setExerciseSetCompletion] = useState<{ [exerciseId: string]: boolean[] }>({});
+
+  // Add new state for post-workout modal fields
+  const [postImage, setPostImage] = useState<string | null>(null);
+  const [postCaption, setPostCaption] = useState('');
+  const [postAction, setPostAction] = useState<'feed' | 'account' | 'archive' | null>(null);
+
+  // Add new state for custom timescale selection
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'start' | 'end' | null>(null);
+
+  // Add metric selection state
+  const metricOptions = ['Total Volume','Weight','Estimated 1RM','Weekly frequency'];
+  const [selectedMetric, setSelectedMetric] = useState<string>('Total Volume');
+
+  // Add metric dropdown state
+  const [showMetricDropdown, setShowMetricDropdown] = useState(false);
+
+  // Add new state for custom timescale modal
+  const [showCustomModal, setShowCustomModal] = useState(false);
+
+  const [tempStartDate, setTempStartDate] = useState<Date | null>(null);
+  const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
+
+  // Add new state for template modal
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templates, setTemplates] = useState<{ id:number; name:string }[]>([]);
+
+  // Add new state for planning workouts
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [planName, setPlanName] = useState('');
+  const [planNotes, setPlanNotes] = useState('');
+
+  // Add new state for per-set editing
+  const [perSetData, setPerSetData] = useState<{ [exerciseId: string]: { reps: number[]; weight: number[] } }>({});
+
+  // ---------- Session persistence ----------
+  const sessionKey = useMemo(()=>`workoutSession_${user?.id || 'guest'}_${selectedDate}`,[user, selectedDate]);
+
+  useEffect(()=>{
+    const loadSession = async () => {
+      try {
+        const json = await AsyncStorage.getItem(sessionKey);
+        if (json) {
+          const parsed = JSON.parse(json);
+          if (parsed.perSetData) setPerSetData(parsed.perSetData);
+          if (parsed.exerciseSetCompletion) setExerciseSetCompletion(parsed.exerciseSetCompletion);
+        }
+      } catch (e) { console.warn('load session err', e); }
+    };
+    loadSession();
+  }, [sessionKey]);
+
+  const persistSession = useCallback(async (newPerSet: any, newCompletion: any) => {
+    try {
+      await AsyncStorage.setItem(sessionKey, JSON.stringify({ perSetData: newPerSet, exerciseSetCompletion: newCompletion }));
+    } catch (e) { console.warn('save session err', e); }
+  }, [sessionKey]);
+
+  useEffect(() => { persistSession(perSetData, exerciseSetCompletion); }, [perSetData, exerciseSetCompletion, persistSession]);
+  // -----------------------------------------
+
+  // Helper to edit per-set reps or weight
+  const handleSetEdit = (exerciseId: string, setIdx: number, field: 'reps' | 'weight', value: number) => {
+    setPerSetData((prev) => {
+      const prevData = prev[exerciseId] || { reps: [], weight: [] };
+      const newData = { ...prevData } as any;
+      newData[field] = [...(prevData[field] || [])];
+      newData[field][setIdx] = value;
+      return { ...prev, [exerciseId]: newData };
+    });
+  };
+
+  // Compute chart data based on selectedMetric
+  const metricChartData = useMemo(() => {
+    if (selectedMetric === 'Weekly frequency') {
+      // aggregate workouts per week
+      const freqMap: { [week: string]: number } = {};
+      volumeData.forEach(d => {
+        const weekLabel = format(new Date(d.workout_date), 'yyyy-ww');
+        freqMap[weekLabel] = (freqMap[weekLabel] || 0) + 1;
+      });
+      const labels = Object.keys(freqMap).sort();
+      const data = labels.map(l => freqMap[l]);
+      return { labels, datasets:[{ data, strokeWidth:2, color:(o=1)=>colors.tint }]};
+    }
+    // for per exercise metrics require selectedExercise
+    if (!selectedExercise) return null;
+    const labels:string[] = [];
+    const data:number[] = [];
+    volumeData.filter(d=>d.exercise_name === selectedExercise).forEach(d=>{
+      labels.push(format(new Date(d.workout_date),'MM/dd'));
+      if(selectedMetric==='Total Volume') data.push(Number(d.total_volume));
+      else if(selectedMetric==='Weight') data.push(Number(d.max_weight));
+      else if(selectedMetric==='Estimated 1RM') {
+        // simple Epley estimate based on max_weight. You can enhance by reps if available
+        data.push(Number(d.max_weight));
+      }
+    });
+    return { labels, datasets:[{ data, strokeWidth:2, color:(o=1)=>colors.tint }] };
+  },[selectedMetric, selectedExercise, volumeData, colors.tint]);
+
+  // Image picker handler
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setPostImage(result.assets[0].uri);
+    }
+  };
+
+  // Save as template handler
+  const saveAsTemplate = async () => {
+    if (!currentWorkout || !templateName.trim() || !user) return;
+    try {
+      const { error } = await supabase.from('workout_templates').insert({
+        user_id: user.id,
+        name: templateName.trim(),
+        data: currentWorkout.exercises, // json column
+      });
+      if (error) throw error;
+      setShowTemplateModal(false);
+      setTemplateName('');
+      Alert.alert('Saved', 'Template saved successfully');
+      loadTemplates();
+    } catch (error) {
+      console.error('Save template error', error);
+      Alert.alert('Error', 'Failed to save template');
+    }
+  };
+
+  const loadTemplates = useCallback(async () => {
+    if(!user) return;
+    try {
+      const { data, error } = await supabase.from('workout_templates').select('id,name').eq('user_id', user.id).order('created_at',{ascending:false});
+      if(error){ console.error('load templates error', error); return;}
+      setTemplates(data||[]);
+    } catch(err){ console.error(err); }
+  },[user]);
+
+  useEffect(()=>{ loadTemplates(); }, [loadTemplates]);
+
+  // Quick Add handler (scaffold)
+  const quickAddWorkout = () => {
+    startNewWorkout();
+    setActiveTab('today');
+  };
 
   // Database test function
   const testDatabaseConnection = useCallback(async () => {
@@ -386,8 +555,72 @@ export default function WorkoutTrackerScreen() {
         if (updateError) throw updateError;
       }
 
+      // If marking completed compute volume & PBs
+      if(isCompleted && currentWorkout){
+        for(const ex of currentWorkout.exercises){
+          const perSet = perSetData[ex.id];
+          const repsArr = perSet?.reps && perSet.reps.length? perSet.reps : Array(ex.sets).fill(ex.reps);
+          const wtArr = perSet?.weight && perSet.weight.length? perSet.weight : Array(ex.sets).fill(ex.weight);
+          const setsCompleted = repsArr.length;
+          const totalReps = repsArr.reduce((a,b)=>a+(Number(b)||0),0);
+          const maxWeight = Math.max(...wtArr.map(w=>Number(w)||0));
+          const totalVolume = repsArr.reduce((sum, r,i)=> sum + (Number(r)||0)*(Number(wtArr[i])||0),0);
+          await supabase.from('workout_exercises').update({
+            sets: setsCompleted,
+            reps: totalReps/setsCompleted,
+            weight: maxWeight,
+            volume: totalVolume,
+          }).eq('id', ex.id);
+        }
+      }
+
       await loadWorkouts();
+
+      // Clear stored session on completion
+      if(isCompleted){ await AsyncStorage.removeItem(sessionKey); }
+
       Alert.alert('Success', isCompleted ? 'Workout completed!' : 'Workout saved!');
+
+      // ---- Post to feed ----
+      if(isCompleted && postAction){
+        let mediaUrl: string | null = null;
+        if(postImage){
+          try{
+            if(postImage.startsWith('file://')){
+              const fileExt = postImage.split('.').pop() || 'jpg';
+              const fileName = `${Date.now()}.${fileExt}`;
+              const response = await fetch(postImage);
+              const blob = await response.blob();
+              const { error: uploadErr } = await supabase.storage
+                .from('post-images')
+                .upload(fileName, blob, { contentType: blob.type, upsert:false });
+              if(uploadErr){ console.error('upload error', uploadErr); }
+              else {
+                const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(fileName);
+                mediaUrl = urlData.publicUrl;
+              }
+            } else {
+              mediaUrl = postImage; // already remote URL
+            }
+          } catch(e){ console.warn('image upload failed', e); }
+        }
+
+        const visibility = postAction==='feed' ? 'public' : postAction==='account' ? 'followers' : 'private';
+
+        const { error: postErr } = await supabase.from('posts').insert({
+          user_id: user.id,
+          caption: postCaption.trim() || null,
+          media_url: mediaUrl,
+          media_type: mediaUrl ? 'image' : null,
+          workout_id: workoutId,
+          visibility
+        });
+        if(postErr) console.error('create post error', postErr);
+      }
+
+      // reset post states
+      setPostImage(null); setPostCaption(''); setPostAction(null);
+
     } catch (error) {
       console.error('Error saving workout:', error);
       Alert.alert('Error', 'Failed to save workout');
@@ -475,20 +708,55 @@ export default function WorkoutTrackerScreen() {
     }
   };
 
+  // Helper to open exercise modal
+  const openExerciseBox = (exercise: SimpleExercise) => {
+    setSelectedExerciseBox(exercise);
+    setShowExerciseBoxModal(true);
+  };
+
+  // Helper to toggle set completion
+  const toggleSetCompletion = (exerciseId: string, setIdx: number) => {
+    setExerciseSetCompletion((prev) => {
+      const prevArr = prev[exerciseId] || [];
+      const newArr = [...prevArr];
+      newArr[setIdx] = !newArr[setIdx];
+      return { ...prev, [exerciseId]: newArr };
+    });
+  };
+
+  // Plan workout handler
+  const planWorkout = async () => {
+    if (!user) return;
+    try {
+      const { error } = await supabase.from('workouts').insert({
+        user_id: user.id,
+        date: selectedDate,
+        is_completed: false,
+        name: planName.trim() || null,
+        notes: planNotes.trim() || null,
+      });
+      if (error) throw error;
+      // refresh calendar data
+      await loadWorkouts();
+      setShowPlanModal(false);
+      setPlanName('');
+      setPlanNotes('');
+      Alert.alert('Planned', 'Workout planned successfully');
+    } catch (err) {
+      console.error('Plan workout error', err);
+      Alert.alert('Error', 'Failed to plan workout');
+    }
+  };
+
   // Render functions
   const renderTodayTab = () => (
     <ScrollView style={styles.tabContent}>
-      <View style={[styles.section, { backgroundColor: colors.card }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Today's Workout - {selectedDate}
-        </Text>
-        
+      <View style={[styles.section, { backgroundColor: colors.card }]}> 
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Today's Workout - {selectedDate}</Text>
         {currentWorkout ? (
           <View>
             <View style={styles.workoutHeader}>
-              <Text style={[styles.workoutTitle, { color: colors.text }]}>
-                {currentWorkout.name || 'Untitled Workout'}
-              </Text>
+              <Text style={[styles.workoutTitle, { color: colors.text }]}>{currentWorkout.name || 'Untitled Workout'}</Text>
               {currentWorkout.is_completed && (
                 <View style={styles.completedBadge}>
                   <CheckCircle size={16} color="#4CAF50" />
@@ -497,28 +765,24 @@ export default function WorkoutTrackerScreen() {
               )}
             </View>
 
-            {/* Exercises List */}
-            {currentWorkout.exercises.map((exercise) => (
-              <View key={exercise.id} style={[styles.exerciseItem, { backgroundColor: colors.background }]}>
-                <View style={styles.exerciseHeader}>
-                  <Text style={[styles.exerciseName, { color: colors.text }]}>{exercise.name}</Text>
-                  <TouchableOpacity onPress={() => deleteExercise(exercise.id)}>
-                    <Trash2 size={16} color={colors.error} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={[styles.exerciseDetails, { color: colors.textSecondary }]}>
-                  {exercise.sets} sets × {exercise.reps} reps @ {exercise.weight}kg
-                </Text>
-                <Text style={[styles.exerciseVolume, { color: colors.tint }]}>
-                  Volume: {exercise.volume}kg
-                </Text>
-                {exercise.notes && (
-                  <Text style={[styles.exerciseNotes, { color: colors.textSecondary }]}>
-                    Notes: {exercise.notes}
-                  </Text>
-                )}
-              </View>
-            ))}
+            {/* Exercise Boxes */}
+            <View style={styles.exerciseBoxGrid}>
+              {currentWorkout.exercises.map((exercise) => (
+                <TouchableOpacity
+                  key={exercise.id}
+                  style={[styles.exerciseBox, { backgroundColor: colors.background }]}
+                  onPress={() => openExerciseBox(exercise)}
+                  activeOpacity={0.85}
+                >
+                  {/* Placeholder for exercise image */}
+                  <View style={styles.exerciseBoxImage}>
+                    <Dumbbell size={32} color={colors.tint} />
+                  </View>
+                  <Text style={[styles.exerciseBoxName, { color: colors.text }]} numberOfLines={1}>{exercise.name}</Text>
+                  <Text style={[styles.exerciseBoxDetails, { color: colors.textSecondary }]}>Sets: {exercise.sets}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             {/* Add Exercise Button */}
             <TouchableOpacity
@@ -538,9 +802,15 @@ export default function WorkoutTrackerScreen() {
                 style={styles.actionButton}
               />
               <ThemedButton
-                title="Complete Workout"
-                onPress={() => saveWorkout(true)}
+                title="End Workout"
+                onPress={() => setShowPostWorkoutModal(true)}
                 variant="primary"
+                style={styles.actionButton}
+              />
+              <ThemedButton
+                title="Save as Template"
+                onPress={() => setShowTemplateModal(true)}
+                variant="secondary"
                 style={styles.actionButton}
               />
             </View>
@@ -548,9 +818,7 @@ export default function WorkoutTrackerScreen() {
         ) : (
           <View style={styles.noWorkout}>
             <Dumbbell size={48} color={colors.textSecondary} />
-            <Text style={[styles.noWorkoutText, { color: colors.textSecondary }]}>
-              No workout planned for today
-            </Text>
+            <Text style={[styles.noWorkoutText, { color: colors.textSecondary }]}>No workout planned for today</Text>
             <ThemedButton
               title="Start New Workout"
               onPress={startNewWorkout}
@@ -560,41 +828,160 @@ export default function WorkoutTrackerScreen() {
           </View>
         )}
       </View>
+
+      {/* Exercise Box Modal */}
+      <Modal
+        visible={showExerciseBoxModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowExerciseBoxModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}> 
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Exercise Details</Text>
+            {selectedExerciseBox && (
+              <>
+                <Text style={[styles.exerciseName, { color: colors.text, fontSize: 20 }]}>{selectedExerciseBox.name}</Text>
+                <View style={styles.setsList}>
+                  {[...Array(selectedExerciseBox.sets)].map((_, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.setRow, { backgroundColor: (exerciseSetCompletion[selectedExerciseBox.id]?.[idx]) ? colors.tint + '22' : colors.background }]}
+                      onPress={() => toggleSetCompletion(selectedExerciseBox.id, idx)}
+                    >
+                      <Text style={[styles.setLabel, { color: colors.text }]}>Set {idx + 1}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <Text style={[styles.setDetail, { color: colors.textSecondary }]}>Reps:</Text>
+                        <ThemedInput
+                          value={String(perSetData[selectedExerciseBox.id]?.reps?.[idx] ?? selectedExerciseBox.reps)}
+                          onChangeText={v => handleSetEdit(selectedExerciseBox.id, idx, 'reps', Number(v))}
+                          keyboardType="numeric"
+                          style={[styles.input, { width: 40, marginHorizontal: 4 }]}
+                        />
+                        <Text style={[styles.setDetail, { color: colors.textSecondary }]}>Weight:</Text>
+                        <ThemedInput
+                          value={String(perSetData[selectedExerciseBox.id]?.weight?.[idx] ?? selectedExerciseBox.weight)}
+                          onChangeText={v => handleSetEdit(selectedExerciseBox.id, idx, 'weight', Number(v))}
+                          keyboardType="numeric"
+                          style={[styles.input, { width: 50, marginHorizontal: 4 }]}
+                        />
+                        <View style={[styles.setTick, { backgroundColor: (exerciseSetCompletion[selectedExerciseBox.id]?.[idx]) ? colors.tint : colors.background, borderColor: colors.border }]}/>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <ThemedButton
+                  title="Close"
+                  onPress={() => setShowExerciseBoxModal(false)}
+                  variant="secondary"
+                  style={{ marginTop: 16 }}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Post-Workout Modal (scaffold) */}
+      <Modal
+        visible={showPostWorkoutModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPostWorkoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}> 
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Post Workout</Text>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              {postImage ? (
+                <TouchableOpacity onPress={pickImage}>
+                  <Image source={{ uri: postImage }} style={{ width: 120, height: 120, borderRadius: 12, marginBottom: 8 }} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Change Photo</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={pickImage} style={{ padding: 12, borderRadius: 8, backgroundColor: colors.background, marginBottom: 8 }}>
+                  <Text style={{ color: colors.textSecondary }}>Add Photo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <ThemedInput
+              placeholder="Add a caption..."
+              value={postCaption}
+              onChangeText={setPostCaption}
+              style={{ marginBottom: 12 }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <ThemedButton
+                title="Post to Feed"
+                onPress={() => { setPostAction('feed'); setShowPostWorkoutModal(false); saveWorkout(true); }}
+                variant="primary"
+                style={{ flex: 1, marginRight: 4 }}
+              />
+              <ThemedButton
+                title="Save to Account"
+                onPress={() => { setPostAction('account'); setShowPostWorkoutModal(false); saveWorkout(true); }}
+                variant="secondary"
+                style={{ flex: 1, marginHorizontal: 4 }}
+              />
+              <ThemedButton
+                title="Archive"
+                onPress={() => { setPostAction('archive'); setShowPostWorkoutModal(false); saveWorkout(true); }}
+                variant="secondary"
+                style={{ flex: 1, marginLeft: 4 }}
+              />
+            </View>
+            <ThemedButton
+              title="Close"
+              onPress={() => setShowPostWorkoutModal(false)}
+              variant="secondary"
+              style={{ marginTop: 8 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 
-  const renderCalendarTab = () => (
+  const renderCalendarTab = () => {
+    const hasWorkoutForSelected = !!workoutDates[selectedDate];
+    return (
     <ScrollView style={styles.tabContent}>
-      <View style={[styles.section, { backgroundColor: colors.card }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Workout Calendar</Text>
-        <Calendar
-          current={selectedDate}
-          onDayPress={(day) => setSelectedDate(day.dateString)}
-          markedDates={{
-            ...workoutDates,
-            [selectedDate]: {
-              ...workoutDates[selectedDate],
-              selected: true,
-              selectedColor: colors.tint,
-            },
-          }}
-          theme={{
-            backgroundColor: colors.background,
-            calendarBackground: colors.background,
-            textSectionTitleColor: colors.text,
-            selectedDayBackgroundColor: colors.tint,
-            selectedDayTextColor: '#ffffff',
-            todayTextColor: colors.tint,
-            dayTextColor: colors.text,
-            textDisabledColor: colors.textSecondary,
-            dotColor: colors.tint,
-            selectedDotColor: '#ffffff',
-            arrowColor: colors.tint,
-            monthTextColor: colors.text,
-            indicatorColor: colors.tint,
-          }}
-        />
-        <View style={styles.legend}>
+      <View style={[styles.section, { backgroundColor: colors.card, alignItems: 'center', paddingHorizontal: 0, paddingTop: 40, paddingBottom: 32 }]}> 
+        <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 22, marginBottom: 16 }]}>Workout Calendar</Text>
+        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.background, padding: 8, marginBottom: 24 }}>
+          <Calendar
+            current={selectedDate}
+            onDayPress={(day) => setSelectedDate(day.dateString)}
+            markedDates={{
+              ...workoutDates,
+              [selectedDate]: {
+                ...workoutDates[selectedDate],
+                selected: true,
+                selectedColor: colors.tint,
+              },
+            }}
+            style={{ borderRadius: 16, width: 340, alignSelf: 'center' }}
+            theme={{
+              backgroundColor: colors.background,
+              calendarBackground: colors.background,
+              textSectionTitleColor: colors.text,
+              selectedDayBackgroundColor: colors.tint,
+              selectedDayTextColor: '#ffffff',
+              todayTextColor: colors.tint,
+              dayTextColor: colors.text,
+              textDisabledColor: colors.textSecondary,
+              dotColor: colors.tint,
+              selectedDotColor: '#ffffff',
+              arrowColor: colors.tint,
+              monthTextColor: colors.text,
+              indicatorColor: colors.tint,
+              textDayFontSize: 18,
+              textMonthFontSize: 20,
+              textDayHeaderFontSize: 14,
+            }}
+          />
+        </View>
+        <View style={[styles.legend, { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 0 }]}> 
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
             <Text style={[styles.legendText, { color: colors.text }]}>Completed</Text>
@@ -604,302 +991,346 @@ export default function WorkoutTrackerScreen() {
             <Text style={[styles.legendText, { color: colors.text }]}>Planned</Text>
           </View>
         </View>
+        {!hasWorkoutForSelected && (
+          <ThemedButton title="Plan Workout" onPress={() => setShowPlanModal(true)} style={{ marginTop: 24 }} />
+        )}
       </View>
     </ScrollView>
   );
+};
 
-  const renderProgressTab = () => {
-    const chartData = {
-      labels: volumeData.map(d => new Date(d.workout_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
-      datasets: [{
-        data: volumeData.map(d => parseFloat(d.total_volume.toString())),
-        strokeWidth: 2,
-        color: (opacity = 1) => colors.tint,
-      }],
-    };
-
-    return (
-      <ScrollView style={styles.tabContent}>
-        <View style={[styles.section, { backgroundColor: colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Progress Tracking</Text>
-          
-          {/* Exercise Selection */}
-          <View style={styles.filterContainer}>
-            <Text style={[styles.filterLabel, { color: colors.text }]}>Exercise:</Text>
-            <View style={styles.pickerContainer}>
-              {availableExercises.length > 0 ? (
-                availableExercises.map((exercise) => (
+const renderProgressTab = () => {
+  return (
+    <ScrollView style={styles.tabContent}>
+      <View style={[styles.bannerContainer, { backgroundColor: colors.tint }]}> 
+        <Text style={[styles.bannerTitle, { color: '#fff' }]}>Progress</Text>
+        <Text style={[styles.bannerSubtitle, { color: '#fff' }]}>{daysPeriod}‐day range</Text>
+      </View>
+      <View style={[styles.section, { backgroundColor: colors.backgroundSecondary }]}> 
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Progress Tracking</Text>
+        {/* Metric Selector via dropdown */}
+        <View style={{ marginBottom:12, alignItems:'flex-start' }}>
+          <TouchableOpacity
+            style={[styles.dropdownButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => setShowMetricDropdown(true)}
+          >
+            <Text style={[styles.dropdownText, { color: colors.text }]}>{selectedMetric}</Text>
+            <ChevronDown size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        {/* Exercise Selection */}
+        <View style={styles.filterContainer}>
+          <View style={styles.pickerContainer}>
+            {availableExercises.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {availableExercises.map((exercise) => (
                   <TouchableOpacity
                     key={exercise}
-                    style={[
-                      styles.exerciseChip,
-                      { 
-                        backgroundColor: selectedExercise === exercise ? colors.tint : colors.background,
-                        borderColor: colors.border 
-                      }
-                    ]}
+                    style={[styles.exerciseChip, { backgroundColor: selectedExercise === exercise ? colors.tint : colors.background, borderColor: colors.border }]}
                     onPress={() => setSelectedExercise(exercise)}
                   >
-                    <Text style={[
-                      styles.exerciseChipText,
-                      { color: selectedExercise === exercise ? '#fff' : colors.text }
-                    ]}>
-                      {exercise}
-                    </Text>
+                    <Text style={[styles.exerciseChipText, { color: selectedExercise === exercise ? '#fff' : colors.text }]}>{exercise}</Text>
                   </TouchableOpacity>
-                ))
-              ) : (
-                <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-                  Complete some workouts to see exercise options
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={[styles.noDataText, { color: colors.textSecondary }]}>Complete some workouts to see exercise options</Text>
+            )}
+          </View>
+        </View>
+        {/* Custom Timescale Selection */}
+        <View style={styles.filterContainer}>
+          <Text style={[styles.filterLabel, { color: colors.text }]}>Time Period:</Text>
+          <View style={styles.periodButtons}>
+            {[7, 30, 90].map((days) => (
+              <TouchableOpacity
+                key={days}
+                style={[
+                  styles.periodButton,
+                  {
+                    backgroundColor: daysPeriod === days ? colors.tint : colors.background,
+                    borderColor: colors.border,
+                  }
+                ]}
+                onPress={() => setDaysPeriod(days)}
+              >
+                <Text style={[
+                  styles.periodButtonText,
+                  { color: daysPeriod === days ? '#fff' : colors.text }
+                ]}>
+                  {days}d
                 </Text>
-              )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        {/* Chart or No Data */}
+        {(selectedMetric === 'Weekly frequency' ? volumeData.length > 0 : selectedExercise && volumeData.length > 0) ? (
+          <View style={[styles.chartCard, { backgroundColor: colors.background }]}> 
+            <Text style={[styles.chartTitle, { color: colors.text, marginBottom: 8 }]}>{selectedMetric}</Text>
+            {(() => {
+              if (metricChartData && metricChartData.labels.length > 0) {
+                return (
+                  <LineChart
+                    data={metricChartData}
+                    width={screenWidth - 60}
+                    height={220}
+                    chartConfig={{
+                      backgroundColor: colors.background,
+                      backgroundGradientFrom: colors.background,
+                      backgroundGradientTo: colors.background,
+                      decimalPlaces: 0,
+                      color: (opacity = 1) => colors.tint,
+                      labelColor: (opacity = 1) => colors.text,
+                      style: { borderRadius: 16 },
+                      propsForDots: { r: '4', strokeWidth: '2', stroke: colors.tint },
+                    }}
+                    bezier
+                    style={{ borderRadius: 16 }}
+                  />
+                );
+              } else {
+                return (
+                  <View style={styles.noDataContainer}> 
+                    <BarChart3 size={48} color={colors.textSecondary} />
+                    <Text style={[styles.noDataText, { color: colors.textSecondary }]}>Chart temporarily unavailable</Text>
+                    <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 12 }]}>Data: {volumeData.length} workouts tracked</Text>
+                  </View>
+                );
+              }
+            })()}
+            {/* Summary Row */}
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.tint }]}>{volumeData.reduce((sum, d) => sum + parseFloat(d.total_volume.toString()), 0).toFixed(0)}kg</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Volume</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.tint }]}>{volumeData.length}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Workouts</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.tint }]}>{Math.max(...volumeData.map(d => parseFloat(d.max_weight.toString())))}kg</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Max Weight</Text>
+              </View>
             </View>
           </View>
+        ) : (
+          <View style={styles.noDataContainer}>
+            <BarChart3 size={48} color={colors.textSecondary} />
+            <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
+              {selectedExercise ? 'No data available for selected period' : 'Select an exercise to view progress'}
+            </Text>
+            {!selectedExercise && availableExercises.length === 0 && (
+              <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 12, marginTop: 8 }]}>
+                Complete some workouts first to see progress charts
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+};
 
-          {/* Time Period Selection */}
-          <View style={styles.filterContainer}>
-            <Text style={[styles.filterLabel, { color: colors.text }]}>Time Period:</Text>
-            <View style={styles.periodButtons}>
-              {[7, 30, 90].map((days) => (
+if (loading) {
+  return (
+    <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.tint} />
+    </View>
+  );
+}
+
+return (
+  <View style={[styles.container, { backgroundColor: colors.background }]}>
+    {/* Tab Navigation */}
+    <View style={[styles.tabBar, { backgroundColor: colors.card }]}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'today' && { backgroundColor: colors.tint }]}
+        onPress={() => setActiveTab('today')}
+      >
+        <Play size={20} color={activeTab === 'today' ? '#fff' : colors.text} />
+        <Text style={[styles.tabText, { color: activeTab === 'today' ? '#fff' : colors.text }]}>
+          Today
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'calendar' && { backgroundColor: colors.tint }]}
+        onPress={() => setActiveTab('calendar')}
+      >
+        <CalendarIcon size={20} color={activeTab === 'calendar' ? '#fff' : colors.text} />
+        <Text style={[styles.tabText, { color: activeTab === 'calendar' ? '#fff' : colors.text }]}>
+          Calendar
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'progress' && { backgroundColor: colors.tint }]}
+        onPress={() => setActiveTab('progress')}
+      >
+        <TrendingUp size={20} color={activeTab === 'progress' ? '#fff' : colors.text} />
+        <Text style={[styles.tabText, { color: activeTab === 'progress' ? '#fff' : colors.text }]}>
+          Progress
+        </Text>
+      </TouchableOpacity>
+    </View>
+
+    {/* Tab Content */}
+    {activeTab === 'today' && renderTodayTab()}
+    {activeTab === 'calendar' && renderCalendarTab()}
+    {activeTab === 'progress' && renderProgressTab()}
+
+    {/* Add Exercise Modal */}
+    <Modal
+      visible={showExerciseForm}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowExerciseForm(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
+          
+          <ThemedInput
+            placeholder="Exercise name"
+            value={exerciseName}
+            onChangeText={setExerciseName}
+            style={styles.input}
+          />
+          
+          {exerciseSuggestions.length > 0 && (
+            <View style={styles.suggestions}>
+              {exerciseSuggestions.map((suggestion, index) => (
                 <TouchableOpacity
-                  key={days}
-                  style={[
-                    styles.periodButton,
-                    {
-                      backgroundColor: daysPeriod === days ? colors.tint : colors.background,
-                      borderColor: colors.border,
-                    }
-                  ]}
-                  onPress={() => setDaysPeriod(days)}
+                  key={index}
+                  style={[styles.suggestionItem, { backgroundColor: colors.background }]}
+                  onPress={() => {
+                    setExerciseName(suggestion);
+                    setExerciseSuggestions([]);
+                  }}
                 >
-                  <Text style={[
-                    styles.periodButtonText,
-                    { color: daysPeriod === days ? '#fff' : colors.text }
-                  ]}>
-                    {days}d
-                  </Text>
+                  <Text style={[styles.suggestionText, { color: colors.text }]}>{suggestion}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
-
-          {/* Chart or No Data */}
-          {selectedExercise && volumeData.length > 0 ? (
-            <View style={styles.chartContainer}>
-              <Text style={[styles.chartTitle, { color: colors.text }]}>
-                Volume Progress - {selectedExercise}
-              </Text>
-              
-              {/* Chart Component with Error Boundary */}
-              {(() => {
-                try {
-                  return (
-                    <LineChart
-                      data={chartData}
-                      width={screenWidth - 60}
-                      height={220}
-                      chartConfig={{
-                        backgroundColor: colors.background,
-                        backgroundGradientFrom: colors.background,
-                        backgroundGradientTo: colors.background,
-                        decimalPlaces: 0,
-                        color: (opacity = 1) => colors.tint,
-                        labelColor: (opacity = 1) => colors.text,
-                        style: {
-                          borderRadius: 16,
-                        },
-                        propsForDots: {
-                          r: '4',
-                          strokeWidth: '2',
-                          stroke: colors.tint,
-                        },
-                      }}
-                      bezier
-                      style={styles.chart}
-                    />
-                  );
-                } catch (error) {
-                  console.error('Chart rendering error:', error);
-                  return (
-                    <View style={styles.noDataContainer}>
-                      <BarChart3 size={48} color={colors.textSecondary} />
-                      <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-                        Chart temporarily unavailable
-                      </Text>
-                      <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 12 }]}>
-                        Data: {volumeData.length} workouts tracked
-                      </Text>
-                    </View>
-                  );
-                }
-              })()}
-              
-              {/* Data Summary */}
-              <View style={{ marginTop: 16, padding: 12, backgroundColor: colors.background, borderRadius: 8 }}>
-                <Text style={[styles.filterLabel, { color: colors.text, marginBottom: 8 }]}>Summary:</Text>
-                <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 14 }]}>
-                  Total Volume: {volumeData.reduce((sum, d) => sum + parseFloat(d.total_volume.toString()), 0).toFixed(0)}kg
-                </Text>
-                <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 14 }]}>
-                  Workouts: {volumeData.length}
-                </Text>
-                <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 14 }]}>
-                  Max Weight: {Math.max(...volumeData.map(d => parseFloat(d.max_weight.toString())))}kg
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.noDataContainer}>
-              <BarChart3 size={48} color={colors.textSecondary} />
-              <Text style={[styles.noDataText, { color: colors.textSecondary }]}>
-                {selectedExercise ? 'No data available for selected period' : 'Select an exercise to view progress'}
-              </Text>
-              {!selectedExercise && availableExercises.length === 0 && (
-                <Text style={[styles.noDataText, { color: colors.textSecondary, fontSize: 12, marginTop: 8 }]}>
-                  Complete some workouts first to see progress charts
-                </Text>
-              )}
-            </View>
           )}
-        </View>
-      </ScrollView>
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.tint} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Tab Navigation */}
-      <View style={[styles.tabBar, { backgroundColor: colors.card }]}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'today' && { backgroundColor: colors.tint }]}
-          onPress={() => setActiveTab('today')}
-        >
-          <Play size={20} color={activeTab === 'today' ? '#fff' : colors.text} />
-          <Text style={[styles.tabText, { color: activeTab === 'today' ? '#fff' : colors.text }]}>
-            Today
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'calendar' && { backgroundColor: colors.tint }]}
-          onPress={() => setActiveTab('calendar')}
-        >
-          <CalendarIcon size={20} color={activeTab === 'calendar' ? '#fff' : colors.text} />
-          <Text style={[styles.tabText, { color: activeTab === 'calendar' ? '#fff' : colors.text }]}>
-            Calendar
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'progress' && { backgroundColor: colors.tint }]}
-          onPress={() => setActiveTab('progress')}
-        >
-          <TrendingUp size={20} color={activeTab === 'progress' ? '#fff' : colors.text} />
-          <Text style={[styles.tabText, { color: activeTab === 'progress' ? '#fff' : colors.text }]}>
-            Progress
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Tab Content */}
-      {activeTab === 'today' && renderTodayTab()}
-      {activeTab === 'calendar' && renderCalendarTab()}
-      {activeTab === 'progress' && renderProgressTab()}
-
-      {/* Add Exercise Modal */}
-      <Modal
-        visible={showExerciseForm}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowExerciseForm(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
-            
+          
+          <View style={styles.row}>
             <ThemedInput
-              placeholder="Exercise name"
-              value={exerciseName}
-              onChangeText={setExerciseName}
-              style={styles.input}
+              placeholder="Sets"
+              value={exerciseSets}
+              onChangeText={setExerciseSets}
+              keyboardType="numeric"
+              style={[styles.input, styles.smallInput]}
             />
-            
-            {exerciseSuggestions.length > 0 && (
-              <View style={styles.suggestions}>
-                {exerciseSuggestions.map((suggestion, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[styles.suggestionItem, { backgroundColor: colors.background }]}
-                    onPress={() => {
-                      setExerciseName(suggestion);
-                      setExerciseSuggestions([]);
-                    }}
-                  >
-                    <Text style={[styles.suggestionText, { color: colors.text }]}>{suggestion}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            
-            <View style={styles.row}>
-              <ThemedInput
-                placeholder="Sets"
-                value={exerciseSets}
-                onChangeText={setExerciseSets}
-                keyboardType="numeric"
-                style={[styles.input, styles.smallInput]}
-              />
-              <ThemedInput
-                placeholder="Reps"
-                value={exerciseReps}
-                onChangeText={setExerciseReps}
-                keyboardType="numeric"
-                style={[styles.input, styles.smallInput]}
-              />
-              <ThemedInput
-                placeholder="Weight (kg)"
-                value={exerciseWeight}
-                onChangeText={setExerciseWeight}
-                keyboardType="numeric"
-                style={[styles.input, styles.smallInput]}
-              />
-            </View>
-            
             <ThemedInput
-              placeholder="Notes (optional)"
-              value={exerciseNotes}
-              onChangeText={setExerciseNotes}
-              multiline
-              style={[styles.input, styles.notesInput]}
+              placeholder="Reps"
+              value={exerciseReps}
+              onChangeText={setExerciseReps}
+              keyboardType="numeric"
+              style={[styles.input, styles.smallInput]}
             />
-            
-            <View style={styles.modalButtons}>
-              <ThemedButton
-                title="Cancel"
-                onPress={() => setShowExerciseForm(false)}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <ThemedButton
-                title="Add Exercise"
-                onPress={addExercise}
-                variant="primary"
-                style={styles.modalButton}
-              />
-            </View>
+            <ThemedInput
+              placeholder="Weight (kg)"
+              value={exerciseWeight}
+              onChangeText={setExerciseWeight}
+              keyboardType="numeric"
+              style={[styles.input, styles.smallInput]}
+            />
+          </View>
+          
+          <ThemedInput
+            placeholder="Notes (optional)"
+            value={exerciseNotes}
+            onChangeText={setExerciseNotes}
+            multiline
+            style={[styles.input, styles.notesInput]}
+          />
+          
+          <View style={styles.modalButtons}>
+            <ThemedButton
+              title="Cancel"
+              onPress={() => setShowExerciseForm(false)}
+              variant="secondary"
+              style={styles.modalButton}
+            />
+            <ThemedButton
+              title="Add Exercise"
+              onPress={addExercise}
+              variant="primary"
+              style={styles.modalButton}
+            />
           </View>
         </View>
-      </Modal>
-    </View>
-  );
+      </View>
+    </Modal>
+
+    {/* Metric Dropdown Modal */}
+    <Modal
+      visible={showMetricDropdown}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowMetricDropdown(false)}
+    >
+      <TouchableOpacity style={styles.dropdownOverlay} activeOpacity={1} onPress={() => setShowMetricDropdown(false)}>
+        <View style={[styles.dropdownModal, { backgroundColor: colors.card }]}> 
+          {metricOptions.map((opt, index) => (
+            <TouchableOpacity
+              key={opt}
+              style={[styles.dropdownOption, index === metricOptions.length -1 && styles.lastDropdownOption, { borderBottomColor: colors.border }]}
+              onPress={() => { setSelectedMetric(opt); setShowMetricDropdown(false); }}
+            >
+              <Text style={[styles.dropdownOptionText, { color: selectedMetric === opt ? colors.tint : colors.text }]}>{opt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+
+    {/* Global Date Picker */}
+    <DateTimePickerModal
+      isVisible={isDatePickerVisible}
+      mode="date"
+      date={pickerMode === 'start' ? (tempStartDate || new Date()) : (tempEndDate || new Date())}
+      onConfirm={(date) => {
+        if (pickerMode === 'start') setTempStartDate(date); else if (pickerMode==='end') setTempEndDate(date);
+        setDatePickerVisible(false);
+      }}
+      onCancel={() => setDatePickerVisible(false)}
+      themeVariant={theme === 'dark' ? 'dark' : 'light'}
+    />
+
+    {/* Save Template Modal */}
+    <Modal visible={showTemplateModal} transparent animationType="slide" onRequestClose={()=>setShowTemplateModal(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent,{backgroundColor:colors.card}]}> 
+          <Text style={[styles.modalTitle,{color:colors.text}]}>Save Workout as Template</Text>
+          <ThemedInput placeholder="Template name" value={templateName} onChangeText={setTemplateName} style={styles.input}/>
+          <View style={styles.modalButtons}> 
+            <ThemedButton title="Cancel" variant="secondary" onPress={()=>setShowTemplateModal(false)} style={styles.modalButton}/>
+            <ThemedButton title="Save" onPress={saveAsTemplate} disabled={!templateName.trim()} style={styles.modalButton}/>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    {/* Plan Workout Modal */}
+    <Modal visible={showPlanModal} transparent animationType="slide" onRequestClose={() => setShowPlanModal(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}> 
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Plan Workout</Text>
+          <ThemedInput placeholder="Workout name (optional)" value={planName} onChangeText={setPlanName} style={styles.input} />
+          <ThemedInput placeholder="Notes (optional)" value={planNotes} onChangeText={setPlanNotes} style={[styles.input, styles.notesInput]} multiline />
+          <View style={styles.modalButtons}>
+            <ThemedButton title="Cancel" variant="secondary" onPress={() => setShowPlanModal(false)} style={styles.modalButton} />
+            <ThemedButton title="Plan" onPress={planWorkout} style={styles.modalButton} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
@@ -936,9 +1367,10 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   section: {
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
     marginBottom: 16,
+    padding: 20,
+    paddingTop: 40,
   },
   sectionTitle: {
     fontSize: 20,
@@ -1026,7 +1458,15 @@ const styles = StyleSheet.create({
   noWorkoutText: {
     fontSize: 16,
     textAlign: 'center',
-    marginVertical: 16,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  workoutDetails: {
+    fontSize: 14,
+    textAlign: 'left',
+    marginTop: 2,
+    marginBottom: 2,
+    opacity: 0.8,
   },
   startButton: {
     marginTop: 8,
@@ -1064,10 +1504,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   exerciseChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minWidth: 72,
+    borderRadius: 20,
     borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 8,
     marginBottom: 8,
   },
@@ -1079,9 +1523,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   periodButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
     borderWidth: 1,
     marginRight: 8,
   },
@@ -1089,21 +1533,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  chartContainer: {
-    marginTop: 16,
+  chartCard: {
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    alignItems: 'center',
+    ...Shadows.light,
   },
   chartTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  chart: {
-    borderRadius: 16,
+    marginBottom: 8,
   },
   noDataContainer: {
     alignItems: 'center',
-    padding: 32,
+    justifyContent: 'center',
+    padding: 48,
   },
   noDataText: {
     fontSize: 16,
@@ -1163,5 +1608,152 @@ const styles = StyleSheet.create({
   modalButton: {
     flex: 1,
     marginHorizontal: 4,
+  },
+  exerciseBoxGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+  },
+  exerciseBox: {
+    width: '50%',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  exerciseBoxImage: {
+    width: '100%',
+    height: 100,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  exerciseBoxName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  exerciseBoxDetails: {
+    fontSize: 14,
+    color: 'rgba(0,0,0,0.8)',
+  },
+  setsList: {
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 8,
+  },
+  setLabel: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  setDetail: {
+    flex: 1,
+    fontSize: 14,
+  },
+  setTick: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 10,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 12,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  summaryLabel: {
+    fontSize: 12,
+  },
+  rangeDisplay: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  rangeChip: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  rangeChipText: {
+    fontSize: 12,
+  },
+  bannerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  bannerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    opacity: 0.9,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dropdownText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 6,
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownModal: {
+    width: '80%',
+    maxWidth: 320,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  dropdownOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  lastDropdownOption: {
+    borderBottomWidth: 0,
+  },
+  dropdownOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  customModal: {
+    width: '85%',
+    maxWidth: 350,
+    borderRadius: 12,
+    padding: 20,
   },
 }); 

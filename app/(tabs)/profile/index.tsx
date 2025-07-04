@@ -96,7 +96,7 @@ const DRAFTS_KEY_PREFIX = 'post_drafts_';
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, showAuthModal } = useAuth();
   
   const [profile, setProfile] = useState<Profile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -693,102 +693,61 @@ export default function ProfileScreen() {
   }, [profile?.id]);
 
   const handleLike = async (postId: string) => {
-    if (!isAuthenticated) return;
-    
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            const newLike = { id: `temp-${Date.now()}`, user_id: user.id };
-            return {
-              ...post,
-              likes: [...post.likes, newLike]
-            };
-          }
-          return post;
-        })
-      );
+      const tempLike = { id: String(Date.now()), user_id: user.id };
+      const originalPosts = [...posts];
 
-      const { error } = await supabase
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId && !post.likes.some(l => l.user_id === user.id)
+        ? { ...post, likes: [...post.likes, tempLike] }
+        : post
+      ));
+
+      const { data: insertedRows, error } = await supabase
         .from('likes')
-        .insert({
-          post_id: postId,
-          user_id: user.id,
-        });
+        .insert({ post_id: postId, user_id: user.id })
+        .select('id, user_id');
 
       if (error) {
-        // Revert optimistic update on error
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: post.likes.filter(like => !like.id.toString().startsWith('temp-'))
-              };
-            }
-            return post;
-          })
-        );
-        throw error;
+        console.error('Error liking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
+      } else {
+        const newLike = insertedRows?.[0] || tempLike;
+        // Replace temporary like with real one
+        setPosts(arr => arr.map(post => post.id === postId
+          ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id).concat(newLike) }
+          : post
+        ));
       }
-
-      // Refresh the post data to get the real like ID from database
-      const { data: updatedPost } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .eq('id', postId)
-        .single();
-
-      if (updatedPost) {
-        setPosts(currentPosts => 
-          currentPosts.map(post => {
-            if (post.id === postId) {
-              return {
-                ...post,
-                likes: updatedPost.likes
-              };
-            }
-            return post;
-          })
-        );
-      }
-
     } catch (err) {
-      console.error('Error liking post:', err);
+      console.error('Error in handleLike function:', err);
     }
   };
 
   const handleUnlike = async (postId: string) => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Find the like to remove for optimistic update
-      const currentPost = posts.find(p => p.id === postId);
-      const likeToRemove = currentPost?.likes.find(like => like.user_id === user.id);
-      
-      // Optimistically update the UI immediately
-      setPosts(currentPosts => 
-        currentPosts.map(post => {
-          if (post.id === postId) {
-            return {
-              ...post,
-              likes: post.likes.filter(like => like.user_id !== user.id)
-            };
-          }
-          return post;
-        })
-      );
+      const originalPosts = [...posts];
+
+      // Optimistically update UI
+      setPosts(arr => arr.map(post => post.id === postId
+        ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id) }
+        : post
+      ));
 
       const { error } = await supabase
         .from('likes')
@@ -797,25 +756,12 @@ export default function ProfileScreen() {
         .eq('user_id', user.id);
 
       if (error) {
-        // Revert optimistic update on error
-        if (likeToRemove) {
-          setPosts(currentPosts => 
-            currentPosts.map(post => {
-              if (post.id === postId) {
-                return {
-                  ...post,
-                  likes: [...post.likes, likeToRemove]
-                };
-              }
-              return post;
-            })
-          );
-        }
-        throw error;
+        console.error('Error unliking post:', error);
+        // Rollback on failure
+        setPosts(originalPosts);
       }
-
     } catch (err) {
-      console.error('Error unliking post:', err);
+      console.error('Error in handleUnlike function:', err);
     }
   };
 
@@ -885,11 +831,6 @@ export default function ProfileScreen() {
         </TouchableOpacity>
         <View style={styles.headerButtons}>
           <TouchableOpacity 
-            style={styles.notificationButton} 
-            onPress={() => router.push('/notifications')}>
-            <Bell size={24} color={colors.tint} />
-          </TouchableOpacity>
-          <TouchableOpacity 
             style={styles.settingsButton} 
             onPress={navigateToSettings}>
             <Settings size={24} color={colors.tint} />
@@ -897,133 +838,135 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: Layout.horizontalPadding }}>
-        <TouchableOpacity 
-          onPress={handleViewStories}
-          style={[
-            styles.profileImageContainer,
-            profile.has_story && styles.hasStoryRing,
-            { backgroundColor: colors.background }
-          ]}>
-          <Image
-            source={{ 
-              uri: profile.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
-            }}
-            style={styles.profileImage}
-          />
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        {/* Profile Header - Fixed at top */}
+        <View style={{ paddingHorizontal: Layout.horizontalPadding, paddingBottom: 10 }}>
+          <TouchableOpacity 
+            onPress={handleViewStories}
+            style={[
+              styles.profileImageContainer,
+              profile.has_story && styles.hasStoryRing,
+              { backgroundColor: colors.background }
+            ]}>
+            <Image
+              source={{ 
+                uri: profile.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+              }}
+              style={styles.profileImage}
+            />
+          </TouchableOpacity>
 
-        <View style={styles.profileInfo}>
-          <View style={styles.usernameContainer}>
-            <Text style={[styles.username, { color: colors.text }]}>{profile.username}</Text>
-            {profile.is_verified && (
-              <CheckCircle2 size={20} color="#fff" fill="#3B82F6" />
-            )}
-          </View>
-          <Text style={[styles.bio, { color: colors.textSecondary }]}>{profile.bio || 'No bio yet'}</Text>
-          {profile.gym && (
-            <View style={styles.gymContainer}>
-              <Text style={[styles.gymLabel, { color: colors.textSecondary }]}>📍 </Text>
-              <Text style={[styles.gymName, { color: colors.text }]}>{profile.gym}</Text>
+          <View style={styles.profileInfo}>
+            <View style={styles.usernameContainer}>
+              <Text style={[styles.username, { color: colors.text }]}>{profile.username}</Text>
+              {profile.is_verified && (
+                <CheckCircle2 size={20} color="#fff" fill="#3B82F6" />
+              )}
             </View>
-          )}
-          
-          <View style={[
-            styles.buttonContainer,
-            !hasProducts && styles.singleButtonContainer
-          ]}>
-            <TouchableOpacity 
-              style={styles.button}
-              onPress={() => router.push('/profile/edit')}
-              activeOpacity={0.8}>
-              <LinearGradient
-                colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryButton}
-              >
-                <Text style={styles.buttonText}>Edit Profile</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <Text style={[styles.bio, { color: colors.textSecondary }]}>{profile.bio || 'No bio yet'}</Text>
+            {profile.gym && (
+              <View style={styles.gymContainer}>
+                <Text style={[styles.gymLabel, { color: colors.textSecondary }]}>📍 </Text>
+                <Text style={[styles.gymName, { color: colors.text }]}>{profile.gym}</Text>
+              </View>
+            )}
             
-            {hasProducts && (
+            <View style={[
+              styles.buttonContainer,
+              !hasProducts && styles.singleButtonContainer
+            ]}>
               <TouchableOpacity 
                 style={styles.button}
-                onPress={() => setShowProductsModal(true)}
+                onPress={() => router.push('/profile/edit')}
                 activeOpacity={0.8}>
-                <View style={[styles.secondaryButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.tint }]}>
-                  <Text style={[styles.buttonText, styles.secondaryButtonText, { color: colors.tint }]}>See Products</Text>
-                </View>
+                <LinearGradient
+                  colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.primaryButton}
+                >
+                  <Text style={styles.buttonText}>Edit Profile</Text>
+                </LinearGradient>
               </TouchableOpacity>
-            )}
+              
+              {hasProducts && (
+                <TouchableOpacity 
+                  style={styles.button}
+                  onPress={() => setShowProductsModal(true)}
+                  activeOpacity={0.8}>
+                  <View style={[styles.secondaryButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.tint }]}>
+                    <Text style={[styles.buttonText, styles.secondaryButtonText, { color: colors.tint }]}>See Products</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
 
-        <View style={[
-          styles.statsContainer, 
-          { 
-            borderTopColor: colors.border, 
-            borderBottomColor: colors.border,
-            backgroundColor: colors.background
-          }
-        ]}>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(posts.length)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+          <View style={[
+            styles.statsContainer, 
+            { 
+              borderTopColor: colors.border, 
+              borderBottomColor: colors.border,
+              backgroundColor: colors.background
+            }
+          ]}>
+            <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
+              <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(posts.length)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+              onPress={handleShowFollowers}
+            >
+              <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+              onPress={handleShowFollowing}
+            >
+              <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.following)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity 
-            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
-            onPress={handleShowFollowers}
-          >
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
-            onPress={handleShowFollowing}
-          >
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.following)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Toggle Tabs */}
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'posts' && styles.activeToggle]}
-            onPress={() => setActiveTab('posts')}
-          >
-            <Grid3x3 size={20} color={activeTab === 'posts' ? colors.tint : colors.text} />
-            {activeTab === 'posts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
+          {/* Toggle Tabs */}
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleButton, activeTab === 'posts' && styles.activeToggle]}
+              onPress={() => setActiveTab('posts')}
+            >
+              <Grid3x3 size={20} color={activeTab === 'posts' ? colors.tint : colors.text} />
+              {activeTab === 'posts' && (
+                <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+              )}
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'lifts' && styles.activeToggle]}
-            onPress={() => setActiveTab('lifts')}
-          >
-            <Activity size={20} color={activeTab === 'lifts' ? colors.tint : colors.text} />
-            {activeTab === 'lifts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, activeTab === 'lifts' && styles.activeToggle]}
+              onPress={() => setActiveTab('lifts')}
+            >
+              <Activity size={20} color={activeTab === 'lifts' ? colors.tint : colors.text} />
+              {activeTab === 'lifts' && (
+                <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+              )}
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'workouts' && styles.activeToggle]}
-            onPress={() => setActiveTab('workouts')}
-          >
-            <Dumbbell size={20} color={activeTab === 'workouts' ? colors.tint : colors.text} />
-            {activeTab === 'workouts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, activeTab === 'workouts' && styles.activeToggle]}
+              onPress={() => setActiveTab('workouts')}
+            >
+              <Dumbbell size={20} color={activeTab === 'workouts' ? colors.tint : colors.text} />
+              {activeTab === 'workouts' && (
+                <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Content based on active tab */}
         {activeTab === 'posts' && (
           <FlatList
-            nestedScrollEnabled
             data={[{ id: 'drafts' as const, isDraft: true }, ...posts]}
             renderItem={({ item }: { item: (Post & { isDraft?: false }) | { id: 'drafts', isDraft: true } }) => {
               if (item.isDraft) {
@@ -1050,6 +993,7 @@ export default function ProfileScreen() {
             }}
             keyExtractor={item => item.id}
             numColumns={3}
+            contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: Layout.horizontalPadding }}
             ListEmptyComponent={
               drafts.length === 0 ? (
                 <View style={styles.emptyContainer}>
@@ -1067,25 +1011,27 @@ export default function ProfileScreen() {
               <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
             </View>
           ) : (
-            <View style={styles.postsGrid}>
-              {lifts.map((lift) => (
-                <TouchableOpacity
-                  key={lift.id}
-                  style={styles.postContainer}>
-                  <View style={[styles.liftContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderWidth: 1 }]}>
-                    <Text style={[styles.liftName, { color: colors.text }]}>
-                      {lift.exercise_name}
-                    </Text>
-                    <Text style={[styles.liftWeight, { color: colors.tint }]}>
-                      {lift.weight}kg
-                    </Text>
-                    <Text style={[styles.liftReps, { color: colors.textSecondary }]}>
-                      {lift.reps} reps
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={styles.postsGrid}>
+                {lifts.map((lift) => (
+                  <TouchableOpacity
+                    key={lift.id}
+                    style={styles.postContainer}>
+                    <View style={[styles.liftContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderWidth: 1 }]}>
+                      <Text style={[styles.liftName, { color: colors.text }]}>
+                        {lift.exercise_name}
+                      </Text>
+                      <Text style={[styles.liftWeight, { color: colors.tint }]}>
+                        {lift.weight}kg
+                      </Text>
+                      <Text style={[styles.liftReps, { color: colors.textSecondary }]}>
+                        {lift.reps} reps
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           )
         )}
 
@@ -1095,57 +1041,59 @@ export default function ProfileScreen() {
               <Text style={[styles.progressText, { color: colors.textSecondary }]}>No workouts to show yet.</Text>
             </View>
           ) : (
-            <View style={styles.postsGrid}>
-              {workouts.map((workout) => (
-                <TouchableOpacity
-                  key={workout.id}
-                  style={styles.workoutCard}
-                  onPress={() => {
-                    setSelectedWorkoutId(workout.id);
-                    if (workout.progress_image_url) {
-                      setSelectedProgressImageUrl(workout.progress_image_url);
-                      setShowProgressImage(true);
-                      setWorkoutDetails(null);
-                      setShowProgressDetails(false);
-                    } else {
-                      setShowWorkoutModal(true);
-                    }
-                  }}
-                  activeOpacity={0.9}>
-                  {workout.progress_image_url ? (
-                    <View style={styles.workoutImageContainer}>
-                      <Image source={{ uri: workout.progress_image_url }} style={styles.workoutImage} />
-                      <View style={styles.workoutOverlay}>
-                        <View style={[styles.exerciseBadge, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-                          <Dumbbell size={14} color="#fff" />
-                          <Text style={styles.exerciseBadgeText}>
-                            {workout.exercises?.length || 0}
-                          </Text>
+            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={styles.postsGrid}>
+                {workouts.map((workout) => (
+                  <TouchableOpacity
+                    key={workout.id}
+                    style={styles.workoutCard}
+                    onPress={() => {
+                      setSelectedWorkoutId(workout.id);
+                      if (workout.progress_image_url) {
+                        setSelectedProgressImageUrl(workout.progress_image_url);
+                        setShowProgressImage(true);
+                        setWorkoutDetails(null);
+                        setShowProgressDetails(false);
+                      } else {
+                        setShowWorkoutModal(true);
+                      }
+                    }}
+                    activeOpacity={0.9}>
+                    {workout.progress_image_url ? (
+                      <View style={styles.workoutImageContainer}>
+                        <Image source={{ uri: workout.progress_image_url }} style={styles.workoutImage} />
+                        <View style={styles.workoutOverlay}>
+                          <View style={[styles.exerciseBadge, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+                            <Dumbbell size={14} color="#fff" />
+                            <Text style={styles.exerciseBadgeText}>
+                              {workout.exercises?.length || 0}
+                            </Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  ) : (
-                    <View style={[styles.noImageWorkoutContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <View style={[styles.workoutIconContainer, { backgroundColor: colors.tint + '20' }]}>
-                        <Dumbbell size={24} color={colors.tint} />
+                    ) : (
+                      <View style={[styles.noImageWorkoutContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                        <View style={[styles.workoutIconContainer, { backgroundColor: colors.tint + '20' }]}>
+                          <Dumbbell size={24} color={colors.tint} />
+                        </View>
+                        <Text style={[styles.workoutTitle, { color: colors.text }]} numberOfLines={1}>
+                          {workout.exercises?.[0]?.name || 'Workout'}
+                        </Text>
+                        <Text style={[styles.workoutSubtitle, { color: colors.textSecondary }]}>
+                          {workout.exercises?.length || 0} exercises
+                        </Text>
+                        <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>
+                          {new Date(workout.created_at).toLocaleDateString()}
+                        </Text>
                       </View>
-                      <Text style={[styles.workoutTitle, { color: colors.text }]} numberOfLines={1}>
-                        {workout.exercises?.[0]?.name || 'Workout'}
-                      </Text>
-                      <Text style={[styles.workoutSubtitle, { color: colors.textSecondary }]}>
-                        {workout.exercises?.length || 0} exercises
-                      </Text>
-                      <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>
-                        {new Date(workout.created_at).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           )
         )}
-      </ScrollView>
+      </View>
 
       <Modal
         visible={showingStories}
@@ -1474,12 +1422,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Layout.horizontalPadding,
     paddingTop: 50,
-    paddingBottom: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xs,
   },
   logo: {
     ...Typography.logo,
@@ -1487,11 +1432,12 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     position: 'absolute',
-    right: 15,
+    right: Spacing.lg,
     top: 50,
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 10,
+    gap: Spacing.md,
   },
   notificationButton: {
     padding: 8,
@@ -1502,7 +1448,7 @@ const styles = StyleSheet.create({
   },
   profileImageContainer: {
     alignSelf: 'center',
-    marginVertical: 20,
+    marginVertical: 12,
     padding: 3,
     borderRadius: 45,
     boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.2)',
@@ -1517,7 +1463,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    marginTop: 15,
+    marginTop: 10,
   },
   usernameContainer: {
     flexDirection: 'row',
@@ -1549,7 +1495,7 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 25,
+    marginTop: 15,
     paddingHorizontal: Layout.horizontalPadding,
     gap: 12,
     alignItems: 'center',
@@ -1599,8 +1545,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    paddingVertical: 15,
-    marginTop: 15,
+    paddingVertical: 10,
+    marginTop: 10,
     marginBottom: 5,
   },
   statItem: {
@@ -1768,13 +1714,13 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 6,
   },
   toggleButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     position: 'relative',
   },
   toggleText: {
