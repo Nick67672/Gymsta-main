@@ -11,6 +11,7 @@ import {
   Dimensions,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { LineChart } from 'react-native-chart-kit';
@@ -139,6 +140,9 @@ export default function WorkoutTrackerScreen() {
 
   // Add new state for per-set editing
   const [perSetData, setPerSetData] = useState<{ [exerciseId: string]: { reps: number[]; weight: number[] } }>({});
+
+  // Add new state for setup modal
+  const [showSetupModal, setShowSetupModal] = useState(false);
 
   // ---------- Session persistence ----------
   const sessionKey = useMemo(()=>`workoutSession_${user?.id || 'guest'}_${selectedDate}`,[user, selectedDate]);
@@ -287,11 +291,7 @@ export default function WorkoutTrackerScreen() {
       if (workoutError) {
         if (workoutError.code === '42P01') {
           console.log('Workout tables do not exist');
-          Alert.alert(
-            'Setup Required',
-            'Workout tracker tables need to be created. Please run the SQL migration in your Supabase dashboard:\n\n1. Go to your Supabase project\n2. Open SQL Editor\n3. Copy and paste the migration SQL\n4. Run the query',
-            [{ text: 'OK' }]
-          );
+          setShowSetupModal(true);
           return false;
         }
         console.error('Workout table test failed:', workoutError);
@@ -1329,6 +1329,28 @@ return (
         </View>
       </View>
     </Modal>
+
+    {/* Setup Guide Modal */}
+    <Modal
+      visible={showSetupModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowSetupModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalContent, { backgroundColor: colors.card }]}> 
+          <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Tracker Setup Required</Text>
+          <Text style={[styles.modalText, { color: colors.textSecondary }]}>It looks like the workout tables haven't been created in your Supabase project yet.</Text>
+          <Text style={[styles.modalText, { color: colors.textSecondary, marginTop:8 }]}>Follow the quick guide in <Text style={{fontWeight:'600'}}>WORKOUT_TRACKER_SETUP_GUIDE.md</Text> or run the SQL migration file <Text style={{fontWeight:'600'}}>supabase/migrations/20250101000003_create_workout_tracker_tables_safe.sql</Text>.</Text>
+          <View style={{ flexDirection:'row', gap:12, marginTop:24 }}>
+            <ThemedButton title="Open Guide" style={{ flex:1 }} onPress={() => {
+              Linking.openURL('https://github.com/your-org/Gymsta/blob/main/WORKOUT_TRACKER_SETUP_GUIDE.md');
+            }} />
+            <ThemedButton variant="secondary" title="Close" style={{ flex:1 }} onPress={() => setShowSetupModal(false)} />
+          </View>
+        </View>
+      </View>
+    </Modal>
   </View>
 );
 }
@@ -1755,5 +1777,8 @@ const styles = StyleSheet.create({
     maxWidth: 350,
     borderRadius: 12,
     padding: 20,
+  },
+  modalText: {
+    textAlign: 'center',
   },
 }); 
