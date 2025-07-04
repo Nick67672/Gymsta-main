@@ -623,9 +623,18 @@ export default function WorkoutTrackerScreen() {
         name: newWorkout.name || undefined,
         exercises: []
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating workout:', error);
-      Alert.alert('Error', 'Failed to create workout');
+      console.error('Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint
+      });
+      Alert.alert(
+        'Error', 
+        `Failed to create workout: ${error?.message || 'Unknown error'}\n\nCode: ${error?.code || 'N/A'}`
+      );
     }
   };
 
