@@ -30,13 +30,13 @@ export default function WorkoutHubScreen() {
   
   // Leaderboard state
   const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
-  const [leaderboardType, setLeaderboardType] = useState('Total Volume of PBs');
+  const [leaderboardType, setLeaderboardType] = useState('Weekly Volume');
   const [showDropdown, setShowDropdown] = useState(false);
   
   const { data: leaderboardData, loading: leaderboardLoading } = useLeaderboard(leaderboardScope, leaderboardType as any);
 
   const leaderboardTypes = [
-    'Total Volume of PBs',
+    'Weekly Volume',
     'Bench Press',
     'Squat',
     'Deadlift',

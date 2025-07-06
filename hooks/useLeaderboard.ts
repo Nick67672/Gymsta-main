@@ -11,7 +11,7 @@ export interface LeaderboardEntry {
 }
 
 type LeaderboardScope = 'global' | 'friends' | 'my-gym';
-type LeaderboardType = 'Total Volume of PBs' | 'Bench Press' | 'Squat' | 'Deadlift' | 'Highest Streak';
+type LeaderboardType = 'Weekly Volume' | 'Bench Press' | 'Squat' | 'Deadlift' | 'Highest Streak';
 
 export function useLeaderboard(scope: LeaderboardScope, type: LeaderboardType) {
   const { user } = useAuth();
@@ -29,8 +29,8 @@ export function useLeaderboard(scope: LeaderboardScope, type: LeaderboardType) {
 
         let leaderboardData: LeaderboardEntry[] = [];
 
-        if (type === 'Total Volume of PBs') {
-          leaderboardData = await fetchVolumeLeaderboard(scope);
+        if (type === 'Weekly Volume') {
+          leaderboardData = await fetchWeeklyVolumeLeaderboard(scope);
         } else if (type === 'Highest Streak') {
           leaderboardData = await fetchStreakLeaderboard(scope);
         } else {
@@ -50,7 +50,7 @@ export function useLeaderboard(scope: LeaderboardScope, type: LeaderboardType) {
     fetchLeaderboard();
   }, [user, scope, type]);
 
-  const fetchVolumeLeaderboard = async (scope: LeaderboardScope): Promise<LeaderboardEntry[]> => {
+  const fetchWeeklyVolumeLeaderboard = async (scope: LeaderboardScope): Promise<LeaderboardEntry[]> => {
     let query = supabase
       .from('workout_exercises')
       .select(`
@@ -60,6 +60,12 @@ export function useLeaderboard(scope: LeaderboardScope, type: LeaderboardType) {
         workouts(profiles!inner(id, username, avatar_url))
       `)
       .eq('workouts.is_completed', true);
+
+    // Filter to last 7 days
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 6);
+    const startDateStr = startDate.toISOString().split('T')[0];
+    query = query.gte('workouts.date', startDateStr);
 
     // Apply scope filtering
     if (scope === 'friends') {
