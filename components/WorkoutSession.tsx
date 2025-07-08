@@ -69,6 +69,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
   const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [workoutStartTime] = useState(new Date());
+  const [workoutElapsedTime, setWorkoutElapsedTime] = useState(0);
+  const [isWorkoutActive, setIsWorkoutActive] = useState(true);
   const [showRestModal, setShowRestModal] = useState(false);
   const [customRestTime, setCustomRestTime] = useState('90');
 
@@ -88,6 +90,23 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
     };
     setCurrentWorkout(updatedWorkout);
   }, []);
+
+  // Workout timer effect - continuous timer that updates every second
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    
+    if (isWorkoutActive) {
+      interval = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - workoutStartTime.getTime()) / 1000);
+        setWorkoutElapsedTime(elapsed);
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [workoutStartTime, isWorkoutActive]);
 
   // Rest timer effect
   useEffect(() => {
@@ -114,9 +133,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
   };
 
   const getElapsedTime = () => {
-    const now = new Date();
-    const elapsed = Math.floor((now.getTime() - workoutStartTime.getTime()) / 1000);
-    return formatTime(elapsed);
+    return formatTime(workoutElapsedTime);
   };
 
   const completeSet = (exerciseIndex: number, setIndex: number) => {
@@ -206,52 +223,98 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
   };
 
   const finishWorkout = async () => {
+    // Stop the workout timer
+    setIsWorkoutActive(false);
+    
+    // Calculate workout duration in minutes
+    const endTime = new Date();
+    const durationMinutes = Math.round((endTime.getTime() - workoutStartTime.getTime()) / (1000 * 60));
+    
     const completedWorkout: Workout = {
       ...currentWorkout,
       status: 'completed',
-      endTime: new Date()
+      endTime: endTime
     };
 
+    console.log('Finishing workout - creating new database entry');
+    console.log('User ID:', user?.id);
+
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to save your workout.');
+      return;
+    }
+
     try {
-      // Update workout in database
-      const { error: workoutError } = await supabase
-        .from('workouts')
-        .update({
-          is_completed: true,
-          notes: completedWorkout.notes
-        })
-        .eq('id', completedWorkout.id);
+      // Format exercises for JSONB storage with completed sets
+      const formattedExercises = completedWorkout.exercises.map(exercise => ({
+        id: exercise.id,
+        name: exercise.name,
+        sets: exercise.sets.map(set => ({
+          id: set.id,
+          reps: set.reps,
+          weight: set.weight,
+          completed: set.completed
+        })),
+        targetSets: exercise.targetSets,
+        targetReps: exercise.targetReps,
+        targetWeight: exercise.targetWeight,
+        notes: exercise.notes || null
+      }));
 
-      if (workoutError) throw workoutError;
-
-      // Update exercises with completed sets
-      for (const exercise of completedWorkout.exercises) {
-        for (const set of exercise.sets) {
+      // Calculate total volume for the workout
+      let totalVolume = 0;
+      completedWorkout.exercises.forEach(exercise => {
+        exercise.sets.forEach(set => {
           if (set.completed) {
-            const volume = set.reps * set.weight;
-            const { error: exerciseError } = await supabase
-              .from('workout_exercises')
-              .insert({
-                workout_id: completedWorkout.id,
-                name: exercise.name,
-                sets: 1,
-                reps: set.reps,
-                weight: set.weight,
-                volume: volume,
-                notes: exercise.notes,
-                order_index: completedWorkout.exercises.indexOf(exercise)
-              });
-
-            if (exerciseError) throw exerciseError;
+            totalVolume += set.reps * set.weight;
           }
-        }
+        });
+      });
+
+      console.log('Creating new completed workout with:', {
+        user_id: user.id,
+        name: completedWorkout.name || 'Untitled Workout',
+        date: completedWorkout.date,
+        is_completed: true,
+        duration_minutes: durationMinutes,
+        total_volume: totalVolume,
+        exerciseCount: formattedExercises.length
+      });
+
+      // Create a new workout entry in the database (not update existing)
+      const { data: newWorkout, error: workoutError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: user.id,
+          name: completedWorkout.name || 'Untitled Workout',
+          date: completedWorkout.date,
+          exercises: formattedExercises,
+          total_volume: totalVolume,
+          notes: completedWorkout.notes,
+          is_completed: true,
+          duration_minutes: durationMinutes
+        })
+        .select()
+        .single();
+
+      console.log('New workout creation result:', { newWorkout, workoutError });
+
+      if (workoutError) {
+        console.error('Failed to create completed workout:', workoutError);
+        throw new Error(`Failed to save workout: ${workoutError.message}`);
       }
 
+      console.log('Workout successfully saved as new entry with ID:', newWorkout.id);
+
       onWorkoutComplete(completedWorkout);
-      Alert.alert('Workout Complete!', 'Great job on completing your workout!');
+      Alert.alert(
+        'Workout Complete!', 
+        `Great job! You worked out for ${durationMinutes} minutes and lifted ${totalVolume}kg total volume.`,
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('Error completing workout:', error);
-      Alert.alert('Error', 'Failed to save workout. Please try again.');
+      Alert.alert('Error', `Failed to save workout: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -263,7 +326,10 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={() => {
+          setIsWorkoutActive(false);
+          onClose();
+        }}>
           <X size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>

@@ -90,22 +90,25 @@ export default function WorkoutTrackerScreen() {
   // Main state
   const [currentView, setCurrentView] = useState<'main' | 'create' | 'calendar' | 'session'>('main');
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [todaysWorkout, setTodaysWorkout] = useState<Workout | null>(null);
   const [currentWorkout, setCurrentWorkout] = useState<Workout | null>(null);
   const [progressData, setProgressData] = useState<ProgressData>({
-    weight: [],
     volume: [],
+    weight: [],
     streak: 0,
     oneRM: []
   });
   const [timeScale, setTimeScale] = useState<TimeScale>('30d');
   const [loading, setLoading] = useState(false);
+  const [selectedWorkoutFilter, setSelectedWorkoutFilter] = useState<string | null>(null);
 
   // Modals
   const [showTimeScaleModal, setShowTimeScaleModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
 
   // Form states
   const [workoutName, setWorkoutName] = useState('');
@@ -119,50 +122,50 @@ export default function WorkoutTrackerScreen() {
       loadWorkouts();
       loadProgressData();
     }
-  }, [user, timeScale]);
+  }, [user, timeScale, selectedWorkoutFilter]);
 
   // Load workouts
   const loadWorkouts = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('workouts')
-        .select(`
-          *,
-          workout_exercises (*)
-        `)
+      // Load planned workouts for main screen display
+      const { data: plannedData, error: plannedError } = await supabase
+        .from('planned_workouts')
+        .select('*')
         .eq('user_id', user.id)
-        .order('date', { ascending: false });
+        .order('date', { ascending: true });
       
-      if (error) throw error;
+      if (plannedError) throw plannedError;
       
-      const transformedWorkouts = data?.map(w => ({
+      const transformedPlannedWorkouts = plannedData?.map(w => ({
         id: w.id,
-        name: w.name || 'Untitled Workout',
+        name: w.name || 'Planned Workout',
         date: w.date,
-        exercises: w.workout_exercises?.map((e: any) => ({
-          id: e.id,
+        exercises: (w.exercises || []).map((e: any) => ({
+          id: e.id || Date.now().toString(),
           name: e.name,
-          sets: [],
-          targetSets: e.sets || 3,
-          targetReps: e.reps || 10,
-          targetWeight: e.weight || 0,
+          sets: (e.sets || []).map((s: any) => ({
+            id: s.id || Date.now().toString(),
+            reps: s.reps || 0,
+            weight: s.weight || 0,
+            completed: s.completed || false
+          })),
+          targetSets: e.targetSets || e.sets?.length || 3,
+          targetReps: e.targetReps || 10,
+          targetWeight: e.targetWeight || 0,
           notes: e.notes
-        })) || [],
-        status: (w.is_completed ? 'completed' : 'planned') as 'planned' | 'in_progress' | 'completed',
+        })),
+        status: 'planned' as 'planned' | 'in_progress' | 'completed',
         notes: w.notes
       })) || [];
       
-      setWorkouts(transformedWorkouts);
+      setWorkouts(transformedPlannedWorkouts);
       
-      // Find today's workout
-      const today = new Date().toISOString().split('T')[0];
-      const todayWorkout = transformedWorkouts.find(w => w.date === today);
-      setTodaysWorkout(todayWorkout || null);
+      console.log('Loaded planned workouts:', transformedPlannedWorkouts.length);
       
     } catch (error) {
-      console.error('Error loading workouts:', error);
+      console.error('Error loading planned workouts:', error);
     } finally {
       setLoading(false);
     }
@@ -177,13 +180,10 @@ export default function WorkoutTrackerScreen() {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
       
-      // Load workout data for progress
+      // Load COMPLETED workout data for progress using the workouts table
       const { data, error } = await supabase
         .from('workouts')
-        .select(`
-          date,
-          workout_exercises (name, weight, reps, sets, volume)
-        `)
+        .select('date, exercises, total_volume, duration_minutes, name')
         .eq('user_id', user.id)
         .eq('is_completed', true)
         .gte('date', startDate.toISOString().split('T')[0])
@@ -191,44 +191,56 @@ export default function WorkoutTrackerScreen() {
       
       if (error) throw error;
       
+      // Filter by selected workout if a filter is applied
+      let filteredData = data || [];
+      if (selectedWorkoutFilter) {
+        const selectedWorkout = workouts.find(w => w.id === selectedWorkoutFilter);
+        if (selectedWorkout) {
+          filteredData = filteredData.filter(workout => 
+            workout.name === selectedWorkout.name
+          );
+        }
+      }
+      
+      console.log('Loaded completed workouts for progress:', filteredData.length);
+      
       // Process data for charts
       const volumeData: { date: string; value: number }[] = [];
       const weightData: { date: string; value: number }[] = [];
       const oneRMData: { exercise: string; value: number }[] = [];
       
-      data?.forEach(workout => {
-        const totalVolume = workout.workout_exercises?.reduce((sum: number, ex: any) => 
-          sum + (ex.volume || 0), 0) || 0;
-        const maxWeight = workout.workout_exercises?.reduce((max: number, ex: any) => 
-          Math.max(max, ex.weight || 0), 0) || 0;
+      filteredData.forEach(workout => {
+        // Calculate total volume from exercises JSONB
+        let totalVolume = 0;
         
-        volumeData.push({ date: workout.date, value: totalVolume });
-        if (maxWeight > 0) {
-          weightData.push({ date: workout.date, value: maxWeight });
+        if (workout.exercises && Array.isArray(workout.exercises)) {
+          workout.exercises.forEach((exercise: any) => {
+            if (exercise.sets && Array.isArray(exercise.sets)) {
+              exercise.sets.forEach((set: any) => {
+                if (set.completed) { // Only count completed sets
+                  const volume = (set.reps || 0) * (set.weight || 0);
+                  totalVolume += volume;
+                }
+              });
+            }
+          });
         }
         
-        // Calculate 1RM for each exercise
-        workout.workout_exercises?.forEach((ex: any) => {
-          if (ex.weight && ex.reps) {
-            const oneRM = calculateOneRM(ex.weight, ex.reps);
-            const existing = oneRMData.find(item => item.exercise === ex.name);
-            if (!existing || oneRM > existing.value) {
-              if (existing) {
-                existing.value = oneRM;
-              } else {
-                oneRMData.push({ exercise: ex.name, value: oneRM });
-              }
-            }
-          }
+        // Use calculated volume or stored total_volume
+        const volume = workout.total_volume || totalVolume;
+        
+        volumeData.push({
+          date: workout.date,
+          value: volume
         });
       });
       
-      // Calculate streak
-      const streak = calculateWorkoutStreak(data || []);
+      // Calculate workout streak
+      const streak = calculateWorkoutStreak(filteredData || []);
       
       setProgressData({
-        weight: weightData,
         volume: volumeData,
+        weight: weightData,
         streak,
         oneRM: oneRMData
       });
@@ -359,59 +371,94 @@ export default function WorkoutTrackerScreen() {
     
     setLoading(true);
     try {
+      // Format exercises for JSONB storage
+      const formattedExercises = currentWorkout.exercises.map(exercise => ({
+        id: exercise.id,
+        name: exercise.name,
+        sets: exercise.sets.map(set => ({
+          id: set.id,
+          reps: set.reps,
+          weight: set.weight,
+          completed: set.completed
+        })),
+        targetSets: exercise.targetSets,
+        targetReps: exercise.targetReps,
+        targetWeight: exercise.targetWeight,
+        notes: exercise.notes || null
+      }));
+
+      console.log('Saving planned workout with data:', {
+        user_id: user.id,
+        name: currentWorkout.name || 'Planned Workout',
+        date: currentWorkout.date,
+        exerciseCount: formattedExercises.length
+      });
+
+      // Save workout to the planned_workouts table
       const { data: workoutData, error: workoutError } = await supabase
-        .from('workouts')
+        .from('planned_workouts')
         .insert({
           user_id: user.id,
-          name: currentWorkout.name,
+          name: currentWorkout.name || 'Planned Workout',
           date: currentWorkout.date,
-          notes: currentWorkout.notes,
-          is_completed: false
+          exercises: formattedExercises,
+          notes: currentWorkout.notes || null
         })
         .select()
         .single();
       
-      if (workoutError) throw workoutError;
+      console.log('Planned workout save result:', { workoutData, workoutError });
       
-      // Save exercises
-      for (const exercise of currentWorkout.exercises) {
-        const { error: exerciseError } = await supabase
-          .from('workout_exercises')
-          .insert({
-            workout_id: workoutData.id,
-            name: exercise.name,
-            sets: exercise.targetSets,
-            reps: exercise.targetReps,
-            weight: exercise.targetWeight,
-            volume: exercise.targetSets * exercise.targetReps * exercise.targetWeight,
-            notes: exercise.notes,
-            order_index: currentWorkout.exercises.indexOf(exercise)
-          });
-        
-        if (exerciseError) throw exerciseError;
-      }
+      if (workoutError) throw workoutError;
       
       setCurrentWorkout(null);
       setCurrentView('main');
       loadWorkouts();
-      Alert.alert('Success', 'Workout saved successfully!');
+      Alert.alert('Success', 'Planned workout saved successfully!');
       
     } catch (error) {
-      console.error('Error saving workout:', error);
-      Alert.alert('Error', 'Failed to save workout. Please try again.');
+      console.error('Error saving planned workout:', error);
+      Alert.alert('Error', 'Failed to save planned workout. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   // Start workout session
-  const startWorkoutSession = (workout: Workout) => {
-    setCurrentWorkout({
-      ...workout,
-      status: 'in_progress',
-      startTime: new Date()
-    });
-    setCurrentView('session');
+  const startWorkoutSession = async (workout: Workout) => {
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to start a workout.');
+      return;
+    }
+
+    console.log('Starting workout session for workout:', workout.id);
+    console.log('User ID:', user.id);
+
+    try {
+      setLoading(true);
+      
+      // Don't save to database yet - just start the session
+      // The workout will be saved when they press "Finish"
+      console.log('Starting workout session locally (not saving to DB yet)...');
+      
+      // Generate a new unique ID for this workout session
+      const sessionId = `workout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Start the workout session with a new ID
+      setCurrentWorkout({
+        ...workout,
+        id: sessionId, // Use new unique ID for this session
+        status: 'in_progress',
+        startTime: new Date()
+      });
+      setCurrentView('session');
+      
+    } catch (error) {
+      console.error('Error starting workout session:', error);
+      Alert.alert('Error', `Failed to start workout: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // update a planned set value
@@ -468,6 +515,109 @@ export default function WorkoutTrackerScreen() {
     setCurrentView('create');
   };
 
+  // Edit workout functions
+  const addExerciseToEditingWorkout = () => {
+    console.log('addExerciseToEditingWorkout called');
+    
+    if (!editingWorkout) {
+      Alert.alert('Error', 'No workout selected for editing.');
+      return;
+    }
+    
+    if (!exerciseName.trim()) {
+      Alert.alert('Error', 'Please enter an exercise name.');
+      return;
+    }
+    
+    const setsArr = setsList.map((s, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      reps: parseInt(s.reps) || 0,
+      weight: parseFloat(s.weight) || 0,
+      completed: false,
+    }));
+
+    const newExercise: Exercise = {
+      id: Date.now().toString(),
+      name: exerciseName.trim(),
+      sets: setsArr,
+      targetSets: setsArr.length,
+      targetReps: setsArr[0]?.reps || 0,
+      targetWeight: setsArr[0]?.weight || 0,
+    };
+    
+    console.log('Adding exercise to editingWorkout:', newExercise.name);
+    
+    setEditingWorkout(prev => prev ? {
+      ...prev,
+      exercises: [...prev.exercises, newExercise]
+    } : null);
+    
+    // Reset form and hide inline form
+    setExerciseName('');
+    setSetsList([{ reps: '0', weight: '0' }]);
+    setShowInlineExerciseForm(false);
+  };
+
+  const removeExerciseFromEditingWorkout = (exerciseId: string) => {
+    setEditingWorkout(prev => prev ? {
+      ...prev,
+      exercises: prev.exercises.filter(e => e.id !== exerciseId)
+    } : null);
+  };
+
+  const saveEditedWorkout = async () => {
+    if (!editingWorkout || !user) return;
+    
+    setLoading(true);
+    try {
+      // Format exercises for JSONB storage
+      const formattedExercises = editingWorkout.exercises.map(exercise => ({
+        id: exercise.id,
+        name: exercise.name,
+        sets: exercise.sets.map(set => ({
+          id: set.id,
+          reps: set.reps,
+          weight: set.weight,
+          completed: set.completed
+        })),
+        targetSets: exercise.targetSets,
+        targetReps: exercise.targetReps,
+        targetWeight: exercise.targetWeight,
+        notes: exercise.notes || null
+      }));
+
+      console.log('Updating planned workout with data:', {
+        id: editingWorkout.id,
+        name: editingWorkout.name,
+        exerciseCount: formattedExercises.length
+      });
+
+      // Update workout in the planned_workouts table
+      const { error: workoutError } = await supabase
+        .from('planned_workouts')
+        .update({
+          name: editingWorkout.name,
+          exercises: formattedExercises,
+          notes: editingWorkout.notes || null
+        })
+        .eq('id', editingWorkout.id);
+      
+      if (workoutError) throw workoutError;
+      
+      setEditingWorkout(null);
+      setShowEditWorkoutModal(false);
+      setShowInlineExerciseForm(false);
+      loadWorkouts();
+      Alert.alert('Success', 'Workout updated successfully!');
+      
+    } catch (error) {
+      console.error('Error updating planned workout:', error);
+      Alert.alert('Error', 'Failed to update workout. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Render main tracker screen
   const renderMainScreen = () => (
     <View style={styles.container}>
@@ -481,57 +631,75 @@ export default function WorkoutTrackerScreen() {
             <Calendar size={24} color={colors.tint} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: colors.tint }]}
+            style={[styles.planWorkoutButton, { backgroundColor: colors.tint }]}
             onPress={startNewWorkoutCreation}
           >
-            <Plus size={24} color="white" />
+            <Text style={styles.planWorkoutButtonText}>Plan workout</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Today's Workout Card */}
-        <View style={[styles.mainCard, { backgroundColor: colors.card }]}>
-          {todaysWorkout ? (
-            <>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Today's Workout: {todaysWorkout.name}
-              </Text>
-              <Text style={[styles.cardSubtitle, { color: colors.text }]}>
-                {todaysWorkout.exercises.length} exercises planned
-              </Text>
-              <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: colors.tint }]}
-                onPress={() => startWorkoutSession(todaysWorkout)}
-              >
-                <Play size={20} color="white" />
-                <Text style={styles.primaryButtonText}>Begin Workout</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                No workout planned today
-              </Text>
-              <Text style={[styles.cardSubtitle, { color: colors.text }]}>
-                Ready to get started?
-              </Text>
-              <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: colors.tint }]}
-                onPress={startNewWorkoutCreation}
-              >
-                <Plus size={20} color="white" />
-                <Text style={styles.primaryButtonText}>Start New Workout</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
+        {/* Planned Workouts Cards */}
+        {workouts.length > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Planned Workouts
+            </Text>
+            <View style={styles.workoutGrid}>
+              {workouts.map((workout) => (
+                <View key={workout.id} style={[styles.workoutGridCard, { backgroundColor: colors.card }]}>
+                  <View style={styles.workoutCardHeader}>
+                    <TouchableOpacity
+                      style={styles.editIconButton}
+                      onPress={() => {
+                        setEditingWorkout(workout);
+                        setShowEditWorkoutModal(true);
+                      }}
+                    >
+                      <Edit3 size={16} color={colors.text + '60'} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.workoutGridTitle, { color: colors.text }]}>
+                    {workout.name}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.beginWorkoutButton, { backgroundColor: colors.tint }]}
+                    onPress={() => startWorkoutSession(workout)}
+                  >
+                    <Play size={16} color="white" />
+                    <Text style={styles.beginWorkoutButtonText}>Begin Workout</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : (
+          <View style={[styles.emptyStateCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              No workouts planned
+            </Text>
+            <Text style={[styles.cardSubtitle, { color: colors.text }]}>
+              Ready to get started?
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { backgroundColor: colors.tint }]}
+              onPress={startNewWorkoutCreation}
+            >
+              <Plus size={20} color="white" />
+              <Text style={styles.primaryButtonText}>Plan Your First Workout</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Progress Section */}
         <ProgressCharts
           data={progressData}
           timeScale={timeScale}
           onTimeScalePress={() => setShowTimeScaleModal(true)}
+          plannedWorkouts={workouts.map(w => ({ id: w.id, name: w.name }))}
+          selectedWorkoutFilter={selectedWorkoutFilter}
+          onWorkoutFilterChange={setSelectedWorkoutFilter}
         />
       </ScrollView>
     </View>
@@ -661,19 +829,223 @@ export default function WorkoutTrackerScreen() {
   // Render modals
   const renderModals = () => (
     <>
-      {/* Exercise Creation Modal */}
-      <Modal visible={showExerciseModal} animationType="slide" transparent>
+      {/* Time Scale Modal */}
+      <Modal visible={showTimeScaleModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Time Range</Text>
+            
+            {(['7d', '30d', '3m', '1y'] as TimeScale[]).map(scale => (
+              <TouchableOpacity
+                key={scale}
+                style={[styles.timeScaleOption, timeScale === scale && { backgroundColor: colors.tint }]}
+                onPress={() => {
+                  setTimeScale(scale);
+                  setShowTimeScaleModal(false);
+                }}
+              >
+                <Text style={[styles.timeScaleOptionText, { 
+                  color: timeScale === scale ? 'white' : colors.text 
+                }]}>
+                  {scale === '7d' ? '7 Days' : scale === '30d' ? '30 Days' : scale === '3m' ? '3 Months' : '1 Year'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Workout Modal */}
+      <Modal 
+        visible={showEditWorkoutModal} 
+        animationType="slide" 
+        transparent
+        key={`edit-${editingWorkout?.id || 'none'}`}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => {
+                setShowEditWorkoutModal(false);
+                setShowInlineExerciseForm(false);
+              }}>
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Edit: {editingWorkout?.name}
+              </Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <ScrollView style={styles.modalScrollContent}>
+              {!showInlineExerciseForm ? (
+                // Exercise List View
+                <>
+                  {/* Exercises List */}
+                  {editingWorkout?.exercises.map((exercise) => (
+                    <View key={exercise.id} style={[styles.editExerciseCard, { backgroundColor: colors.background }]}>
+                      <View style={styles.exerciseHeader}>
+                        <Text style={[styles.exerciseName, { color: colors.text }]}>
+                          {exercise.name}
+                        </Text>
+                        <TouchableOpacity onPress={() => removeExerciseFromEditingWorkout(exercise.id)}>
+                          <Trash2 size={18} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={[styles.exerciseDetails, { color: colors.text }]}>
+                        {exercise.sets.length} sets • {exercise.targetReps} reps • {exercise.targetWeight}kg
+                      </Text>
+                    </View>
+                  ))}
+
+                  {/* Add Exercise Button */}
+                  <TouchableOpacity
+                    style={[styles.addButton, { backgroundColor: colors.tint, marginTop: 16 }]}
+                    onPress={() => {
+                      // Reset exercise form and show inline form
+                      setExerciseName('');
+                      setSetsList([{ reps: '0', weight: '0' }]);
+                      setShowInlineExerciseForm(true);
+                    }}
+                  >
+                    <Plus size={20} color="white" />
+                    <Text style={styles.addButtonText}>Add Exercise</Text>
+                  </TouchableOpacity>
+
+                  {/* Modal Actions for Exercise List View */}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, { backgroundColor: colors.background }]}
+                      onPress={() => {
+                        setShowEditWorkoutModal(false);
+                        setShowInlineExerciseForm(false);
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalButton, { backgroundColor: colors.tint }]}
+                      onPress={() => {
+                        saveEditedWorkout();
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, { color: 'white' }]}>Save Changes</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                // Inline Exercise Form View
+                <>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity onPress={() => setShowInlineExerciseForm(false)}>
+                      <X size={24} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
+                    <View style={{ width: 24 }} />
+                  </View>
+
+                  <AutocompleteDropdownContextProvider>
+                    <AutocompleteDropdown
+                      clearOnFocus={false}
+                      closeOnBlur={true}
+                      closeOnSubmit={false}
+                      showClear={false}
+                      direction="up"
+                      suggestionsListMaxHeight={180}
+                      dataSet={EXERCISE_OPTIONS.map((label) => ({ id: label, title: label }))}
+                      onSelectItem={(item) => setExerciseName(item?.title ?? '')}
+                      textInputProps={{
+                        placeholder: 'Exercise name',
+                        placeholderTextColor: colors.text + '80',
+                        autoCorrect: false,
+                        autoCapitalize: 'none',
+                        style: { color: colors.text, padding: 8 },
+                        value: exerciseName,
+                        onChangeText: (text) => setExerciseName(text),
+                      }}
+                      inputContainerStyle={{ backgroundColor: colors.background, borderRadius: 8, marginBottom: 16, zIndex: 50 }}
+                      suggestionsListContainerStyle={{ backgroundColor: colors.card, zIndex: 50 }}
+                    />
+                  </AutocompleteDropdownContextProvider>
+
+                  {/* Table Header */}
+                  <View style={styles.modalLabelRow}>
+                    <Text style={[styles.modalLabel, { color: colors.text }]}>Sets</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text }]}>Reps</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text }]}>Weight (kg)</Text>
+                  </View>
+
+                  {setsList.map((s, idx) => (
+                    <View key={idx.toString()} style={styles.modalSetRow}>
+                      <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
+                      <TextInput
+                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                        keyboardType="numeric"
+                        value={s.reps}
+                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
+                      />
+                      <TextInput
+                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                        keyboardType="numeric"
+                        value={s.weight}
+                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
+                      />
+                      {setsList.length>1 && (
+                        <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
+                          <Minus size={14} color={colors.tint} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+
+                  <TouchableOpacity style={styles.addSetInline} onPress={()=> {
+                    const last=setsList[setsList.length-1];
+                    setSetsList(prev=>[...prev,{ reps:last.reps, weight:last.weight }]);
+                  }}>
+                    <Plus size={16} color={colors.tint}/>
+                    <Text style={[styles.addSetInlineText,{color:colors.tint}]}> Add Set</Text>
+                  </TouchableOpacity>
+
+                  {/* Action buttons */}
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, { backgroundColor: colors.background }]}
+                      onPress={() => {
+                        setShowInlineExerciseForm(false);
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.modalButton, { backgroundColor: colors.tint }]}
+                      onPress={() => {
+                        addExerciseToEditingWorkout();
+                        setShowInlineExerciseForm(false);
+                      }}
+                    >
+                      <Text style={[styles.modalButtonText, { color: 'white' }]}>Add Exercise</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+
+          </View>
+        </View>
+      </Modal>
+      
+      {/* Exercise Creation Modal - For creating new workouts */}
+      <Modal 
+        visible={showExerciseModal}
+        animationType="slide" 
+        transparent
+      >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
             
-            {/* DEBUG INFO - REMOVE IN PRODUCTION */}
-            <View style={{ marginVertical: 8, padding: 8, backgroundColor: '#222', borderRadius: 6 }}>
-              <Text style={{ color: 'orange', fontSize: 12 }}>DEBUG:</Text>
-              <Text style={{ color: 'white', fontSize: 12 }}>exerciseName: {exerciseName || '[empty]'}</Text>
-              <Text style={{ color: 'white', fontSize: 12 }}>currentWorkout: {currentWorkout ? 'SET' : 'NULL'}</Text>
-            </View>
-
             <AutocompleteDropdownContextProvider>
               <AutocompleteDropdown
                 clearOnFocus={false}
@@ -740,7 +1112,9 @@ export default function WorkoutTrackerScreen() {
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.background }]}
-                onPress={() => setShowExerciseModal(false)}
+                onPress={() => {
+                  setShowExerciseModal(false);
+                }}
               >
                 <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
@@ -748,41 +1122,12 @@ export default function WorkoutTrackerScreen() {
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: colors.tint }]}
                 onPress={() => {
-                  console.log('Add Exercise button pressed');
-                  console.log('Current exerciseName:', exerciseName);
-                  console.log('Current currentWorkout:', currentWorkout);
                   addExerciseToWorkout();
                 }}
               >
                 <Text style={[styles.modalButtonText, { color: 'white' }]}>Add Exercise</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Time Scale Modal */}
-      <Modal visible={showTimeScaleModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Time Range</Text>
-            
-            {(['7d', '30d', '3m', '1y'] as TimeScale[]).map(scale => (
-              <TouchableOpacity
-                key={scale}
-                style={[styles.timeScaleOption, timeScale === scale && { backgroundColor: colors.tint }]}
-                onPress={() => {
-                  setTimeScale(scale);
-                  setShowTimeScaleModal(false);
-                }}
-              >
-                <Text style={[styles.timeScaleOptionText, { 
-                  color: timeScale === scale ? 'white' : colors.text 
-                }]}>
-                  {scale === '7d' ? '7 Days' : scale === '30d' ? '30 Days' : scale === '3m' ? '3 Months' : '1 Year'}
-                </Text>
-              </TouchableOpacity>
-            ))}
           </View>
         </View>
       </Modal>
@@ -1165,5 +1510,92 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     marginBottom: 16,
+  },
+  planWorkoutButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  planWorkoutButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  workoutGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 24,
+  },
+  workoutGridCard: {
+    width: '48%',
+    minWidth: 150,
+    borderRadius: 12,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    alignItems: 'center',
+  },
+  workoutGridTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  beginWorkoutButton: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  beginWorkoutButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyStateCard: {
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+  },
+  workoutCardHeader: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editIconButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalScrollContent: {
+    flex: 1,
+  },
+  editExerciseCard: {
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
   },
 });

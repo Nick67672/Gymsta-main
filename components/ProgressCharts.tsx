@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Dimensions,
   TouchableOpacity,
+  Modal,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
-import { ChevronDown, TrendingUp, Target, Dumbbell } from 'lucide-react-native';
+import { ChevronDown, TrendingUp, Target, Dumbbell, Filter } from 'lucide-react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -20,17 +21,32 @@ interface ProgressData {
   oneRM: { exercise: string; value: number }[];
 }
 
+interface PlannedWorkout {
+  id: string;
+  name: string;
+}
+
 type TimeScale = '7d' | '30d' | '3m' | '1y';
 
 interface ProgressChartsProps {
   data: ProgressData;
   timeScale: TimeScale;
   onTimeScalePress: () => void;
+  plannedWorkouts: PlannedWorkout[];
+  selectedWorkoutFilter: string | null;
+  onWorkoutFilterChange: (workoutId: string | null) => void;
 }
 
-export default function ProgressCharts({ data, timeScale, onTimeScalePress }: ProgressChartsProps) {
+export default function ProgressCharts({ data, timeScale, onTimeScalePress, plannedWorkouts, selectedWorkoutFilter, onWorkoutFilterChange }: ProgressChartsProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const [showWorkoutFilterModal, setShowWorkoutFilterModal] = useState(false);
+
+  const getSelectedWorkoutName = () => {
+    if (!selectedWorkoutFilter) return 'All Workouts';
+    const workout = plannedWorkouts.find(w => w.id === selectedWorkoutFilter);
+    return workout?.name || 'All Workouts';
+  };
 
   const chartConfig = {
     backgroundGradientFrom: colors.card,
@@ -202,15 +218,27 @@ export default function ProgressCharts({ data, timeScale, onTimeScalePress }: Pr
     <View style={[styles.container, { backgroundColor: colors.card }]}>
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Progress</Text>
-        <TouchableOpacity
-          style={styles.timeScaleButton}
-          onPress={onTimeScalePress}
-        >
-          <Text style={[styles.timeScaleText, { color: colors.tint }]}>
-            {getTimeScaleLabel()}
-          </Text>
-          <ChevronDown size={16} color={colors.tint} />
-        </TouchableOpacity>
+        <View style={styles.headerFilters}>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowWorkoutFilterModal(true)}
+          >
+            <Filter size={14} color={colors.tint} />
+            <Text style={[styles.filterText, { color: colors.tint }]}>
+              {getSelectedWorkoutName()}
+            </Text>
+            <ChevronDown size={14} color={colors.tint} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.timeScaleButton}
+            onPress={onTimeScalePress}
+          >
+            <Text style={[styles.timeScaleText, { color: colors.tint }]}>
+              {getTimeScaleLabel()}
+            </Text>
+            <ChevronDown size={16} color={colors.tint} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats Cards */}
@@ -250,6 +278,54 @@ export default function ProgressCharts({ data, timeScale, onTimeScalePress }: Pr
       {renderVolumeChart()}
       {renderWeightChart()}
       {renderOneRMChart()}
+
+      {/* Workout Filter Modal */}
+      <Modal visible={showWorkoutFilterModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Filter by Workout</Text>
+            
+            <TouchableOpacity
+              style={[
+                styles.workoutOption, 
+                { borderColor: colors.background },
+                selectedWorkoutFilter === null && { backgroundColor: colors.tint }
+              ]}
+              onPress={() => {
+                onWorkoutFilterChange(null);
+                setShowWorkoutFilterModal(false);
+              }}
+            >
+              <Text style={[styles.workoutOptionText, { 
+                color: selectedWorkoutFilter === null ? 'white' : colors.text 
+              }]}>
+                All Workouts
+              </Text>
+            </TouchableOpacity>
+
+            {plannedWorkouts.map(workout => (
+              <TouchableOpacity
+                key={workout.id}
+                style={[
+                  styles.workoutOption, 
+                  { borderColor: colors.background },
+                  selectedWorkoutFilter === workout.id && { backgroundColor: colors.tint }
+                ]}
+                onPress={() => {
+                  onWorkoutFilterChange(workout.id);
+                  setShowWorkoutFilterModal(false);
+                }}
+              >
+                <Text style={[styles.workoutOptionText, { 
+                  color: selectedWorkoutFilter === workout.id ? 'white' : colors.text 
+                }]}>
+                  {workout.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -274,6 +350,20 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  headerFilters: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   timeScaleButton: {
     flexDirection: 'row',
@@ -326,5 +416,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     opacity: 0.7,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '80%',
+    padding: 20,
+    borderRadius: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  workoutOption: {
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  workoutOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 }); 
