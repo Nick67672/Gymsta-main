@@ -13,7 +13,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showGymSuggestions, setShowGymSuggestions] = useState(false);
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
 
   // Check auth session on component mount
@@ -99,6 +99,11 @@ export default function RegisterScreen() {
 
       if (!profile) {
         throw new Error('Failed to create profile');
+      }
+
+      // If the user selected Arete gym, switch to dark theme by default
+      if (gym.trim().toLowerCase() === 'arete') {
+        setTheme('dark');
       }
 
       // Redirect to home screen on success
@@ -293,5 +298,5 @@ const styles = StyleSheet.create({
 });
 
 const GYM_LIST = [
-'1Rebel Broadgate','1Rebel South Bank','1Rebel St Mary Axe','1Rebel Victoria','Activhealth Fitness','Barrys', 'Bootcamp','Barrecore','Bermondsey Gym','Blok','Bodyism','Bodyspace','BXR','Club Health','Core Collective','E by Equinox','Equinox','F45 Training','Finsbury Park Gym','Fitness First','Frame Kings Cross','KX Life','Lanserhof at the Arts Club','Psycle','Pure Gym London Acton','Pure Gym London Aldgate','Pure Gym London Angel','Pure Gym London Bank','Pure Gym London Bayswater','Pure Gym London Beckton','Pure Gym London Bethnal Green','Pure Gym London Borough','Pure Gym London Bow Wharf','Pure Gym London Bromley','Pure Gym London Camberwell New Road','Pure Gym London Camberwell Southampton Way','Pure Gym London Camden','Pure Gym London Canary Wharf','Pure Gym London Catford Rushey Green','Pure Gym London Charlton','Pure Gym London Clapham','Pure Gym London Colindale','Pure Gym London Crouch End','Pure Gym London Croydon','Pure Gym London Ealing Broadway','Pure Gym London East India Dock','Pure Gym London East Sheen','Pure Gym London Edgware','Pure Gym London Enfield','Pure Gym London Farringdon','Pure Gym London Feltham','Pure Gym London Finchley','Pure Gym London Fulham','Pure Gym London Piccadilly','Pure Gym Waterloo','Studio Fix','Sweat IT','The Engine Room','The Foundry','Third Space','Trib3','Virgin Active','Workshop',
+'Arete'
 ];

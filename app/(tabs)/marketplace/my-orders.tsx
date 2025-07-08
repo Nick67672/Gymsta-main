@@ -19,6 +19,7 @@ import { useTheme } from "@/context/ThemeContext";
 import Colors from "@/constants/Colors";
 import { ArrowLeft } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { Spacing } from "@/constants/Spacing";
 
 // This type can be shared or moved to a types file
 type Order = {
@@ -215,7 +216,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xxxl,
+    paddingBottom: Spacing.md,
     borderBottomWidth: 1,
   },
   headerTitle: {

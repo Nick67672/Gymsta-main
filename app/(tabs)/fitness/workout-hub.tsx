@@ -20,34 +20,28 @@ import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { useWorkoutStats } from '@/hooks/useWorkoutStats';
+import { useLeaderboard } from '@/hooks/useLeaderboard';
 
 export default function WorkoutHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { stats, loading: statsLoading } = useWorkoutStats();
   
   // Leaderboard state
   const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
-  const [leaderboardType, setLeaderboardType] = useState('Total Volume of PBs');
+  const [leaderboardType, setLeaderboardType] = useState('Weekly Volume');
   const [showDropdown, setShowDropdown] = useState(false);
   
+  const { data: leaderboardData, loading: leaderboardLoading } = useLeaderboard(leaderboardScope, leaderboardType as any);
+
   const leaderboardTypes = [
-    'Total Volume of PBs',
+    'Weekly Volume',
     'Bench Press',
     'Squat',
     'Deadlift',
     'Highest Streak'
   ];
-
-  // Placeholder for real leaderboard data (replace with your backend data)
-  // Each entry: { rank, userId, name, value, avatarUrl? }
-  type LeaderboardEntry = {
-    rank: number;
-    userId: string;
-    name: string;
-    value: string;
-    avatarUrl?: string;
-  };
-  const leaderboardData: LeaderboardEntry[] = [];
 
   // Example usage: router.push(`/profile/${userId}`)
   const handleProfilePress = (userId: string) => {
@@ -118,7 +112,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: colors.tint + '15' }]}>
                 <Play size={20} color={colors.tint} />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.weeklyWorkouts ?? 0}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Workouts This Week</Text>
             </View>
             
@@ -126,7 +120,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#4CAF50' + '15' }]}>
                 <BarChart3 size={20} color="#4CAF50" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0kg</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${(stats?.totalVolume ?? 0).toFixed(0)}kg`}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
             </View>
             
@@ -134,7 +128,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#FF9800' + '15' }]}>
                 <Clock size={20} color="#FF9800" />
           </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0min</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${stats?.averageDuration ?? 0}min`}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg Duration</Text>
         </View>
 
@@ -142,7 +136,7 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#9C27B0' + '15' }]}>
                 <Award size={20} color="#9C27B0" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>0</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.personalRecords ?? 0}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Personal Records</Text>
             </View>
           </View>

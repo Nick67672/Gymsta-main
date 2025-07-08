@@ -380,7 +380,7 @@ export default function MarketplaceScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* Featured Products */}
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Featured</Text>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>My Gym</Text>
       <View style={styles.featuredGrid}>
         {featuredProducts.map(item => (
           <TouchableOpacity 

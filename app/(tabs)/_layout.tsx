@@ -174,19 +174,15 @@ export default function TabLayout() {
         }}
         listeners={{
           tabPress: (e) => {
+            e.preventDefault();
+
             if (!isAuthenticated) {
-              e.preventDefault();
               showAuthModal();
               return;
             }
 
-            const isProfileTab = segments[0] === 'profile';
-
-            // If on a nested screen in the profile tab, navigate to the root.
-            if (isProfileTab && segments.length > 1) {
-              e.preventDefault();
-              router.push('/(tabs)/profile');
-            }
+            // Always navigate to the root of the profile tab (reset stack)
+            router.replace('/profile');
           },
         }}
       />
