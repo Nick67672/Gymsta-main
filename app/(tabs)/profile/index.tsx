@@ -62,7 +62,7 @@ interface Post {
 
 interface WorkoutSummary {
   id: string;
-  progress_image_url: string | null;
+  progress_image_url?: string | null;
   created_at: string;
   exercises: {
     name: string;
@@ -230,23 +230,23 @@ export default function ProfileScreen() {
       // Load user's workout progress
       const { data: workoutsData, error: workoutsError } = await supabase
         .from('workouts')
-        .select('id, created_at, progress_image_url, workout_exercises(name)')
+        .select('id, created_at, exercises')
         .eq('user_id', user.id)
+        .eq('is_completed', true)
         .order('created_at', { ascending: false });
 
       if (workoutsError) {
         console.error('Error loading workouts for progress tab:', workoutsError);
-        return;
+      } else {
+        // Transform to attach exercises array for legacy UI
+        const transformed = (workoutsData || []).map((w: any) => ({
+          ...w,
+          exercises: w.exercises || [],
+        }));
+
+        console.log('Loaded workouts for progress tab:', transformed.length);
+        setWorkouts(transformed);
       }
-
-      // Transform to attach exercises array for legacy UI
-      const transformed = (workoutsData || []).map((w: any) => ({
-        ...w,
-        exercises: w.workout_exercises || [],
-      }));
-
-      console.log('Loaded workouts for progress tab:', transformed.length);
-      setWorkouts(transformed);
 
       // Transform the data to include counts and story status
       setProfile({
@@ -273,8 +273,9 @@ export default function ProfileScreen() {
 
       const { data: workoutsData, error: workoutsError } = await supabase
         .from('workouts')
-        .select('id, created_at, progress_image_url, workout_exercises(name)')
+        .select('id, created_at, exercises')
         .eq('user_id', user.id)
+        .eq('is_completed', true)
         .order('created_at', { ascending: false });
 
       if (workoutsError) {
@@ -285,7 +286,7 @@ export default function ProfileScreen() {
       // Transform to attach exercises array for legacy UI
       const transformed = (workoutsData || []).map((w: any) => ({
         ...w,
-        exercises: w.workout_exercises || [],
+        exercises: w.exercises || [],
       }));
 
       console.log('Loaded workouts for progress tab:', transformed.length);

@@ -34,7 +34,7 @@ export interface Workout {
   user_id: string;
   exercises: any[];
   created_at: string;
-  progress_image_url: string | null;
+  progress_image_url?: string | null;
   profiles: any;
 }
 

@@ -24,14 +24,31 @@ export function useWorkoutStats() {
         setLoading(true);
         setError(null);
 
-        // 1. Lifetime stats via RPC
-        const { data: lifetime, error: lifetimeErr } = await supabase.rpc('get_workout_stats', {
-          p_user_id: user.id,
+        // 1. Get all completed workouts for total volume and average duration
+        const { data: workouts, error: workoutsErr } = await supabase
+          .from('workouts')
+          .select('total_volume, duration_minutes')
+          .eq('user_id', user.id)
+          .eq('is_completed', true);
+
+        if (workoutsErr) throw workoutsErr;
+
+        // Calculate total volume and average duration
+        let totalVolume = 0;
+        let totalDuration = 0;
+        let validDurations = 0;
+
+        workouts?.forEach(workout => {
+          if (workout.total_volume) {
+            totalVolume += workout.total_volume;
+          }
+          if (workout.duration_minutes) {
+            totalDuration += workout.duration_minutes;
+            validDurations++;
+          }
         });
 
-        if (lifetimeErr) throw lifetimeErr;
-
-        const lifetimeStats = (Array.isArray(lifetime) && lifetime.length > 0) ? lifetime[0] : lifetime;
+        const averageDuration = validDurations > 0 ? Math.round(totalDuration / validDurations) : 0;
 
         // 2. Weekly workouts count (last 7 days, completed only)
         const sevenDaysAgo = formatISO(subDays(new Date(), 6), { representation: 'date' });
@@ -64,13 +81,10 @@ export function useWorkoutStats() {
           console.warn('PR query failed', e);
         }
 
-        // NOTE: avg_duration from RPC is interval text, convert mins if provided else 0
-        const avgDurationMinutes = lifetimeStats?.avg_duration ? parseInt(lifetimeStats.avg_duration) || 0 : 0;
-
         setStats({
           weeklyWorkouts: weeklyCount || 0,
-          totalVolume: Number(lifetimeStats?.total_volume || 0),
-          averageDuration: avgDurationMinutes,
+          totalVolume: totalVolume,
+          averageDuration: averageDuration,
           personalRecords: prCount,
         });
       } catch (err: any) {

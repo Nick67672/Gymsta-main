@@ -41,7 +41,7 @@ interface Profile {
 
 interface WorkoutSummary {
   id: string;
-  progress_image_url: string | null;
+  progress_image_url?: string | null;
   created_at: string;
   exercises: {
     name: string;
@@ -221,7 +221,7 @@ export default function UserProfileScreen() {
       // Load user's workouts
       const { data: workoutsData, error: workoutsError } = await supabase
         .from('workouts')
-        .select('id, created_at, progress_image_url, exercises')
+        .select('id, created_at, exercises')
         .eq('user_id', profileData.id)
         .order('created_at', { ascending: false });
 

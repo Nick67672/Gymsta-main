@@ -13,6 +13,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -31,6 +32,7 @@ import {
   Target,
   Clock,
   ChevronDown,
+  ChevronLeft,
   Edit3,
   Trash2,
   CheckCircle,
@@ -622,7 +624,17 @@ export default function WorkoutTrackerScreen() {
   const renderMainScreen = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Workout Tracker</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <ChevronLeft size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.title, { color: colors.text }]}>Workout Tracker</Text>
+        </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: colors.card }]}
@@ -728,24 +740,6 @@ export default function WorkoutTrackerScreen() {
             }}
             style={styles.modalInput}
           />
-          <TouchableOpacity onPress={()=> setShowDatePicker(true)} style={[styles.datePickerField,{backgroundColor:colors.background}]}>
-            <Text style={{color:colors.text}}>{new Date(workoutDate).toLocaleDateString()}</Text>
-          </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={new Date(workoutDate)}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-              onChange={(event,date)=>{
-                if (Platform.OS !== 'ios') setShowDatePicker(false);
-                if (date){
-                  const iso = date.toISOString().split('T')[0];
-                  setWorkoutDate(iso);
-                  setCurrentWorkout(prev=> prev?{...prev, date:iso}:prev);
-                }
-              }}
-            />
-          )}
 
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: colors.tint, marginTop:16 }]}
@@ -1215,13 +1209,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  headerLeft: {
+    width: 44, // Fixed width for back button
+    alignItems: 'center',
+  },
+  headerCenter: {
+    flex: 1, // Center the title
+    alignItems: 'center',
   },
   headerActions: {
     flexDirection: 'row',
     gap: 12,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
   },
   iconButton: {
     width: 44,
@@ -1569,6 +1571,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
+    marginBottom: 32,
   },
   workoutCardHeader: {
     position: 'absolute',
@@ -1597,5 +1600,12 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 12,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

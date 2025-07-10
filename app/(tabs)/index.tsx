@@ -384,14 +384,12 @@ export default function HomeScreen() {
           user_id,
           exercises,
           created_at,
-          progress_image_url,
           profiles!inner (
             username,
             avatar_url,
             gym
           )
         `)
-        .eq('is_private', false)
         .eq('profiles.gym', currentUserGym)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -467,7 +465,6 @@ export default function HomeScreen() {
           user_id,
           exercises,
           created_at,
-          progress_image_url,
           profiles (
             username,
             avatar_url,

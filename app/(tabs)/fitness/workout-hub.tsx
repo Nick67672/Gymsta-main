@@ -6,6 +6,7 @@ import {
   Target, 
   Dumbbell, 
   ChevronRight, 
+  ChevronLeft,
   Play,
   BarChart3, 
   Clock,
@@ -58,10 +59,23 @@ export default function WorkoutHubScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Workout Hub</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Track your fitness journey
-        </Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={[styles.backButton, { backgroundColor: colors.card }]}
+            onPress={() => router.back()}
+          >
+            <ChevronLeft size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.title, { color: colors.text }]}>Workout Hub</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Track your fitness journey
+          </Text>
+        </View>
+        <View style={styles.headerRight}>
+          {/* Empty space for balance */}
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -307,6 +321,25 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    width: 60,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  headerRight: {
+    width: 60,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   title: {

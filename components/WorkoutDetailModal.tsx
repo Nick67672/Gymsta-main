@@ -59,7 +59,6 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose, hidePr
           date,
           exercises,
           caption,
-          progress_image_url,
           profiles (
             username,
             avatar_url
