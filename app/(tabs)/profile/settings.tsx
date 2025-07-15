@@ -88,8 +88,15 @@ export default function SettingsScreen() {
       
       if (error) throw error;
 
-      // Sign out and redirect to home
-      await supabase.auth.clearSession();
+      // Force clear session and redirect to home
+      // Use signOut with scope: 'local' to ensure local session is cleared even if server call fails
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (signOutError) {
+        console.warn('Sign out failed after account deletion, but continuing with redirect:', signOutError);
+      }
+      
+      // Force redirect regardless of signOut success
       router.replace('/');
     } catch (err) {
       console.error('Error deleting account:', err);

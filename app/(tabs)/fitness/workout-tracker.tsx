@@ -12,6 +12,7 @@ import {
   SafeAreaView,
   Dimensions,
   Platform,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -37,10 +38,10 @@ import {
   Trash2,
   CheckCircle,
   X,
-  Minus
+  Minus,
+  Search,
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { AutocompleteDropdown, AutocompleteDropdownContextProvider } from 'react-native-autocomplete-dropdown';
 import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -76,8 +77,8 @@ interface Workout {
 }
 
 interface ProgressData {
-  weight: { date: string; value: number }[];
   volume: { date: string; value: number }[];
+  weight: { date: string; exercise: string; value: number }[];
   streak: number;
   oneRM: { exercise: string; value: number }[];
 }
@@ -106,11 +107,13 @@ export default function WorkoutTrackerScreen() {
   // Modals
   const [showTimeScaleModal, setShowTimeScaleModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [showExercisePickerModal, setShowExercisePickerModal] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
 
   // Form states
   const [workoutName, setWorkoutName] = useState('');
@@ -208,7 +211,7 @@ export default function WorkoutTrackerScreen() {
       
       // Process data for charts
       const volumeData: { date: string; value: number }[] = [];
-      const weightData: { date: string; value: number }[] = [];
+      const weightData: { date: string; exercise: string; value: number }[] = [];
       const oneRMData: { exercise: string; value: number }[] = [];
       
       filteredData.forEach(workout => {
@@ -627,7 +630,7 @@ export default function WorkoutTrackerScreen() {
         <View style={styles.headerLeft}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => router.push('/fitness')}
           >
             <ChevronLeft size={24} color={colors.text} />
           </TouchableOpacity>
@@ -939,29 +942,22 @@ export default function WorkoutTrackerScreen() {
                     <View style={{ width: 24 }} />
                   </View>
 
-                  <AutocompleteDropdownContextProvider>
-                    <AutocompleteDropdown
-                      clearOnFocus={false}
-                      closeOnBlur={true}
-                      closeOnSubmit={false}
-                      showClear={false}
-                      direction="up"
-                      suggestionsListMaxHeight={180}
-                      dataSet={EXERCISE_OPTIONS.map((label) => ({ id: label, title: label }))}
-                      onSelectItem={(item) => setExerciseName(item?.title ?? '')}
-                      textInputProps={{
-                        placeholder: 'Exercise name',
-                        placeholderTextColor: colors.text + '80',
-                        autoCorrect: false,
-                        autoCapitalize: 'none',
-                        style: { color: colors.text, padding: 8 },
-                        value: exerciseName,
-                        onChangeText: (text) => setExerciseName(text),
-                      }}
-                      inputContainerStyle={{ backgroundColor: colors.background, borderRadius: 8, marginBottom: 16, zIndex: 50 }}
-                      suggestionsListContainerStyle={{ backgroundColor: colors.card, zIndex: 50 }}
-                    />
-                  </AutocompleteDropdownContextProvider>
+                  {/* Exercise Name Input */}
+                  <TouchableOpacity
+                    style={[styles.exerciseInput, { backgroundColor: colors.background }]}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    onPress={() => {
+                      console.log('Inline exercise input pressed!'); // Debug log
+                      setExerciseSearchQuery('');
+                      setShowExercisePickerModal(true);
+                    }}
+                  >
+                    <Text style={[styles.exerciseInputText, { color: exerciseName ? colors.text : colors.text + '80' }]}>
+                      {exerciseName || 'Select exercise...'}
+                    </Text>
+                    <ChevronDown size={20} color={colors.text + '80'} />
+                  </TouchableOpacity>
 
                   {/* Table Header */}
                   <View style={styles.modalLabelRow}>
@@ -1030,39 +1026,42 @@ export default function WorkoutTrackerScreen() {
         </View>
       </Modal>
       
-      {/* Exercise Creation Modal - For creating new workouts */}
+            {/* Exercise Creation Modal - For creating new workouts */}
       <Modal 
         visible={showExerciseModal}
         animationType="slide" 
         transparent
+        onRequestClose={() => setShowExerciseModal(false)}
+        supportedOrientations={['portrait']}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1}
+          onPress={() => setShowExerciseModal(false)}
+        >
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.modalContent, { backgroundColor: colors.card }]}
+          >
             <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
             
-            <AutocompleteDropdownContextProvider>
-              <AutocompleteDropdown
-                clearOnFocus={false}
-                closeOnBlur={true}
-                closeOnSubmit={false}
-                showClear={false}
-                direction="up"
-                suggestionsListMaxHeight={180}
-                dataSet={EXERCISE_OPTIONS.map((label) => ({ id: label, title: label }))}
-                onSelectItem={(item) => setExerciseName(item?.title ?? '')}
-                textInputProps={{
-                  placeholder: 'Exercise name',
-                  placeholderTextColor: colors.text + '80',
-                  autoCorrect: false,
-                  autoCapitalize: 'none',
-                  style: { color: colors.text, padding: 8 },
-                  value: exerciseName,
-                  onChangeText: (text) => setExerciseName(text),
-                }}
-                inputContainerStyle={{ backgroundColor: colors.background, borderRadius: 8, marginBottom: 16, zIndex: 50 }}
-                suggestionsListContainerStyle={{ backgroundColor: colors.card, zIndex: 50 }}
-              />
-            </AutocompleteDropdownContextProvider>
+            {/* Exercise Name Input */}
+            <TouchableOpacity
+              style={[styles.exerciseInput, { backgroundColor: colors.background }]}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => {
+                console.log('Exercise input pressed!'); // Debug log
+                setExerciseSearchQuery('');
+                setShowExercisePickerModal(true);
+              }}
+            >
+              <Text style={[styles.exerciseInputText, { color: exerciseName ? colors.text : colors.text + '80' }]}>
+                {exerciseName || 'Select exercise...'}
+              </Text>
+              <ChevronDown size={20} color={colors.text + '80'} />
+            </TouchableOpacity>
 
             {/* Table Header */}
             <View style={styles.modalLabelRow}>
@@ -1122,8 +1121,79 @@ export default function WorkoutTrackerScreen() {
                 <Text style={[styles.modalButtonText, { color: 'white' }]}>Add Exercise</Text>
               </TouchableOpacity>
             </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Exercise Picker Modal - iOS Compatible */}
+      <Modal
+        visible={showExercisePickerModal}
+        animationType="slide"
+        transparent={false}
+        presentationStyle="formSheet"
+        onRequestClose={() => setShowExercisePickerModal(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={[{ flex: 1, backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity 
+                onPress={() => setShowExercisePickerModal(false)}
+                activeOpacity={0.7}
+                style={{ padding: 8 }}
+              >
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Select Exercise</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <View style={[styles.exercisePickerHeader, { backgroundColor: colors.card, marginHorizontal: 16, marginBottom: 8 }]}>
+              <Search size={20} color={colors.text + '80'} />
+              <TextInput
+                placeholder="Search exercises..."
+                placeholderTextColor={colors.text + '80'}
+                style={[styles.exercisePickerSearchInput, { color: colors.text }]}
+                value={exerciseSearchQuery}
+                onChangeText={setExerciseSearchQuery}
+                autoFocus={false}
+              />
+            </View>
+
+            <FlatList
+              data={EXERCISE_OPTIONS.filter(exercise => 
+                exercise.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
+              )}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.exercisePickerItem, { 
+                    backgroundColor: colors.card, 
+                    marginHorizontal: 16, 
+                    marginBottom: 1,
+                    borderRadius: 8 
+                  }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setExerciseName(item);
+                    setShowExercisePickerModal(false);
+                  }}
+                >
+                  <Text style={[styles.exercisePickerItemText, { color: colors.text }]}>{item}</Text>
+                </TouchableOpacity>
+              )}
+              keyExtractor={(item) => item}
+              ListEmptyComponent={() => (
+                <View style={[styles.exercisePickerEmpty, { backgroundColor: colors.card, marginHorizontal: 16 }]}>
+                  <Text style={[styles.exercisePickerEmptyText, { color: colors.text }]}>
+                    No exercises found for "{exerciseSearchQuery}"
+                  </Text>
+                </View>
+              )}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );
@@ -1607,5 +1677,54 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  exercisePickerItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  exercisePickerItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  exercisePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  exercisePickerSearchInput: {
+    flex: 1,
+    paddingVertical: 0,
+    paddingHorizontal: 8,
+    fontSize: 14,
+  },
+  exercisePickerEmpty: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  exercisePickerEmptyText: {
+    fontSize: 14,
+    opacity: 0.7,
+  },
+  exerciseInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 16,
+    minHeight: 50,
+  },
+  exerciseInputText: {
+    fontSize: 16,
+    flex: 1,
   },
 });

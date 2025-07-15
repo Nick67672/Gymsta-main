@@ -7,6 +7,7 @@ export default function FitnessLayout() {
       <Stack.Screen name="workout-hub" />
       <Stack.Screen name="nutrition-hub" />
       <Stack.Screen name="workout-tracker" />
+      <Stack.Screen name="workout-summary" />
     </Stack>
   );
 } 

@@ -388,9 +388,16 @@ export default function HomeScreen() {
             username,
             avatar_url,
             gym
+          ),
+          workout_sharing_information!inner (
+            title,
+            caption,
+            photo_url,
+            is_my_gym
           )
         `)
         .eq('profiles.gym', currentUserGym)
+        .eq('workout_sharing_information.is_my_gym', true)
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -469,6 +476,12 @@ export default function HomeScreen() {
             username,
             avatar_url,
             gym
+          ),
+          workout_sharing_information (
+            title,
+            caption,
+            photo_url,
+            is_my_gym
           )
         `)
         .in('user_id', followingIds)

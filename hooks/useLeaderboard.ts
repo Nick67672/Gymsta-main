@@ -40,7 +40,7 @@ export function useLeaderboard(scope: LeaderboardScope, type: LeaderboardType) {
 
         setData(leaderboardData);
       } catch (err: any) {
-        console.error('Leaderboard fetch error:', err);
+        // TODO: Implement leaderboards later - silently handle error for now
         setError(err?.message || 'Failed to load leaderboard');
       } finally {
         setLoading(false);

@@ -156,6 +156,28 @@ export default function WorkoutHubScreen() {
           </View>
         </View>
 
+        {/* Workout History Button */}
+        <View style={styles.historySection}>
+          <TouchableOpacity
+            style={[styles.historyButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            activeOpacity={0.8}
+            onPress={() => router.push('/fitness/workout-history')}
+          >
+            <View style={styles.historyButtonContent}>
+              <View style={[styles.historyIconContainer, { backgroundColor: colors.tint + '15' }]}>
+                <BarChart3 size={24} color={colors.tint} />
+              </View>
+              <View style={styles.historyTextContainer}>
+                <Text style={[styles.historyButtonTitle, { color: colors.text }]}>See workout history</Text>
+                <Text style={[styles.historyButtonSubtitle, { color: colors.textSecondary }]}>
+                  View your complete workout timeline
+                </Text>
+              </View>
+              <ChevronRight size={20} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {/* Leaderboards Section */}
         <View style={styles.leaderboardSection}>
           <View style={styles.leaderboardHeader}>
@@ -449,6 +471,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontWeight: '500',
+  },
+  // Workout History Button styles
+  historySection: {
+    marginBottom: Spacing.xl,
+  },
+  historyButton: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    ...Shadows.light,
+  },
+  historyButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  historyIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  historyTextContainer: {
+    flex: 1,
+  },
+  historyButtonTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  historyButtonSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
   },
   // Leaderboard styles
   leaderboardSection: {

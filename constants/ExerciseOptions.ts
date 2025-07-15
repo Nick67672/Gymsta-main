@@ -12,7 +12,7 @@ export const EXERCISE_OPTIONS: string[] = [
   // Quads
   'Leg Press','Walking Lunges','Stationary Lunges','Step-Ups','Sissy Squats','Leg Extension Machine','Bulgarian Split Squat (Quad Focus)',
   // Hamstrings
-  'Lying Leg Curl','Seated Leg Curl','Romanian Deadlift','Good Morning','Glute-Ham Raise','Nordic Curl','Cable Hamstring Curl',
+  'Lying Leg Curl','Seated Leg Curl','Good Morning','Glute-Ham Raise','Nordic Curl','Cable Hamstring Curl',
   // Glutes
   'Barbell Hip Thrust','Glute Bridge','Cable Kickbacks','Step-Ups (Glute Focus)','Smith Machine Glute Bridge','Frog Pump','Banded Hip Thrust',
   // Calves
@@ -22,15 +22,15 @@ export const EXERCISE_OPTIONS: string[] = [
   // Bodyweight
   'Push-Up','Wide-Grip Push-Up','Diamond Push-Up','Archer Push-Up','Hindu Push-Up','Burpee','Air Squat','Jump Squat','Wall Sit','Pike Push-Up','Plank-to-Push-Up','Inverted Row','Dips on Bench','L-Sit','Tuck Planche',
   // Cable Machine
-  'Cable Chest Fly','Cable Lateral Raise','Cable Rear Delt Fly','Cable Curl','Cable Tricep Pushdown','Cable Rope Overhead Extension','Cable Crunch','Cable Row','Cable Kickback','Face Pull',
+  'Cable Chest Fly','Cable Rear Delt Fly','Cable Tricep Pushdown','Cable Rope Overhead Extension','Cable Row','Cable Kickback',
   // Machine Based
-  'Leg Extension','Leg Curl','Chest Press Machine','Seated Row Machine','Shoulder Press Machine','Lateral Raise Machine','Lat Pulldown Machine','Tricep Dip Machine','Pec Deck','Ab Crunch Machine','Inner Thigh Adduction Machine','Outer Thigh Abduction Machine','Glute Kickback Machine','Calf Raise Machine',
+  'Leg Extension','Leg Curl','Seated Row Machine','Shoulder Press Machine','Lateral Raise Machine','Lat Pulldown Machine','Tricep Dip Machine','Pec Deck','Ab Crunch Machine','Inner Thigh Adduction Machine','Outer Thigh Abduction Machine','Glute Kickback Machine','Calf Raise Machine',
   // Kettlebell
   'Kettlebell Swing','Kettlebell Clean','Kettlebell Snatch','Kettlebell Goblet Squat','Kettlebell Deadlift','Kettlebell Turkish Get-Up','Kettlebell Windmill','Kettlebell Overhead Press','Kettlebell Lunge','Kettlebell Row',
   // Dumbbell variations
   'Dumbbell Floor Press','Dumbbell Pullover','Dumbbell Shrug','Dumbbell Front Raise','Dumbbell Reverse Fly','Dumbbell RDL','Dumbbell Lunge','Dumbbell Split Squat','Dumbbell Overhead Squat','Dumbbell Thruster',
   // Barbell variations
-  'Barbell Shrug','Barbell Row (Pendlay Row)','Barbell Good Morning','Barbell Hip Thrust','Barbell Curl','Barbell Overhead Squat','Barbell Zercher Squat','Barbell Front Rack Lunge','Barbell Clean','Barbell Snatch',
+  'Barbell Shrug','Barbell Row (Pendlay Row)','Barbell Good Morning','Barbell Overhead Squat','Barbell Zercher Squat','Barbell Front Rack Lunge','Barbell Clean','Barbell Snatch',
   // Olympic Explosive
   'Power Clean','Clean and Jerk','Snatch','Push Jerk','Split Jerk','High Pull','Hang Power Clean','Hang Snatch','Dumbbell Snatch','Box Jump',
   // Functional Conditioning

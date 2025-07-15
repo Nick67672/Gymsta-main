@@ -34,8 +34,13 @@ export interface Workout {
   user_id: string;
   exercises: any[];
   created_at: string;
-  progress_image_url?: string | null;
   profiles: any;
+  workout_sharing_information?: {
+    title?: string | null;
+    caption?: string | null;
+    photo_url?: string | null;
+    is_my_gym?: boolean;
+  }[] | null;
 }
 
 export interface Notification {

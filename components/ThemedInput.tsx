@@ -112,7 +112,7 @@ export function ThemedInput({
         color: colors.text,
         paddingLeft: leftIcon ? 48 : Spacing.md,
         paddingRight: rightIcon ? 48 : Spacing.md,
-        paddingTop: label ? (size === 'large' ? 24 : 20) : (size === 'large' ? 16 : size === 'small' ? 8 : 12),
+        paddingTop: label ? (size === 'large' ? 40 : 36) : (size === 'large' ? 16 : size === 'small' ? 8 : 12),
       },
       style,
     ];

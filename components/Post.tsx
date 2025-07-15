@@ -448,8 +448,8 @@ const PostComponent: React.FC<PostProps> = ({
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.menuItem} onPress={onReportPress}>
-                <CheckCircle2 size={22} color={colors.text} />
-                <Text style={styles.menuItemText}>Report Post</Text>
+                <CheckCircle2 size={22} color={colors.error} />
+                <Text style={[styles.menuItemText, { color: colors.error }]}>Report Post</Text>
               </TouchableOpacity>
             )}
              <ThemedButton

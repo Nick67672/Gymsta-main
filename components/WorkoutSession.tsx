@@ -23,6 +23,8 @@ import {
   Minus,
   RotateCcw
 } from 'lucide-react-native';
+import { LineChart } from 'react-native-chart-kit';
+import { router } from 'expo-router';
 
 interface WorkoutSet {
   id: string;
@@ -312,6 +314,13 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
         `Great job! You worked out for ${durationMinutes} minutes and lifted ${totalVolume}kg total volume.`,
         [{ text: 'OK' }]
       );
+
+      // Navigate to post-workout summary screen
+      try {
+        router.push(`/fitness/workout-summary?workoutId=${newWorkout.id}`);
+      } catch (navErr) {
+        console.error('Navigation error:', navErr);
+      }
     } catch (error) {
       console.error('Error completing workout:', error);
       Alert.alert('Error', `Failed to save workout: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -669,7 +678,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginHorizontal: 16,
+    marginHorizontal: 8,
+    marginRight: 16,
   },
   inputGroup: {
     alignItems: 'center',
@@ -683,9 +693,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inputButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },

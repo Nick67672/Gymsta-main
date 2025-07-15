@@ -16,22 +16,25 @@ interface Workout {
     }[];
     isPR?: boolean;
   }[];
-  caption: string | null;
-  progress_image_url: string | null;
   profiles: {
     username: string;
     avatar_url: string | null;
   };
+  workout_sharing_information?: {
+    title?: string | null;
+    caption?: string | null;
+    photo_url?: string | null;
+    is_my_gym?: boolean;
+  }[] | null;
 }
 
 interface WorkoutDetailModalProps {
   workoutId: string | null;
   visible: boolean;
   onClose: () => void;
-  hideProgressImage?: boolean;
 }
 
-export default function WorkoutDetailModal({ workoutId, visible, onClose, hideProgressImage = false }: WorkoutDetailModalProps) {
+export default function WorkoutDetailModal({ workoutId, visible, onClose }: WorkoutDetailModalProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
   
@@ -58,10 +61,15 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose, hidePr
           id,
           date,
           exercises,
-          caption,
           profiles (
             username,
             avatar_url
+          ),
+          workout_sharing_information (
+            title,
+            caption,
+            photo_url,
+            is_my_gym
           )
         `)
         .eq('id', workoutId)
@@ -124,18 +132,7 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose, hidePr
                 {new Date(workout.date).toLocaleDateString()}
               </Text>
 
-              {workout.progress_image_url && !hideProgressImage && (
-                <Image
-                  source={{ uri: workout.progress_image_url }}
-                  style={styles.progressImage}
-                />
-              )}
 
-              {workout.caption && (
-                <Text style={[styles.caption, { color: colors.text }]}>
-                  {workout.caption}
-                </Text>
-              )}
 
               <View style={styles.exercises}>
                 {workout.exercises.map((exercise, index) => (
@@ -249,17 +246,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 15,
   },
-  progressImage: {
-    width: '100%',
-    height: 300,
-    borderRadius: 12,
-    marginBottom: 15,
-  },
-  caption: {
-    fontSize: 16,
-    marginBottom: 20,
-    lineHeight: 24,
-  },
+
+
   exercises: {
     gap: 15,
     marginBottom: 20,
@@ -307,4 +295,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
+
 });

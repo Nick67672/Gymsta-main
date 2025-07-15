@@ -1172,7 +1172,6 @@ export default function ProfileScreen() {
         workoutId={selectedWorkoutId}
         visible={showWorkoutModal}
         onClose={() => setShowWorkoutModal(false)}
-        hideProgressImage={true}
       />
 
       {/* Progress photo / details viewer modal */}
