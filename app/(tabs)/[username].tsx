@@ -249,7 +249,29 @@ export default function UserProfileScreen() {
         .order('created_at', { ascending: false });
 
       if (postsError) throw postsError;
-      setPosts(postsData || []);
+      
+      // Get comment counts for user's posts
+      const postIds = postsData?.map(post => post.id) || [];
+      let commentCounts: { [postId: string]: number } = {};
+      
+      if (postIds.length > 0) {
+        const { data: commentsData } = await supabase
+          .from('comments')
+          .select('post_id, id')
+          .in('post_id', postIds);
+        
+        // Count comments per post
+        commentCounts = (commentsData || []).reduce((acc, comment) => {
+          acc[comment.post_id] = (acc[comment.post_id] || 0) + 1;
+          return acc;
+        }, {} as { [postId: string]: number });
+      }
+
+      const postsWithCommentCount = (postsData || []).map(post => ({
+        ...post,
+        comments_count: commentCounts[post.id] || 0
+      }));
+      setPosts(postsWithCommentCount);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profile');

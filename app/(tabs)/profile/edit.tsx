@@ -332,9 +332,6 @@ export default function EditProfileScreen() {
                   leftIcon={<FileText size={20} color={colors.textSecondary} />}
                   variant="filled"
                   size="medium"
-                  multiline
-                  numberOfLines={4}
-                  style={styles.bioInput}
                 />
               </View>
 
@@ -537,10 +534,7 @@ const styles = StyleSheet.create({
     ...Typography.bodyMedium,
     fontWeight: '600',
   },
-  bioInput: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
+
   gymInputContainer: {
     position: 'relative',
     zIndex: 1000,
@@ -578,18 +572,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.lg,
+    gap: Spacing.md,
     marginTop: Spacing.xl * 1.5,
     paddingTop: Spacing.lg,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    maxWidth: 400,
+    alignSelf: 'center',
   },
   cancelButton: {
     flex: 1,
-    maxWidth: 130,
+    minWidth: 120,
+    maxWidth: 140,
   },
   saveButton: {
-    flex: 1.5,
-    minWidth: 150,
+    flex: 1.2,
+    minWidth: 140,
+    maxWidth: 160,
   },
 });
 

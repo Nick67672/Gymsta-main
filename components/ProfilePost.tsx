@@ -8,7 +8,7 @@ import { Heart, MessageCircle } from 'lucide-react-native';
 import { router } from 'expo-router';
 
 interface ProfilePostProps {
-  post: Post;
+  post: Post & { comments_count?: number };
 }
 
 const ProfilePost: React.FC<ProfilePostProps> = ({ post }) => {
@@ -30,11 +30,12 @@ const ProfilePost: React.FC<ProfilePostProps> = ({ post }) => {
             <Heart size={16} color="#fff" />
             <Text style={styles.statText}>{post.likes?.length || 0}</Text>
           </View>
-          {/* Add comment count if available in your Post type */}
-          {/* <View style={styles.stat}>
-            <MessageCircle size={16} color="#fff" />
-            <Text style={styles.statText}>{post.comments?.length || 0}</Text>
-          </View> */}
+          {post.comments_count !== undefined && post.comments_count > 0 && (
+            <View style={styles.stat}>
+              <MessageCircle size={16} color="#fff" />
+              <Text style={styles.statText}>{post.comments_count}</Text>
+            </View>
+          )}
         </View>
       </View>
     </TouchableOpacity>

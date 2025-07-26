@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet, LogBox } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Suppress specific warning that doesn't affect functionality
 LogBox.ignoreLogs([
@@ -55,15 +56,17 @@ export default function RootLayout() {
   useFrameworkReady();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <BlockingProvider>
-            <AppContent />
-          </BlockingProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <AuthProvider>
+              <BlockingProvider>
+                <AppContent />
+              </BlockingProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

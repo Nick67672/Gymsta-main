@@ -1,14 +1,15 @@
-import { Dimensions, Platform } from 'react-native';
+// Centralised spacing & padding values that automatically scale to the device width.
+// Relies on the responsive helpers in `lib/responsive.ts`.
 
-const { width } = Dimensions.get('window');
+import { responsiveSpacing as RS, scale } from '@/lib/responsive';
 
-// Break-points: small (<360), medium (<400), large (>=400)
-const horizontalPadding = width < 360 ? 12 : width < 400 ? 16 : 20;
-const verticalPadding = width < 360 ? 12 : 16;
-const gap = width < 360 ? 8 : 12;
+export const horizontalPadding = RS.lg;   // ~16-24 dp depending on screen width
+export const verticalPadding   = RS.md;   // ~12-18 dp
+export const gap               = RS.md;   // Consistent inter-item gap
 
 export default {
   horizontalPadding,
   verticalPadding,
   gap,
+  scale,              // re-export so other modules can `import { scale } from '@/constants/Layout'`
 }; 

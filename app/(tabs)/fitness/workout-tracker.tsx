@@ -24,6 +24,12 @@ import { ThemedInput } from '@/components/ThemedInput';
 import WorkoutCalendar from '@/components/WorkoutCalendar';
 import WorkoutSession from '@/components/WorkoutSession';
 import ProgressCharts from '@/components/ProgressCharts';
+import { SwipeableExerciseCard } from '@/components/SwipeableExerciseCard';
+import { EnhancedWorkoutCard } from '@/components/EnhancedWorkoutCard';
+
+import { LiveWorkoutTimer } from '@/components/LiveWorkoutTimer';
+
+
 import { 
   Plus, 
   Play, 
@@ -40,6 +46,14 @@ import {
   X,
   Minus,
   Search,
+  // Exercise category icons
+  Zap,        // Core
+  Heart,      // Cardio  
+  Activity,   // Back
+  Flame,      // Shoulders
+  Crosshair,  // Arms
+  Mountain,   // Legs
+  Settings,   // Functional
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
@@ -85,6 +99,485 @@ interface ProgressData {
 
 type TimeScale = '7d' | '30d' | '3m' | '1y';
 
+// Workout Templates
+const WORKOUT_TEMPLATES = [
+  {
+    id: 'push',
+    name: '💪 Push Day',
+    description: 'Chest, Shoulders, Triceps',
+    estimatedTime: '45-60 min',
+    exercises: [
+      { name: 'Bench Press', sets: 4, reps: '8-10', weight: 0 },
+      { name: 'Overhead Press', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Lateral Raises', sets: 3, reps: '12-15', weight: 0 },
+      { name: 'Tricep Dips', sets: 3, reps: '12-15', weight: 0 },
+      { name: 'Overhead Tricep Extension', sets: 3, reps: '12-15', weight: 0 }
+    ]
+  },
+  {
+    id: 'pull',
+    name: '🏃 Pull Day', 
+    description: 'Back, Biceps, Rear Delts',
+    estimatedTime: '45-60 min',
+    exercises: [
+      { name: 'Pull-ups', sets: 4, reps: '6-10', weight: 0 },
+      { name: 'Barbell Rows', sets: 4, reps: '8-10', weight: 0 },
+      { name: 'Lat Pulldowns', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Cable Rows', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Bicep Curls', sets: 3, reps: '12-15', weight: 0 },
+      { name: 'Hammer Curls', sets: 3, reps: '12-15', weight: 0 }
+    ]
+  },
+  {
+    id: 'legs',
+    name: '🦵 Leg Day',
+    description: 'Quads, Hamstrings, Glutes, Calves',
+    estimatedTime: '50-70 min',
+    exercises: [
+      { name: 'Squats', sets: 4, reps: '8-10', weight: 0 },
+      { name: 'Romanian Deadlifts', sets: 4, reps: '8-10', weight: 0 },
+      { name: 'Bulgarian Split Squats', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Leg Press', sets: 3, reps: '12-15', weight: 0 },
+      { name: 'Leg Curls', sets: 3, reps: '12-15', weight: 0 },
+      { name: 'Calf Raises', sets: 4, reps: '15-20', weight: 0 }
+    ]
+  },
+  {
+    id: 'fullbody',
+    name: '🔥 Full Body',
+    description: 'Complete workout for all muscles',
+    estimatedTime: '60-75 min',
+    exercises: [
+      { name: 'Squats', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Bench Press', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Barbell Rows', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Overhead Press', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Deadlifts', sets: 3, reps: '8-10', weight: 0 },
+      { name: 'Plank', sets: 3, reps: '30-60s', weight: 0 }
+    ]
+  },
+  {
+    id: 'upper',
+    name: '💯 Upper Body',
+    description: 'Chest, Back, Shoulders, Arms',
+    estimatedTime: '45-60 min',
+    exercises: [
+      { name: 'Bench Press', sets: 4, reps: '8-10', weight: 0 },
+      { name: 'Pull-ups', sets: 3, reps: '6-10', weight: 0 },
+      { name: 'Overhead Press', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Barbell Rows', sets: 3, reps: '10-12', weight: 0 },
+      { name: 'Dips', sets: 3, reps: '10-15', weight: 0 },
+      { name: 'Bicep Curls', sets: 3, reps: '12-15', weight: 0 }
+    ]
+  },
+  {
+    id: 'hiit',
+    name: '⚡ HIIT Circuit',
+    description: 'High-intensity interval training',
+    estimatedTime: '20-30 min',
+    exercises: [
+      { name: 'Burpees', sets: 4, reps: '0:30', weight: 0 },
+      { name: 'Mountain Climbers', sets: 4, reps: '0:30', weight: 0 },
+      { name: 'Jump Squats', sets: 4, reps: '0:30', weight: 0 },
+      { name: 'Push-ups', sets: 3, reps: '15', weight: 0 },
+      { name: 'High Knees', sets: 4, reps: '0:30', weight: 0 },
+      { name: 'Plank', sets: 3, reps: '1:00', weight: 0 }
+    ]
+  }
+];
+
+// Icon mapping for exercise categories
+const getCategoryIcon = (category: string, size: number = 22, color: string = '#fff') => {
+  switch (category) {
+    case 'Chest':
+      return <Dumbbell size={size} color={color} />;
+    case 'Back':
+      return <Activity size={size} color={color} />;
+    case 'Shoulders':
+      return <Flame size={size} color={color} />;
+    case 'Arms':
+      return <Target size={size} color={color} />;
+    case 'Legs':
+      return <Mountain size={size} color={color} />;
+    case 'Core':
+      return <Zap size={size} color={color} />;
+    case 'Cardio':
+      return <Heart size={size} color={color} />;
+    case 'Functional':
+      return <Settings size={size} color={color} />;
+    default:
+      return <Dumbbell size={size} color={color} />;
+  }
+};
+
+// Categorized Exercise Options - Comprehensive and Enhanced
+const EXERCISE_CATEGORIES = {
+  'Chest': {
+    color: '#FF6B6B',
+    subcategories: {
+      'Barbell': [
+        'Barbell Bench Press', 'Incline Barbell Press', 'Decline Barbell Press', 
+        'Close-Grip Bench Press', 'Reverse Grip Bench Press', 'Floor Press'
+      ],
+      'Dumbbell': [
+        'Dumbbell Bench Press', 'Incline Dumbbell Press', 'Decline Dumbbell Press',
+        'Dumbbell Flyes', 'Incline Dumbbell Flyes', 'Dumbbell Pullovers', 'Single-Arm Dumbbell Press'
+      ],
+      'Cable & Machine': [
+        'Cable Crossovers', 'Cable Flyes', 'Pec Deck', 'Chest Press Machine',
+        'Cable Chest Press', 'Incline Cable Flyes', 'Decline Cable Flyes'
+      ],
+      'Bodyweight': [
+        'Push-Ups', 'Wide-Grip Push-Ups', 'Diamond Push-Ups', 'Incline Push-Ups',
+        'Decline Push-Ups', 'Archer Push-Ups', 'Clap Push-Ups', 'Dips'
+      ]
+    }
+  },
+  'Back': {
+    color: '#4ECDC4',
+    subcategories: {
+      'Pull-Ups & Chin-Ups': [
+        'Pull-Ups', 'Chin-Ups', 'Wide-Grip Pull-Ups', 'Neutral Grip Pull-Ups',
+        'Weighted Pull-Ups', 'Assisted Pull-Ups', 'Commando Pull-Ups'
+      ],
+      'Rows': [
+        'Barbell Rows', 'T-Bar Rows', 'Dumbbell Rows', 'Cable Rows',
+        'Seated Cable Rows', 'Chest-Supported Rows', 'Inverted Rows', 'Landmine Rows'
+      ],
+      'Pulldowns': [
+        'Lat Pulldowns', 'Wide-Grip Pulldowns', 'Reverse Grip Pulldowns',
+        'Cable Pulldowns', 'Single-Arm Pulldowns'
+      ],
+      'Deadlifts': [
+        'Conventional Deadlifts', 'Sumo Deadlifts', 'Romanian Deadlifts',
+        'Stiff-Leg Deadlifts', 'Trap Bar Deadlifts', 'Single-Leg Deadlifts'
+      ]
+    }
+  },
+  'Shoulders': {
+    color: '#FFE66D',
+    subcategories: {
+      'Pressing': [
+        'Overhead Press', 'Military Press', 'Dumbbell Shoulder Press', 'Arnold Press',
+        'Pike Push-Ups', 'Handstand Push-Ups', 'Seated Shoulder Press', 'Push Press'
+      ],
+      'Lateral Raises': [
+        'Dumbbell Lateral Raises', 'Cable Lateral Raises', 'Machine Lateral Raises',
+        'Leaning Lateral Raises', 'Partial Lateral Raises'
+      ],
+      'Rear Delts': [
+        'Rear Delt Flyes', 'Face Pulls', 'Reverse Pec Deck', 'Cable Rear Delt Flyes',
+        'Bent-Over Lateral Raises', 'Prone Y-Raises'
+      ],
+      'Front Delts': [
+        'Front Raises', 'Cable Front Raises', 'Plate Raises', 'Barbell Front Raises'
+      ]
+    }
+  },
+  'Arms': {
+    color: '#A8E6CF',
+    subcategories: {
+      'Biceps': [
+        'Barbell Curls', 'Dumbbell Curls', 'Hammer Curls', 'Preacher Curls',
+        'Cable Curls', 'Concentration Curls', 'Spider Curls', 'Incline Dumbbell Curls',
+        '21s', 'Drag Curls', 'Reverse Curls'
+      ],
+      'Triceps': [
+        'Tricep Dips', 'Close-Grip Push-Ups', 'Tricep Pushdowns', 'Overhead Tricep Extension',
+        'Skull Crushers', 'Diamond Push-Ups', 'Tricep Kickbacks', 'French Press',
+        'JM Press', 'Tate Press'
+      ],
+      'Forearms': [
+        'Wrist Curls', 'Reverse Wrist Curls', 'Farmers Walk', 'Plate Pinches',
+        'Hammer Curls', 'Reverse Curls', 'Wrist Roller'
+      ]
+    }
+  },
+  'Legs': {
+    color: '#FF8B94',
+    subcategories: {
+      'Quadriceps': [
+        'Back Squats', 'Front Squats', 'Leg Press', 'Bulgarian Split Squats',
+        'Lunges', 'Step-Ups', 'Leg Extensions', 'Goblet Squats', 'Hack Squats',
+        'Wall Sits', 'Jump Squats', 'Pistol Squats'
+      ],
+      'Hamstrings': [
+        'Romanian Deadlifts', 'Good Mornings', 'Leg Curls', 'Stiff-Leg Deadlifts',
+        'Nordic Curls', 'Glute Ham Raises', 'Single-Leg RDLs'
+      ],
+      'Glutes': [
+        'Hip Thrusts', 'Glute Bridges', 'Clamshells', 'Glute Kickbacks',
+        'Lateral Walks', 'Monster Walks', 'Single-Leg Glute Bridges',
+        'Curtsy Lunges', 'Sumo Squats'
+      ],
+      'Calves': [
+        'Standing Calf Raises', 'Seated Calf Raises', 'Single-Leg Calf Raises',
+        'Donkey Calf Raises', 'Jump Rope', 'Calf Press'
+      ]
+    }
+  },
+  'Core': {
+    color: '#DDA0DD',
+    subcategories: {
+      'Abs': [
+        'Crunches', 'Bicycle Crunches', 'Russian Twists', 'Sit-Ups',
+        'V-Ups', 'Leg Raises', 'Mountain Climbers', 'Dead Bugs',
+        'Reverse Crunches', 'Toe Touches', 'Flutter Kicks'
+      ],
+      'Planks': [
+        'Plank', 'Side Planks', 'Plank Up-Downs', 'Plank Jacks',
+        'Plank to Push-Up', 'Single-Arm Planks', 'Weighted Planks'
+      ],
+      'Obliques': [
+        'Side Crunches', 'Woodchoppers', 'Side Bends', 'Oblique Crunches',
+        'Russian Twists', 'Bicycle Crunches', 'Side Planks'
+      ],
+      'Lower Back': [
+        'Hyperextensions', 'Good Mornings', 'Superman', 'Bird Dogs',
+        'Reverse Hyperextensions', 'Back Extensions'
+      ]
+    }
+  },
+  'Cardio': {
+    color: '#FF6B9D',
+    subcategories: {
+      'HIIT': [
+        'Burpees', 'Mountain Climbers', 'Jump Squats', 'High Knees',
+        'Jumping Jacks', 'Box Jumps', 'Battle Ropes', 'Sprint Intervals'
+      ],
+      'Steady State': [
+        'Treadmill Running', 'Cycling', 'Elliptical', 'Rowing Machine',
+        'Stair Climber', 'Walking', 'Swimming', 'Jogging'
+      ],
+      'Sports': [
+        'Basketball', 'Tennis', 'Soccer', 'Boxing', 'Kickboxing',
+        'Dancing', 'Rock Climbing', 'Martial Arts'
+      ]
+    }
+  },
+  'Functional': {
+    color: '#87CEEB',
+    subcategories: {
+      'Olympic Lifts': [
+        'Clean and Jerk', 'Snatch', 'Power Clean', 'Push Press',
+        'Clean and Press', 'High Pull', 'Hang Clean'
+      ],
+      'Strongman': [
+        'Farmers Walk', 'Tire Flips', 'Sled Push', 'Sled Pull',
+        'Atlas Stones', 'Yoke Walk', 'Log Press'
+      ],
+      'Kettlebell': [
+        'Kettlebell Swings', 'Turkish Get-Ups', 'Kettlebell Snatches',
+        'Kettlebell Cleans', 'Goblet Squats', 'Kettlebell Windmills'
+      ],
+      'Medicine Ball': [
+        'Medicine Ball Slams', 'Wall Balls', 'Medicine Ball Throws',
+        'Russian Twists with Ball', 'Medicine Ball Burpees'
+      ]
+    }
+  }
+};
+
+
+
+
+
+// Exercise Type Definitions
+enum ExerciseType {
+  STRENGTH = 'strength',        // Reps + Weight (e.g., Bench Press, Squats)
+  CARDIO_TIME = 'cardio_time',  // Time + Distance (e.g., Running, Cycling)
+  CARDIO_REPS = 'cardio_reps',  // Reps only (e.g., Burpees, Jump Squats)
+  BODYWEIGHT = 'bodyweight',    // Reps only, no weight (e.g., Push-ups, Pull-ups)
+  TIME_BASED = 'time_based',    // Time only (e.g., Plank, Wall Sit)
+  DISTANCE = 'distance',        // Distance only (e.g., Farmers Walk)
+}
+
+// Comprehensive Exercise Classification
+const EXERCISE_TYPES: { [key: string]: ExerciseType } = {
+  // CARDIO - TIME BASED (Time + Distance)
+  'Treadmill Running': ExerciseType.CARDIO_TIME,
+  'Running': ExerciseType.CARDIO_TIME,
+  'Jogging': ExerciseType.CARDIO_TIME,
+  'Walking': ExerciseType.CARDIO_TIME,
+  'Cycling': ExerciseType.CARDIO_TIME,
+  'Stationary Bike': ExerciseType.CARDIO_TIME,
+  'Recumbent Bike': ExerciseType.CARDIO_TIME,
+  'Elliptical': ExerciseType.CARDIO_TIME,
+  'Rowing Machine': ExerciseType.CARDIO_TIME,
+  'Stair Climber': ExerciseType.CARDIO_TIME,
+  'Swimming': ExerciseType.CARDIO_TIME,
+  'Arc Trainer': ExerciseType.CARDIO_TIME,
+
+  // CARDIO - REPS BASED (High intensity exercises with rep counts)
+  'Burpees': ExerciseType.CARDIO_REPS,
+  'Mountain Climbers': ExerciseType.CARDIO_REPS,
+  'Jumping Jacks': ExerciseType.CARDIO_REPS,
+  'High Knees': ExerciseType.CARDIO_REPS,
+  'Jump Squats': ExerciseType.CARDIO_REPS,
+  'Box Jumps': ExerciseType.CARDIO_REPS,
+  'Jump Lunges': ExerciseType.CARDIO_REPS,
+  'Star Jumps': ExerciseType.CARDIO_REPS,
+  'Tuck Jumps': ExerciseType.CARDIO_REPS,
+  'Broad Jumps': ExerciseType.CARDIO_REPS,
+  'Lateral Bounds': ExerciseType.CARDIO_REPS,
+
+  // BODYWEIGHT EXERCISES (Reps only, no added weight)
+  'Push-Ups': ExerciseType.BODYWEIGHT,
+  'Wide-Grip Push-Ups': ExerciseType.BODYWEIGHT,
+  'Diamond Push-Ups': ExerciseType.BODYWEIGHT,
+  'Incline Push-Ups': ExerciseType.BODYWEIGHT,
+  'Decline Push-Ups': ExerciseType.BODYWEIGHT,
+  'Archer Push-Ups': ExerciseType.BODYWEIGHT,
+  'Clap Push-Ups': ExerciseType.BODYWEIGHT,
+  'Pull-Ups': ExerciseType.BODYWEIGHT,
+  'Chin-Ups': ExerciseType.BODYWEIGHT,
+  'Wide-Grip Pull-Ups': ExerciseType.BODYWEIGHT,
+  'Neutral Grip Pull-Ups': ExerciseType.BODYWEIGHT,
+  'Assisted Pull-Ups': ExerciseType.BODYWEIGHT,
+  'Commando Pull-Ups': ExerciseType.BODYWEIGHT,
+  'Dips': ExerciseType.BODYWEIGHT,
+  'Tricep Dips': ExerciseType.BODYWEIGHT,
+  'Pike Push-Ups': ExerciseType.BODYWEIGHT,
+  'Handstand Push-Ups': ExerciseType.BODYWEIGHT,
+  'Air Squats': ExerciseType.BODYWEIGHT,
+  'Pistol Squats': ExerciseType.BODYWEIGHT,
+  'Cossack Squats': ExerciseType.BODYWEIGHT,
+  'Shrimp Squats': ExerciseType.BODYWEIGHT,
+  'Lunges': ExerciseType.BODYWEIGHT,
+  'Inverted Rows': ExerciseType.BODYWEIGHT,
+
+  // TIME-BASED EXERCISES (Time duration only)
+  'Plank': ExerciseType.TIME_BASED,
+  'Side Planks': ExerciseType.TIME_BASED,
+  'Single-Arm Planks': ExerciseType.TIME_BASED,
+  'Weighted Planks': ExerciseType.TIME_BASED,
+  'Wall Sits': ExerciseType.TIME_BASED,
+  'Dead Hangs': ExerciseType.TIME_BASED,
+  'Hollow Body Holds': ExerciseType.TIME_BASED,
+  'Superman': ExerciseType.TIME_BASED,
+  'Bird Dogs': ExerciseType.TIME_BASED,
+
+  // DISTANCE-BASED EXERCISES
+  'Farmers Walk': ExerciseType.DISTANCE,
+  'Sled Push': ExerciseType.DISTANCE,
+  'Sled Pull': ExerciseType.DISTANCE,
+  'Yoke Walk': ExerciseType.DISTANCE,
+  'Sandbag Carries': ExerciseType.DISTANCE,
+  'Weighted Carry': ExerciseType.DISTANCE,
+
+  // STRENGTH EXERCISES (All others default to reps + weight)
+  // This includes all barbell, dumbbell, machine exercises
+};
+
+// Get exercise type with intelligent fallback
+const getExerciseType = (exerciseName: string): ExerciseType => {
+  // Direct match
+  if (EXERCISE_TYPES[exerciseName]) {
+    return EXERCISE_TYPES[exerciseName];
+  }
+
+  const name = exerciseName.toLowerCase();
+
+  // Pattern matching for exercise types
+  if (name.includes('plank') || name.includes('hold')) {
+    return ExerciseType.TIME_BASED;
+  }
+  
+  if (name.includes('walk') || name.includes('carry') || name.includes('sled')) {
+    return ExerciseType.DISTANCE;
+  }
+  
+  if (name.includes('running') || name.includes('cycling') || name.includes('rowing') || 
+      name.includes('treadmill') || name.includes('elliptical') || name.includes('bike') ||
+      name.includes('swimming') || name.includes('stair')) {
+    return ExerciseType.CARDIO_TIME;
+  }
+  
+  if (name.includes('burpee') || name.includes('jumping') || name.includes('jump') || 
+      name.includes('mountain climber') || name.includes('high knee')) {
+    return ExerciseType.CARDIO_REPS;
+  }
+  
+  if (name.includes('push-up') || name.includes('pushup') || name.includes('pull-up') || 
+      name.includes('pullup') || name.includes('chin-up') || name.includes('dip') ||
+      (name.includes('squat') && !name.includes('barbell') && !name.includes('dumbbell') && !name.includes('goblet'))) {
+    return ExerciseType.BODYWEIGHT;
+  }
+
+  // Default to strength training (reps + weight)
+  return ExerciseType.STRENGTH;
+};
+
+// Get appropriate labels and placeholders for exercise type
+const getExerciseMetrics = (exerciseType: ExerciseType) => {
+  switch (exerciseType) {
+    case ExerciseType.STRENGTH:
+      return {
+        label1: 'Reps',
+        label2: 'Weight (kg)',
+        placeholder1: '10',
+        placeholder2: '50',
+        keyboardType1: 'numeric' as const,
+        keyboardType2: 'numeric' as const,
+      };
+    case ExerciseType.CARDIO_TIME:
+      return {
+        label1: 'Duration',
+        label2: 'Distance',
+        placeholder1: '30:00',
+        placeholder2: '5.0 km',
+        keyboardType1: 'default' as const,
+        keyboardType2: 'default' as const,
+      };
+    case ExerciseType.CARDIO_REPS:
+      return {
+        label1: 'Reps',
+        label2: 'Rest (sec)',
+        placeholder1: '20',
+        placeholder2: '60',
+        keyboardType1: 'numeric' as const,
+        keyboardType2: 'numeric' as const,
+      };
+    case ExerciseType.BODYWEIGHT:
+      return {
+        label1: 'Reps',
+        label2: 'Rest (sec)',
+        placeholder1: '15',
+        placeholder2: '90',
+        keyboardType1: 'numeric' as const,
+        keyboardType2: 'numeric' as const,
+      };
+    case ExerciseType.TIME_BASED:
+      return {
+        label1: 'Duration',
+        label2: 'Rest (sec)',
+        placeholder1: '1:00',
+        placeholder2: '60',
+        keyboardType1: 'default' as const,
+        keyboardType2: 'numeric' as const,
+      };
+    case ExerciseType.DISTANCE:
+      return {
+        label1: 'Distance',
+        label2: 'Weight (kg)',
+        placeholder1: '50m',
+        placeholder2: '40',
+        keyboardType1: 'default' as const,
+        keyboardType2: 'numeric' as const,
+      };
+    default:
+      return {
+        label1: 'Reps',
+        label2: 'Weight (kg)',
+        placeholder1: '10',
+        placeholder2: '50',
+        keyboardType1: 'numeric' as const,
+        keyboardType2: 'numeric' as const,
+      };
+  }
+};
+
 export default function WorkoutTrackerScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
@@ -114,6 +607,7 @@ export default function WorkoutTrackerScreen() {
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
   const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   // Form states
   const [workoutName, setWorkoutName] = useState('');
@@ -143,27 +637,29 @@ export default function WorkoutTrackerScreen() {
       
       if (plannedError) throw plannedError;
       
-      const transformedPlannedWorkouts = plannedData?.map(w => ({
-        id: w.id,
-        name: w.name || 'Planned Workout',
-        date: w.date,
-        exercises: (w.exercises || []).map((e: any) => ({
-          id: e.id || Date.now().toString(),
-          name: e.name,
-          sets: (e.sets || []).map((s: any) => ({
-            id: s.id || Date.now().toString(),
-            reps: s.reps || 0,
-            weight: s.weight || 0,
-            completed: s.completed || false
+      const transformedPlannedWorkouts = plannedData?.map(w => {
+        return {
+          id: w.id,
+          name: w.name || 'Planned Workout',
+          date: w.date,
+          exercises: (w.exercises || []).map((e: any) => ({
+            id: e.id || Date.now().toString(),
+            name: e.name,
+            sets: (e.sets || []).map((s: any) => ({
+              id: s.id || Date.now().toString(),
+              reps: s.reps || 0,
+              weight: s.weight || 0,
+              completed: s.completed || false
+            })),
+            targetSets: e.targetSets || e.sets?.length || 3,
+            targetReps: e.targetReps || 10,
+            targetWeight: e.targetWeight || 0,
+            notes: e.notes
           })),
-          targetSets: e.targetSets || e.sets?.length || 3,
-          targetReps: e.targetReps || 10,
-          targetWeight: e.targetWeight || 0,
-          notes: e.notes
-        })),
-        status: 'planned' as 'planned' | 'in_progress' | 'completed',
-        notes: w.notes
-      })) || [];
+          status: 'planned' as 'planned' | 'in_progress' | 'completed',
+          notes: w.notes
+        };
+      }) || [];
       
       setWorkouts(transformedPlannedWorkouts);
       
@@ -372,9 +868,19 @@ export default function WorkoutTrackerScreen() {
 
   // Save workout to database
   const saveWorkout = async () => {
-    if (!currentWorkout || !user) return;
+    console.log('💾 saveWorkout called');
+    console.log('currentWorkout:', currentWorkout);
+    console.log('user:', user);
     
+    if (!currentWorkout || !user) {
+      console.log('❌ Missing currentWorkout or user');
+      Alert.alert('Error', 'Missing workout or user data. Please try again.');
+      return;
+    }
+    
+    console.log('✅ Starting save process...');
     setLoading(true);
+    
     try {
       // Format exercises for JSONB storage
       const formattedExercises = currentWorkout.exercises.map(exercise => ({
@@ -392,13 +898,33 @@ export default function WorkoutTrackerScreen() {
         notes: exercise.notes || null
       }));
 
-      console.log('Saving planned workout with data:', {
+      console.log('📝 Saving planned workout with data:', {
         user_id: user.id,
         name: currentWorkout.name || 'Planned Workout',
         date: currentWorkout.date,
-        exerciseCount: formattedExercises.length
+        exerciseCount: formattedExercises.length,
+        exercises: formattedExercises
       });
 
+      // Check if workout has no exercises - don't save empty workouts
+      if (formattedExercises.length === 0) {
+        console.log('⚠️ Workout has no exercises, not saving');
+        setCurrentWorkout(null);
+        setCurrentView('main');
+        Alert.alert('Workout Not Saved', 'Empty workouts are not saved. Add some exercises to save your workout.');
+        return;
+      }
+
+      // Validate that exercises have proper data
+      const invalidExercises = formattedExercises.filter(ex => !ex.name || ex.sets.length === 0);
+      if (invalidExercises.length > 0) {
+        console.log('⚠️ Found invalid exercises:', invalidExercises);
+        Alert.alert('Invalid Data', 'Some exercises are missing names or sets. Please check your workout data.');
+        return;
+      }
+
+      console.log('🚀 Attempting to save to database...');
+      
       // Save workout to the planned_workouts table
       const { data: workoutData, error: workoutError } = await supabase
         .from('planned_workouts')
@@ -412,20 +938,25 @@ export default function WorkoutTrackerScreen() {
         .select()
         .single();
       
-      console.log('Planned workout save result:', { workoutData, workoutError });
+      console.log('📊 Planned workout save result:', { workoutData, workoutError });
       
-      if (workoutError) throw workoutError;
+      if (workoutError) {
+        console.error('❌ Database error:', workoutError);
+        throw workoutError;
+      }
       
+      console.log('✅ Workout saved successfully!');
       setCurrentWorkout(null);
       setCurrentView('main');
       loadWorkouts();
       Alert.alert('Success', 'Planned workout saved successfully!');
       
     } catch (error) {
-      console.error('Error saving planned workout:', error);
-      Alert.alert('Error', 'Failed to save planned workout. Please try again.');
+      console.error('❌ Error saving planned workout:', error);
+      Alert.alert('Error', `Failed to save planned workout: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
+      console.log('🏁 Save process completed');
     }
   };
 
@@ -520,6 +1051,34 @@ export default function WorkoutTrackerScreen() {
     setCurrentView('create');
   };
 
+  const applyWorkoutTemplate = (template: typeof WORKOUT_TEMPLATES[0]) => {
+    const templateExercises = template.exercises.map((ex, index) => ({
+      id: `${Date.now()}-${index}`,
+      name: ex.name,
+      sets: Array.from({ length: ex.sets }, (_, i) => ({
+        id: `${Date.now()}-${index}-${i}`,
+        reps: parseInt(ex.reps.split('-')[0]) || 10,
+        weight: ex.weight,
+        completed: false
+      })),
+      targetSets: ex.sets,
+      targetReps: parseInt(ex.reps.split('-')[0]) || 10,
+      targetWeight: ex.weight,
+      notes: `Target: ${ex.reps} reps`
+    }));
+
+    setCurrentWorkout({
+      id: `workout-${Date.now()}`,
+      name: template.name.replace(/[^\w\s]/gi, '').trim(), // Remove emojis for workout name
+      date: new Date().toISOString().split('T')[0],
+      exercises: templateExercises,
+      status: 'planned',
+      notes: `${template.description} • Est. ${template.estimatedTime}`
+    });
+    setShowTemplateModal(false);
+    setCurrentView('create');
+  };
+
   // Edit workout functions
   const addExerciseToEditingWorkout = () => {
     console.log('addExerciseToEditingWorkout called');
@@ -570,6 +1129,75 @@ export default function WorkoutTrackerScreen() {
     } : null);
   };
 
+  // Delete planned workout
+  const deletePlannedWorkout = async (workoutId: string, workoutName: string) => {
+    // Use confirm for web platform, Alert for native
+    const confirmDelete = () => {
+      if (Platform.OS === 'web') {
+        return window.confirm(`Are you sure you want to delete "${workoutName}"? This action cannot be undone.`);
+      } else {
+        return new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Delete Workout',
+            `Are you sure you want to delete "${workoutName}"? This action cannot be undone.`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) }
+            ]
+          );
+        });
+      }
+    };
+
+    try {
+      const shouldDelete = await confirmDelete();
+      
+      if (!shouldDelete) {
+        return;
+      }
+
+      if (!user) {
+        Alert.alert('Error', 'Please sign in to delete workouts.');
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        // Delete from database
+        const { data, error } = await supabase
+          .from('planned_workouts')
+          .delete()
+          .eq('id', workoutId)
+          .eq('user_id', user.id) // Extra security check
+          .select();
+        
+        if (error) {
+          throw error;
+        }
+        
+        if (data && data.length === 0) {
+          Alert.alert('Warning', 'Workout not found or already deleted.');
+          return;
+        }
+        
+        // Update local state
+        setWorkouts(prev => prev.filter(w => w.id !== workoutId));
+        
+        Alert.alert('Success', 'Workout deleted successfully!');
+        
+      } catch (error) {
+        console.error('Error deleting planned workout:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        Alert.alert('Error', `Failed to delete workout: ${errorMessage}`);
+      } finally {
+        setLoading(false);
+      }
+      
+    } catch (error) {
+      console.error('Error in delete confirmation:', error);
+    }
+  };
+
   const saveEditedWorkout = async () => {
     if (!editingWorkout || !user) return;
     
@@ -596,6 +1224,26 @@ export default function WorkoutTrackerScreen() {
         name: editingWorkout.name,
         exerciseCount: formattedExercises.length
       });
+
+      // Check if workout has no exercises - delete it from saved workouts
+      if (formattedExercises.length === 0) {
+        console.log('Workout has no exercises, deleting from database');
+        
+        // Delete the workout from the database
+        const { error: deleteError } = await supabase
+          .from('planned_workouts')
+          .delete()
+          .eq('id', editingWorkout.id);
+        
+        if (deleteError) throw deleteError;
+        
+        setEditingWorkout(null);
+        setShowEditWorkoutModal(false);
+        setShowInlineExerciseForm(false);
+        loadWorkouts();
+        Alert.alert('Workout Deleted', 'The workout was automatically deleted because it has no exercises.');
+        return;
+      }
 
       // Update workout in the planned_workouts table
       const { error: workoutError } = await supabase
@@ -647,7 +1295,7 @@ export default function WorkoutTrackerScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.planWorkoutButton, { backgroundColor: colors.tint }]}
-            onPress={startNewWorkoutCreation}
+            onPress={() => setShowTemplateModal(true)}
           >
             <Text style={styles.planWorkoutButtonText}>Plan workout</Text>
           </TouchableOpacity>
@@ -673,6 +1321,12 @@ export default function WorkoutTrackerScreen() {
                       }}
                     >
                       <Edit3 size={16} color={colors.text + '60'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteIconButton}
+                      onPress={() => deletePlannedWorkout(workout.id, workout.name)}
+                    >
+                      <Trash2 size={16} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
                   <Text style={[styles.workoutGridTitle, { color: colors.text }]}>
@@ -775,31 +1429,82 @@ export default function WorkoutTrackerScreen() {
             </View>
 
             {/* Sets table */}
-            <View style={styles.setTableHeader}>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Set</Text>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Reps</Text>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Weight</Text>
+            <View style={[styles.modalLabelRow, { backgroundColor: colors.backgroundSecondary }]}>
+              <Text style={[styles.modalLabel, styles.modalLabelSet, { color: colors.textSecondary }]}>Set</Text>
+              <View style={styles.inputGroup}>
+                {(() => {
+                  const exerciseType = getExerciseType(exercise.name);
+                  const metrics = getExerciseMetrics(exerciseType);
+                  return (
+                    <>
+                      <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.textSecondary }]}>
+                        {metrics.label1}
+                      </Text>
+                      <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.textSecondary }]}>
+                        {metrics.label2}
+                      </Text>
+                    </>
+                  );
+                })()}
+              </View>
+              <View style={styles.deleteButtonContainer} />
             </View>
             {exercise.sets.map((s, idx) => (
-              <View key={s.id} style={styles.setRowPlan}>
-                <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                <TextInput
-                  keyboardType="numeric"
-                  value={String(s.reps)}
-                  onChangeText={v => updatePlannedSet(exercise.id, idx, 'reps', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                />
-                <TextInput
-                  keyboardType="numeric"
-                  value={String(s.weight)}
-                  onChangeText={v => updatePlannedSet(exercise.id, idx, 'weight', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                />
-                {exercise.sets.length > 1 && (
-                  <TouchableOpacity onPress={() => removePlannedSet(exercise.id, idx)}>
-                    <Minus size={14} color={colors.tint} />
+                            <View key={s.id} style={[styles.setRowPlan, { backgroundColor: colors.card }]}>
+                <View style={[styles.setNumberContainer, { backgroundColor: colors.tint + '15' }]}>
+                  <Text style={[styles.setCellIndex, { color: colors.tint }]}>{idx + 1}</Text>
+                </View>
+                <View style={styles.inputGroup}>
+                  {(() => {
+                    const exerciseType = getExerciseType(exercise.name);
+                    const metrics = getExerciseMetrics(exerciseType);
+                    return (
+                      <>
+                        <TextInput
+                          keyboardType={metrics.keyboardType1}
+                          placeholder={metrics.placeholder1}
+                          placeholderTextColor={colors.textSecondary}
+                          value={String(s.reps)}
+                          onChangeText={v => updatePlannedSet(exercise.id, idx, 'reps', isNaN(Number(v)) ? 0 : Number(v))}
+                          style={[styles.setInputBox, { 
+                            backgroundColor: colors.inputBackground, 
+                            color: colors.text,
+                            borderColor: colors.border
+                          }]}
+                        />
+                        <TextInput
+                          keyboardType={metrics.keyboardType2}
+                          placeholder={metrics.placeholder2}
+                          placeholderTextColor={colors.textSecondary}
+                          value={String(s.weight)}
+                          onChangeText={v => updatePlannedSet(exercise.id, idx, 'weight', Number(v))}
+                          style={[styles.setInputBox, { 
+                            backgroundColor: colors.inputBackground, 
+                            color: colors.text,
+                            borderColor: colors.border
+                          }]}
+                        />
+                      </>
+                    );
+                  })()}
+                </View>
+                <View style={styles.deleteButtonContainer}>
+                  <TouchableOpacity 
+                    style={[styles.deleteButton, { 
+                      backgroundColor: colors.error + '15',
+                      borderColor: colors.error + '25',
+                      opacity: exercise.sets.length > 1 ? 1 : 0.5
+                    }]}
+                    onPress={() => {
+                      if (exercise.sets.length > 1) {
+                        removePlannedSet(exercise.id, idx);
+                      }
+                    }}
+                    disabled={exercise.sets.length <= 1}
+                  >
+                    <Minus size={16} color={colors.error} />
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
             ))}
 
@@ -812,12 +1517,28 @@ export default function WorkoutTrackerScreen() {
         ))}
 
         <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.tint, marginVertical:24, alignSelf:'center', width:'90%' }]}
-          onPress={saveWorkout}
+          style={[
+            styles.primaryButton, 
+            { 
+              backgroundColor: !currentWorkout?.exercises.length ? colors.textSecondary : colors.tint, 
+              marginVertical: 24, 
+              alignSelf: 'center', 
+              width: '90%',
+              opacity: !currentWorkout?.exercises.length ? 0.5 : 1
+            }
+          ]}
+          onPress={() => {
+            console.log('🔘 Save Workout button pressed');
+            console.log('Button enabled:', !!currentWorkout?.exercises.length);
+            console.log('Current workout exercises:', currentWorkout?.exercises);
+            saveWorkout();
+          }}
           disabled={!currentWorkout?.exercises.length}
         >
           <CheckCircle size={20} color="white" />
-          <Text style={styles.primaryButtonText}>Save Workout</Text>
+          <Text style={styles.primaryButtonText}>
+            Save Workout {currentWorkout?.exercises.length ? `(${currentWorkout.exercises.length} exercises)` : '(No exercises)'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -961,31 +1682,74 @@ export default function WorkoutTrackerScreen() {
 
                   {/* Table Header */}
                   <View style={styles.modalLabelRow}>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Sets</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Reps</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Weight (kg)</Text>
+                    <Text style={[styles.modalLabel, styles.modalLabelSet, { color: colors.text }]}>Set</Text>
+                    <View style={styles.inputGroup}>
+                      {(() => {
+                        const exerciseType = getExerciseType(exerciseName);
+                        const metrics = getExerciseMetrics(exerciseType);
+                        return (
+                          <>
+                            <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.text }]}>
+                              {metrics.label1}
+                            </Text>
+                            <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.text }]}>
+                              {metrics.label2}
+                            </Text>
+                          </>
+                        );
+                      })()}
+                    </View>
+                    <View style={styles.deleteButtonContainer} />
                   </View>
 
                   {setsList.map((s, idx) => (
                     <View key={idx.toString()} style={styles.modalSetRow}>
-                      <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                      <TextInput
-                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={s.reps}
-                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
-                      />
-                      <TextInput
-                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={s.weight}
-                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
-                      />
-                      {setsList.length>1 && (
-                        <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                          <Minus size={14} color={colors.tint} />
+                       <View style={styles.setNumberContainer}>
+                        <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
+                       </View>
+                       <View style={styles.inputGroup}>
+                        {(() => {
+                          const exerciseType = getExerciseType(exerciseName);
+                          const metrics = getExerciseMetrics(exerciseType);
+                          return (
+                            <>
+                              <TextInput
+                                style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                                keyboardType={metrics.keyboardType1}
+                                placeholder={metrics.placeholder1}
+                                placeholderTextColor={colors.textSecondary}
+                                value={s.reps}
+                                onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
+                              />
+                              <TextInput
+                                style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                                keyboardType={metrics.keyboardType2}
+                                placeholder={metrics.placeholder2}
+                                placeholderTextColor={colors.textSecondary}
+                                value={s.weight}
+                                onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
+                              />
+                            </>
+                          );
+                        })()}
+                      </View>
+                      <View style={styles.deleteButtonContainer}>
+                        <TouchableOpacity 
+                          style={[styles.deleteButton, { 
+                            backgroundColor: colors.error + '15',
+                            borderColor: colors.error + '25',
+                            opacity: setsList.length > 1 ? 1 : 0.5
+                          }]} 
+                          onPress={() => {
+                            if (setsList.length > 1) {
+                              setSetsList(prev => prev.filter((_, i) => i !== idx));
+                            }
+                          }}
+                          disabled={setsList.length <= 1}
+                        >
+                          <Minus size={16} color={colors.error} />
                         </TouchableOpacity>
-                      )}
+                      </View>
                     </View>
                   ))}
 
@@ -1063,33 +1827,184 @@ export default function WorkoutTrackerScreen() {
               <ChevronDown size={20} color={colors.text + '80'} />
             </TouchableOpacity>
 
-            {/* Table Header */}
-            <View style={styles.modalLabelRow}>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Sets</Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Reps</Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Weight (kg)</Text>
+            {/* Quick Presets */}
+            <View style={styles.quickPresets}>
+              <Text style={[styles.presetsLabel, { color: colors.text }]}>Quick Setup:</Text>
+              <View style={styles.presetButtons}>
+                {(() => {
+                  const exerciseType = getExerciseType(exerciseName);
+                  if (exerciseType === ExerciseType.CARDIO_TIME || exerciseType === ExerciseType.TIME_BASED) {
+                    return (
+                      // Time-based presets
+                  <>
+                    <TouchableOpacity
+                      style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                      onPress={() => setSetsList([
+                        { reps: '10:00', weight: '5' },
+                        { reps: '10:00', weight: '5' },
+                        { reps: '10:00', weight: '5' }
+                      ])}
+                    >
+                      <Text style={[styles.presetButtonText, { color: colors.tint }]}>3×10min</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                      onPress={() => setSetsList([
+                        { reps: '15:00', weight: '7' },
+                        { reps: '15:00', weight: '7' },
+                        { reps: '15:00', weight: '7' }
+                      ])}
+                    >
+                      <Text style={[styles.presetButtonText, { color: colors.tint }]}>3×15min</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                      onPress={() => setSetsList([
+                        { reps: '20:00', weight: '10' }
+                      ])}
+                    >
+                      <Text style={[styles.presetButtonText, { color: colors.tint }]}>20min</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                      onPress={() => setSetsList([
+                        { reps: '30:00', weight: '15' }
+                      ])}
+                    >
+                      <Text style={[styles.presetButtonText, { color: colors.tint }]}>30min</Text>
+                    </TouchableOpacity>
+                    </>
+                  );
+                } else {
+                  return (
+                    // Strength training presets
+                    <>
+                      <TouchableOpacity
+                        style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                        onPress={() => setSetsList([
+                          { reps: '8', weight: '0' },
+                          { reps: '8', weight: '0' },
+                          { reps: '8', weight: '0' },
+                          { reps: '8', weight: '0' }
+                        ])}
+                      >
+                        <Text style={[styles.presetButtonText, { color: colors.tint }]}>4×8</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                        onPress={() => setSetsList([
+                          { reps: '10', weight: '0' },
+                          { reps: '10', weight: '0' },
+                          { reps: '10', weight: '0' }
+                        ])}
+                      >
+                        <Text style={[styles.presetButtonText, { color: colors.tint }]}>3×10</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                        onPress={() => setSetsList([
+                          { reps: '12', weight: '0' },
+                          { reps: '12', weight: '0' },
+                          { reps: '12', weight: '0' }
+                        ])}
+                      >
+                        <Text style={[styles.presetButtonText, { color: colors.tint }]}>3×12</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.presetButton, { backgroundColor: colors.tint + '20' }]}
+                        onPress={() => setSetsList([
+                          { reps: '15', weight: '0' },
+                          { reps: '15', weight: '0' },
+                          { reps: '15', weight: '0' }
+                        ])}
+                      >
+                        <Text style={[styles.presetButtonText, { color: colors.tint }]}>3×15</Text>
+                      </TouchableOpacity>
+                    </>
+                  );
+                }
+              })()}
+              </View>
             </View>
 
+                          {/* Table Header */}
+              <View style={[styles.modalLabelRow, { backgroundColor: colors.backgroundSecondary }]}>
+                <Text style={[styles.modalLabel, styles.modalLabelSet, { color: colors.textSecondary }]}>Set</Text>
+                <View style={styles.inputGroup}>
+                  {(() => {
+                    const exerciseType = getExerciseType(exerciseName);
+                    const metrics = getExerciseMetrics(exerciseType);
+                    return (
+                      <>
+                        <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.textSecondary }]}>
+                          {metrics.label1}
+                        </Text>
+                        <Text style={[styles.modalLabel, styles.modalLabelInput, { color: colors.textSecondary }]}>
+                          {metrics.label2}
+                        </Text>
+                      </>
+                    );
+                  })()}
+                </View>
+                <View style={styles.deleteButtonContainer} />
+              </View>
+
             {setsList.map((s, idx) => (
-              <View key={idx.toString()} style={styles.modalSetRow}>
-                <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                <TextInput
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  value={s.reps}
-                  onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
-                />
-                <TextInput
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  value={s.weight}
-                  onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
-                />
-                {setsList.length>1 && (
-                  <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                    <Minus size={14} color={colors.tint} />
+                            <View key={idx.toString()} style={[styles.modalSetRow, { backgroundColor: colors.card }]}>
+                <View style={[styles.setNumberContainer, { backgroundColor: colors.tint + '15' }]}>
+                  <Text style={[styles.setCellIndex, { color: colors.tint }]}>{idx + 1}</Text>
+                </View>
+                <View style={styles.inputGroup}>
+                  {(() => {
+                    const exerciseType = getExerciseType(exerciseName);
+                    const metrics = getExerciseMetrics(exerciseType);
+                    return (
+                      <>
+                        <TextInput
+                          style={[styles.setInputBox, { 
+                            backgroundColor: colors.inputBackground, 
+                            color: colors.text,
+                            borderColor: colors.border
+                          }]}
+                          placeholder={metrics.placeholder1}
+                          placeholderTextColor={colors.textSecondary}
+                          keyboardType={metrics.keyboardType1}
+                          value={s.reps}
+                          onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
+                        />
+                        <TextInput
+                          style={[styles.setInputBox, { 
+                            backgroundColor: colors.inputBackground, 
+                            color: colors.text,
+                            borderColor: colors.border
+                          }]}
+                          placeholder={metrics.placeholder2}
+                          placeholderTextColor={colors.textSecondary}
+                          keyboardType={metrics.keyboardType2}
+                          value={s.weight}
+                          onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
+                        />
+                      </>
+                    );
+                  })()}
+                </View>
+                <View style={styles.deleteButtonContainer}>
+                  <TouchableOpacity 
+                    style={[styles.deleteButton, { 
+                      backgroundColor: colors.error + '15',
+                      borderColor: colors.error + '25',
+                      opacity: setsList.length > 1 ? 1 : 0.5
+                    }]}
+                    onPress={() => {
+                      if (setsList.length > 1) {
+                        setSetsList(prev => prev.filter((_, i) => i !== idx));
+                      }
+                    }}
+                    disabled={setsList.length <= 1}
+                  >
+                    <Minus size={16} color={colors.error} />
                   </TouchableOpacity>
-                )}
+                </View>
               </View>
             ))}
 
@@ -1125,16 +2040,15 @@ export default function WorkoutTrackerScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Exercise Picker Modal - iOS Compatible */}
+      {/* Exercise Picker Modal - Cross-Platform Compatible */}
       <Modal
         visible={showExercisePickerModal}
         animationType="slide"
-        transparent={false}
-        presentationStyle="formSheet"
+        transparent={true}
         onRequestClose={() => setShowExercisePickerModal(false)}
       >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-          <View style={[{ flex: 1, backgroundColor: colors.background }]}>
+        <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
+          <View style={[styles.exercisePickerModalContent, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <TouchableOpacity 
                 onPress={() => setShowExercisePickerModal(false)}
@@ -1159,41 +2073,144 @@ export default function WorkoutTrackerScreen() {
               />
             </View>
 
-            <FlatList
-              data={EXERCISE_OPTIONS.filter(exercise => 
-                exercise.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-              )}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.exercisePickerItem, { 
-                    backgroundColor: colors.card, 
+            {exerciseSearchQuery.length > 0 ? (
+              // Show search results with enhanced design
+              <FlatList
+                data={EXERCISE_OPTIONS.filter(exercise => 
+                  exercise.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
+                )}
+                renderItem={({ item }) => {
+                  const exerciseType = getExerciseType(item);
+                  const categoryInfo = Object.entries(EXERCISE_CATEGORIES).find(([_, { subcategories }]) =>
+                    Object.values(subcategories).some(exercises => exercises.includes(item))
+                  );
+                  const categoryColor = categoryInfo ? categoryInfo[1].color : colors.tint;
+                  
+                  return (
+                    <TouchableOpacity
+                      style={[styles.modernExerciseItem, { 
+                        backgroundColor: colors.card,
+                        borderLeftColor: categoryColor,
+                        marginHorizontal: 16, 
+                        marginBottom: 8,
+                      }]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setExerciseName(item);
+                        setShowExercisePickerModal(false);
+                      }}
+                    >
+                      <View style={[styles.exerciseIconContainer, { backgroundColor: categoryColor + '20' }]}>
+                        <Dumbbell size={20} color={categoryColor} />
+                      </View>
+                      <View style={styles.exerciseInfo}>
+                        <Text style={[styles.modernExerciseName, { color: colors.text }]}>{item}</Text>
+                        <Text style={[styles.exerciseTypeLabel, { color: colors.textSecondary }]}>
+                          {exerciseType.replace('_', ' ').toLowerCase()}
+                        </Text>
+                      </View>
+                      <View style={[styles.exerciseArrow, { backgroundColor: categoryColor + '15' }]}>
+                        <ChevronDown size={16} color={categoryColor} style={{ transform: [{ rotate: '-90deg' }] }} />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+                keyExtractor={(item) => item}
+                ListEmptyComponent={() => (
+                  <View style={[styles.modernExerciseEmpty, { backgroundColor: colors.card, marginHorizontal: 16 }]}>
+                    <Search size={32} color={colors.textSecondary + '40'} />
+                    <Text style={[styles.modernEmptyTitle, { color: colors.text }]}>
+                      No exercises found
+                    </Text>
+                    <Text style={[styles.modernEmptySubtitle, { color: colors.textSecondary }]}>
+                      Try searching for "{exerciseSearchQuery.split(' ')[0]}" or browse categories below
+                    </Text>
+                  </View>
+                )}
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              />
+            ) : (
+              // Show categories
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+                {Object.entries(EXERCISE_CATEGORIES).map(([category, { color, subcategories }]) => (
+                  <View key={category} style={[styles.categorySection, { 
+                    backgroundColor: color + '20', 
+                    borderLeftColor: color,
+                    borderLeftWidth: 4,
                     marginHorizontal: 16, 
-                    marginBottom: 1,
-                    borderRadius: 8 
-                  }]}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setExerciseName(item);
-                    setShowExercisePickerModal(false);
-                  }}
-                >
-                  <Text style={[styles.exercisePickerItemText, { color: colors.text }]}>{item}</Text>
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item}
-              ListEmptyComponent={() => (
-                <View style={[styles.exercisePickerEmpty, { backgroundColor: colors.card, marginHorizontal: 16 }]}>
-                  <Text style={[styles.exercisePickerEmptyText, { color: colors.text }]}>
-                    No exercises found for "{exerciseSearchQuery}"
-                  </Text>
-                </View>
-              )}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-              contentContainerStyle={{ paddingBottom: 20 }}
-            />
+                    marginBottom: 16,
+                    shadowColor: color,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 8,
+                    elevation: 4
+                  }]}>
+                    <View style={styles.categoryHeader}>
+                      <View style={[styles.categoryEmojiContainer, { backgroundColor: color }]}>
+                        {getCategoryIcon(category)}
+                      </View>
+                      <Text style={[styles.categoryTitle, { color: colors.text }]}>
+                        {category}
+                      </Text>
+                      <View style={styles.categoryStats}>
+                        <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
+                          {Object.values(subcategories).flat().length} exercises
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.categoryExercises}>
+                      {Object.entries(subcategories).map(([subcategory, exercises]) => (
+                        <View key={subcategory} style={[styles.subcategorySection, { 
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                          borderColor: color + '30',
+                          borderWidth: 1
+                        }]}>
+                          <View style={styles.subcategoryHeader}>
+                            <Text style={[styles.subcategoryTitle, { color: colors.text }]}>
+                              {subcategory}
+                            </Text>
+                            <View style={[styles.subcategoryBadge, { backgroundColor: color + '40' }]}>
+                              <Text style={[styles.subcategoryBadgeText, { color: color }]}>
+                                {exercises.length}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.subcategoryExercises}>
+                            {exercises.map((exercise) => (
+                              <TouchableOpacity
+                                key={exercise}
+                                style={[styles.modernCategoryExerciseItem, { 
+                                  backgroundColor: colors.card,
+                                  borderColor: color + '30',
+                                  shadowColor: color,
+                                }]}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                  setExerciseName(exercise);
+                                  setShowExercisePickerModal(false);
+                                }}
+                              >
+                                <View style={[styles.miniExerciseIcon, { backgroundColor: color + '20' }]}>
+                                  <Dumbbell size={12} color={color} />
+                                </View>
+                                <Text style={[styles.modernCategoryExerciseText, { color: colors.text }]}>
+                                  {exercise}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
     </>
   );
@@ -1255,6 +2272,64 @@ export default function WorkoutTrackerScreen() {
       />
       
       {renderModals()}
+      
+      {/* Workout Template Selection Modal */}
+      <Modal
+        visible={showTemplateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTemplateModal(false)}
+      >
+        <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
+          <View style={[styles.templateModalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity 
+                onPress={() => setShowTemplateModal(false)}
+                activeOpacity={0.7}
+                style={{ padding: 8 }}
+              >
+                <X size={24} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Choose Workout Template</Text>
+              <TouchableOpacity 
+                onPress={startNewWorkoutCreation}
+                activeOpacity={0.7}
+                style={{ padding: 8 }}
+              >
+                <Text style={[styles.customWorkoutText, { color: colors.tint }]}>Custom</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.templateScrollView} showsVerticalScrollIndicator={false}>
+              <View style={styles.templateGrid}>
+                {WORKOUT_TEMPLATES.map((template) => (
+                  <TouchableOpacity
+                    key={template.id}
+                    style={[styles.templateCard, { backgroundColor: colors.card }]}
+                    activeOpacity={0.8}
+                    onPress={() => applyWorkoutTemplate(template)}
+                  >
+                    <Text style={[styles.templateTitle, { color: colors.text }]}>
+                      {template.name}
+                    </Text>
+                    <Text style={[styles.templateDescription, { color: colors.text + '80' }]}>
+                      {template.description}
+                    </Text>
+                    <View style={styles.templateStats}>
+                      <Text style={[styles.templateTime, { color: colors.tint }]}>
+                        ⏱️ {template.estimatedTime}
+                      </Text>
+                      <Text style={[styles.templateExercises, { color: colors.text + '60' }]}>
+                        {template.exercises.length} exercises
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1430,6 +2505,79 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
+  enhancedExerciseCard: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  exerciseInfo: {
+    flex: 1,
+  },
+  exerciseActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  setsProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  setsLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  setsIndicator: {
+    flexDirection: 'row',
+    gap: 4,
+    flex: 1,
+  },
+  setDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  setsCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quickActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  notesIndicator: {
+    flex: 1,
+  },
+  notesText: {
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
   exerciseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1463,12 +2611,237 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 999999,
+    elevation: 999999,
   },
   modalContent: {
     width: screenWidth * 0.9,
     borderRadius: 16,
     padding: 24,
     maxHeight: '80%',
+  },
+  exercisePickerModalContent: {
+    width: screenWidth * 0.95,
+    height: '85%',
+    borderRadius: 20,
+    paddingTop: 10,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  templateModalContent: {
+    width: screenWidth * 0.95,
+    height: '85%',
+    borderRadius: 20,
+    paddingTop: 10,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  templateScrollView: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  templateGrid: {
+    paddingBottom: 20,
+  },
+  templateCard: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  templateTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  templateDescription: {
+    fontSize: 14,
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  templateStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  templateTime: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  templateExercises: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  customWorkoutText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  quickPresets: {
+    marginBottom: 16,
+  },
+  presetsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  presetButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  presetButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  presetButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  categorySection: {
+    borderRadius: 12,
+    padding: 16,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  categoryEmojiContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+
+  categoryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  categoryStats: {
+    alignItems: 'flex-end',
+  },
+  categoryCount: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  categoryExercises: {
+    gap: 12,
+  },
+  subcategorySection: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  subcategoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subcategoryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.9,
+  },
+  subcategoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  subcategoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  subcategoryExercises: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  categoryExerciseItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  categoryExerciseText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  modernCategoryExerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  miniExerciseIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  modernCategoryExerciseText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  setNumberContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  deleteButtonContainer: {
+    width: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(211, 47, 47, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(211, 47, 47, 0.25)',
+    shadowColor: '#d32f2f',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   modalTitle: {
     fontSize: 20,
@@ -1533,14 +2906,27 @@ const styles = StyleSheet.create({
   },
   modalLabelRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   modalLabel: {
-    flex: 1,
-    textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  modalLabelSet: {
+    width: 44,
+    textAlign: 'center',
+    marginHorizontal: 4,
+  },
+  modalLabelInput: {
+    flex: 1,
+    marginHorizontal: 4,
+    textAlign: 'center',
   },
   /* --- Plan view table styles --- */
   setTableHeader: {
@@ -1556,26 +2942,52 @@ const styles = StyleSheet.create({
   },
   setRowPlan: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   setCellIndex: {
-    width: 28,
     textAlign: 'center',
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
   },
   setInputBox: {
     flex: 1,
-    borderRadius: 8,
-    paddingVertical: 6,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     textAlign: 'center',
-    marginHorizontal: 4,
+    marginHorizontal: 6,
+    fontSize: 16,
+    fontWeight: '600',
+    borderWidth: 1.5,
+    height: 48,
+    minWidth: 80,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   modalSetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   datePickerField: {
     paddingVertical: 12,
@@ -1608,7 +3020,7 @@ const styles = StyleSheet.create({
   },
   workoutGridCard: {
     width: '48%',
-    minWidth: 150,
+    // removed fixed minWidth to improve responsiveness across screen sizes
     borderRadius: 12,
     padding: 16,
     elevation: 2,
@@ -1649,8 +3061,17 @@ const styles = StyleSheet.create({
     right: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   editIconButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  deleteIconButton: {
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -1688,20 +3109,81 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  modernExerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  exerciseIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  modernExerciseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  exerciseTypeLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  exerciseArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modernExerciseEmpty: {
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    borderRadius: 16,
+    marginTop: 20,
+  },
+  modernEmptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  modernEmptySubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   exercisePickerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    marginBottom: 12,
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   exercisePickerSearchInput: {
     flex: 1,
     paddingVertical: 0,
-    paddingHorizontal: 8,
-    fontSize: 14,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: '500',
   },
   exercisePickerEmpty: {
     paddingVertical: 20,
@@ -1727,4 +3209,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     flex: 1,
   },
+  inputGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  
+  // 🎨 NEW: Enhanced UI Styles
+  workoutFeed: {
+    flex: 1,
+  },
+  
+  sessionContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  
+  exerciseList: {
+    flex: 1,
+    marginTop: 16,
+  },
+  
+  // Enhanced button styles with glassmorphism
+  enhancedButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  
+  // Glassmorphism card styles
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  
+  // Neon accent styles
+  neonBorder: {
+    borderWidth: 1,
+    shadowRadius: 10,
+    shadowOpacity: 0.5,
+  },
+
 });

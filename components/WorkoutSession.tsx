@@ -25,6 +25,9 @@ import {
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { router } from 'expo-router';
+import { LiveWorkoutTimer } from './LiveWorkoutTimer';
+import { SmartRestTimer } from './SmartRestTimer';
+import { WorkoutContext } from '@/hooks/useSmartRestTimer';
 
 interface WorkoutSet {
   id: string;
@@ -58,23 +61,39 @@ interface Workout {
 interface WorkoutSessionProps {
   workout: Workout;
   onWorkoutComplete: (completedWorkout: Workout) => void;
+  defaultRestTime?: number; // in seconds
   onClose: () => void;
 }
 
-export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: WorkoutSessionProps) {
+export default function WorkoutSession({ workout, onWorkoutComplete, onClose, defaultRestTime = 90 }: WorkoutSessionProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
 
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(workout);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
-  const [restTimer, setRestTimer] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [workoutStartTime] = useState(new Date());
   const [workoutElapsedTime, setWorkoutElapsedTime] = useState(0);
   const [isWorkoutActive, setIsWorkoutActive] = useState(true);
-  const [showRestModal, setShowRestModal] = useState(false);
-  const [customRestTime, setCustomRestTime] = useState('90');
+  const [selectedRestTime, setSelectedRestTime] = useState(90); // Default rest time in seconds
+  const [showRestTimeSelector, setShowRestTimeSelector] = useState(false);
+  const [customRestTime, setCustomRestTime] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [timerResetKey, setTimerResetKey] = useState(0); // Key to force timer reset
+  
+  // Smart timer context
+  const [workoutContext, setWorkoutContext] = useState<WorkoutContext>({
+    exerciseName: '',
+    exerciseType: 'strength',
+    setNumber: 1,
+    totalSets: 1,
+    workoutProgress: 0,
+    isCompoundMovement: false,
+    exerciseIntensity: 5,
+    timeOfDay: new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening',
+    userTendsToSkip: false
+  });
 
   // Initialize sets for exercises
   useEffect(() => {
@@ -93,6 +112,35 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
     setCurrentWorkout(updatedWorkout);
   }, []);
 
+  // Update workout context when exercise changes
+  useEffect(() => {
+    const currentExercise = currentWorkout.exercises[currentExerciseIndex];
+    if (currentExercise) {
+      const completedSets = currentExercise.sets.filter(set => set.completed).length;
+      const totalExercises = currentWorkout.exercises.length;
+      const completedExercises = currentExerciseIndex;
+      const workoutProgress = (completedExercises + (completedSets / currentExercise.sets.length)) / totalExercises;
+      
+      // Determine if compound movement
+      const compoundExercises = ['squat', 'deadlift', 'bench', 'press', 'row', 'pull'];
+      const isCompound = compoundExercises.some(compound => 
+        currentExercise.name.toLowerCase().includes(compound)
+      );
+      
+      setWorkoutContext({
+        exerciseName: currentExercise.name,
+        exerciseType: 'strength', // Could be enhanced with exercise type detection
+        setNumber: completedSets + 1,
+        totalSets: currentExercise.sets.length,
+        workoutProgress,
+        isCompoundMovement: isCompound,
+        exerciseIntensity: 5, // Could be enhanced with user input
+        timeOfDay: new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening',
+        userTendsToSkip: false // Could be learned from analytics
+      });
+    }
+  }, [currentExerciseIndex, currentWorkout]);
+
   // Workout timer effect - continuous timer that updates every second
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -110,23 +158,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
     };
   }, [workoutStartTime, isWorkoutActive]);
 
-  // Rest timer effect
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isResting && restTimer > 0) {
-      interval = setInterval(() => {
-        setRestTimer(prev => {
-          if (prev <= 1) {
-            setIsResting(false);
-            Alert.alert('Rest Complete!', 'Time to start your next set.');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isResting, restTimer]);
+  // Old rest timer logic removed - now using SmartRestTimer
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -157,9 +189,27 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
       })
     }));
 
-    // Start rest timer
-    const restTime = parseInt(customRestTime) || 90;
-    setRestTimer(restTime);
+    // Update workout context for the timer
+    const exercise = currentWorkout.exercises[exerciseIndex];
+    const completedSetsCount = exercise.sets.filter(s => s.completed).length + 1; // +1 for the set we just completed
+    const currentHour = new Date().getHours();
+    
+    setWorkoutContext({
+      exerciseName: exercise.name,
+      exerciseType: 'strength', // You might want to make this dynamic based on exercise
+      setNumber: completedSetsCount,
+      totalSets: exercise.sets.length,
+      workoutProgress: (currentExerciseIndex + 1) / currentWorkout.exercises.length,
+      isCompoundMovement: ['squat', 'deadlift', 'bench', 'press'].some(compound => 
+        exercise.name.toLowerCase().includes(compound)
+      ),
+      exerciseIntensity: Math.min(10, Math.max(1, Math.round((exercise.sets[setIndex]?.weight || 0) / 10))),
+      timeOfDay: currentHour < 12 ? 'morning' : currentHour < 17 ? 'afternoon' : 'evening',
+      userTendsToSkip: false // Could be based on user history
+    });
+
+    // Reset and start rest timer with selected time
+    setTimerResetKey(prev => prev + 1); // Force timer reset
     setIsResting(true);
   };
 
@@ -221,7 +271,6 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
 
   const skipRest = () => {
     setIsResting(false);
-    setRestTimer(0);
   };
 
   const finishWorkout = async () => {
@@ -349,30 +398,32 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
             {getElapsedTime()}
           </Text>
         </View>
-        <TouchableOpacity onPress={finishWorkout}>
-          <Text style={[styles.finishButton, { color: colors.tint }]}>
-            Finish
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={[styles.restTimeButton, { 
+              backgroundColor: colors.tint + '20',
+              borderColor: colors.tint + '40',
+              borderWidth: 1,
+            }]}
+            onPress={() => setShowRestTimeSelector(true)}
+          >
+            <View style={[styles.restTimeIcon, { backgroundColor: colors.tint }]}>
+              <Clock size={14} color="white" />
+            </View>
+            <Text style={[styles.restTimeButtonText, { color: colors.tint }]}>
+              {selectedRestTime < 60 ? `${selectedRestTime}s` : 
+               `${Math.floor(selectedRestTime / 60)}:${(selectedRestTime % 60).toString().padStart(2, '0')}`}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={finishWorkout}>
+            <Text style={[styles.finishButton, { color: colors.tint }]}>
+              Finish
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Rest Timer */}
-      {isResting && (
-        <View style={[styles.restTimer, { backgroundColor: colors.card }]}>
-          <View style={styles.restTimerContent}>
-            <Clock size={24} color={colors.tint} />
-            <Text style={[styles.restTimeText, { color: colors.text }]}>
-              Rest: {formatTime(restTimer)}
-            </Text>
-            <TouchableOpacity
-              style={[styles.skipButton, { backgroundColor: colors.tint }]}
-              onPress={skipRest}
-            >
-              <Text style={styles.skipButtonText}>Skip</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+
 
       {/* Exercise Navigation */}
       <View style={styles.exerciseNav}>
@@ -409,6 +460,23 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
                 {completedSets}/{totalSets} sets
               </Text>
             </View>
+
+            {/* 🎨 Enhanced Smart Rest Timer - Always visible when resting */}
+            {isResting && (
+              <SmartRestTimer
+                key={`timer-${timerResetKey}-${selectedRestTime}`} // Force reset when key changes
+                context={workoutContext}
+                workoutId={currentWorkout.id}
+                onTimerComplete={() => setIsResting(false)}
+                onTimerStart={() => console.log('Timer started')}
+                onTimerStop={() => console.log('Timer stopped')}
+                showInlineControls={true}
+                compactMode={false}
+                initialTime={selectedRestTime}
+              />
+            )}
+            
+
 
             <View style={styles.setsContainer}>
               {currentExercise.sets.map((set, setIndex) => (
@@ -483,87 +551,167 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose }: 
                 <Plus size={16} color="white" />
                 <Text style={styles.actionButtonText}>Add Set</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: colors.background }]}
-                onPress={() => setShowRestModal(true)}
-              >
-                <Clock size={16} color={colors.text} />
-                <Text style={[styles.actionButtonText, { color: colors.text }]}>
-                  Rest Timer
-                </Text>
-              </TouchableOpacity>
             </View>
           </View>
         )}
       </ScrollView>
 
-      {/* Rest Timer Modal */}
-      <Modal visible={showRestModal} animationType="slide" transparent>
+      {/* Rest Time Selector Modal */}
+      <Modal visible={showRestTimeSelector} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Rest Timer
-            </Text>
+          <View style={[styles.restTimeSelectorCard, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHandle} />
             
-            <View style={styles.restPresets}>
-              {[30, 60, 90, 120, 180].map(seconds => (
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalIconContainer, { backgroundColor: colors.tint + '20' }]}>
+                <Clock size={24} color={colors.tint} />
+              </View>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Rest Timer Default
+              </Text>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                Choose your default rest time between sets
+              </Text>
+            </View>
+            
+            <View style={styles.restPresetsGrid}>
+              {[
+                { seconds: 30, label: '30s', desc: 'Quick' },
+                { seconds: 60, label: '1:00', desc: 'Light' },
+                { seconds: 90, label: '1:30', desc: 'Standard' },
+                { seconds: 120, label: '2:00', desc: 'Moderate' },
+                { seconds: 180, label: '3:00', desc: 'Heavy' },
+                { seconds: 240, label: '4:00', desc: 'Strength' },
+                { seconds: 300, label: '5:00', desc: 'Max Effort' },
+              ].map(({ seconds, label, desc }) => (
                 <TouchableOpacity
                   key={seconds}
-                  style={[styles.presetButton, { backgroundColor: colors.background }]}
+                  style={[
+                    styles.presetCard,
+                    { 
+                      backgroundColor: selectedRestTime === seconds && !showCustomInput ? colors.tint : colors.background,
+                      borderColor: selectedRestTime === seconds && !showCustomInput ? colors.tint : colors.border || 'rgba(255,255,255,0.1)',
+                      borderWidth: selectedRestTime === seconds && !showCustomInput ? 2 : 1,
+                      transform: [{ scale: selectedRestTime === seconds && !showCustomInput ? 1.02 : 1 }],
+                    }
+                  ]}
                   onPress={() => {
-                    setRestTimer(seconds);
-                    setIsResting(true);
-                    setShowRestModal(false);
+                    setSelectedRestTime(seconds);
+                    setShowCustomInput(false);
+                    setCustomRestTime('');
                   }}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.presetButtonText, { color: colors.text }]}>
-                    {formatTime(seconds)}
+                  {selectedRestTime === seconds && !showCustomInput && (
+                    <View style={styles.selectedBadge}>
+                      <Text style={styles.selectedBadgeText}>✓</Text>
+                    </View>
+                  )}
+                  <Text style={[
+                    styles.presetCardTime, 
+                    { color: selectedRestTime === seconds && !showCustomInput ? 'white' : colors.text }
+                  ]}>
+                    {label}
+                  </Text>
+                  <Text style={[
+                    styles.presetCardDesc, 
+                    { color: selectedRestTime === seconds && !showCustomInput ? 'rgba(255,255,255,0.9)' : colors.textSecondary }
+                  ]}>
+                    {desc}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
-
-            <View style={styles.customRestInput}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>
-                Custom (seconds)
-              </Text>
-              <TextInput
-                style={[styles.textInput, { backgroundColor: colors.background, color: colors.text }]}
-                value={customRestTime}
-                onChangeText={setCustomRestTime}
-                keyboardType="numeric"
-                placeholder="90"
-                placeholderTextColor={colors.text + '80'}
-              />
-            </View>
-
-            <View style={styles.modalActions}>
+              
+              {/* Custom Time Card */}
               <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.background }]}
-                onPress={() => setShowRestModal(false)}
+                style={[
+                  styles.presetCard,
+                  styles.customCard,
+                  { 
+                    backgroundColor: showCustomInput ? colors.tint : colors.background,
+                    borderColor: showCustomInput ? colors.tint : colors.border || 'rgba(255,255,255,0.1)',
+                    borderWidth: showCustomInput ? 2 : 1,
+                    borderStyle: 'dashed',
+                    transform: [{ scale: showCustomInput ? 1.02 : 1 }],
+                  }
+                ]}
+                onPress={() => setShowCustomInput(true)}
+                activeOpacity={0.8}
               >
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>
-                  Cancel
+                {showCustomInput && (
+                  <View style={styles.selectedBadge}>
+                    <Text style={styles.selectedBadgeText}>✓</Text>
+                  </View>
+                )}
+                <Text style={[
+                  styles.presetCardTime, 
+                  { color: showCustomInput ? 'white' : colors.text }
+                ]}>
+                  {showCustomInput && customRestTime ? `${customRestTime}s` : '+'}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.tint }]}
-                onPress={() => {
-                  const time = parseInt(customRestTime) || 90;
-                  setRestTimer(time);
-                  setIsResting(true);
-                  setShowRestModal(false);
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: 'white' }]}>
-                  Start
+                <Text style={[
+                  styles.presetCardDesc, 
+                  { color: showCustomInput ? 'rgba(255,255,255,0.9)' : colors.textSecondary }
+                ]}>
+                  Custom
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Custom Time Input */}
+            {showCustomInput && (
+              <View style={[styles.customInputContainer, { borderColor: colors.border || 'rgba(255,255,255,0.1)' }]}>
+                <Text style={[styles.customInputLabel, { color: colors.text }]}>
+                  Enter custom time (seconds):
+                </Text>
+                <View style={styles.customInputRow}>
+                  <TextInput
+                    style={[
+                      styles.customInput,
+                      { 
+                        backgroundColor: colors.background,
+                        color: colors.text,
+                        borderColor: colors.border || 'rgba(255,255,255,0.2)',
+                      }
+                    ]}
+                    value={customRestTime}
+                    onChangeText={(text) => {
+                      // Only allow numbers
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      setCustomRestTime(numericText);
+                      if (numericText) {
+                        const seconds = parseInt(numericText);
+                        if (seconds > 0 && seconds <= 1800) { // Max 30 minutes
+                          setSelectedRestTime(seconds);
+                        }
+                      }
+                    }}
+                    placeholder="90"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="numeric"
+                    maxLength={4}
+                    autoFocus
+                  />
+                  <Text style={[styles.customInputUnit, { color: colors.textSecondary }]}>
+                    seconds
+                  </Text>
+                </View>
+                <Text style={[styles.customInputHint, { color: colors.textSecondary }]}>
+                  Range: 1-1800 seconds (30 minutes max)
+                </Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.doneButton, { backgroundColor: colors.tint }]}
+              onPress={() => setShowRestTimeSelector(false)}
+            >
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
@@ -743,10 +891,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   restPresets: {
     flexDirection: 'row',
@@ -786,5 +935,191 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  restTimeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  restTimeIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  restTimeButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  modalSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+    paddingHorizontal: 20,
+  },
+  presetButtonSubtext: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  // Enhanced Rest Time Selector Styles
+  restTimeSelectorCard: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  restPresetsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 32,
+    justifyContent: 'center',
+  },
+  presetCard: {
+    width: 90,
+    height: 80,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  selectedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'white',
+  },
+  presetCardTime: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  presetCardDesc: {
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  doneButton: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  doneButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+    letterSpacing: 0.5,
+  },
+  // Custom Time Input Styles
+  customCard: {
+    borderStyle: 'dashed',
+  },
+  customInputContainer: {
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  customInputLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  customInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  customInput: {
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    minWidth: 80,
+    maxWidth: 120,
+  },
+  customInputUnit: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  customInputHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 }); 

@@ -1,0 +1,97 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Welcome to Gymsta</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Arial, sans-serif;">
+    
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f5f5f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                
+                <!-- Main Container -->
+                <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    
+                    <!-- Header with Logo -->
+                    <tr>
+                        <td align="center" style="padding: 40px 30px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px 12px 0 0;">
+                            <img src="https://gwcdrwlwvufdubnknyyk.supabase.co/storage/v1/object/public/assets/images/ChatGPT%20Image%20Apr%2025,%202025,%2012_38_22%20AM.png" alt="Gymsta Logo" width="80" height="80" style="display: block; border: 0; border-radius: 50%; background-color: #ffffff; padding: 8px;" />
+                            <h1 style="margin: 20px 0 8px 0; color: #ffffff; font-size: 28px; font-weight: 600; font-family: 'Segoe UI', Arial, sans-serif; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">Welcome to Gymsta</h1>
+                            <p style="margin: 0; color: rgba(255,255,255,0.9); font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">Your fitness journey starts here</p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Main Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <h2 style="margin: 0 0 20px 0; color: #2c3e50; font-size: 22px; font-weight: 600; font-family: 'Segoe UI', Arial, sans-serif;">Confirm Your Email</h2>
+                            
+                            <p style="margin: 0 0 24px 0; color: #34495e; font-size: 16px; line-height: 1.6; font-family: 'Segoe UI', Arial, sans-serif;">
+                                Thanks for joining our fitness community! To get started with tracking workouts, connecting with friends, and sharing your progress, please verify your email address.
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table border="0" cellpadding="0" cellspacing="0" style="margin: 0 0 30px 0;">
+                                <tr>
+                                    <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 16px 32px; border-radius: 8px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);">
+                                        <a href="{{ .ConfirmationURL }}" style="color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; font-family: 'Segoe UI', Arial, sans-serif; display: block; text-align: center;">
+                                            Verify Email Address
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Features Preview -->
+                            <div style="background-color: #f8f9fa; padding: 24px; border-radius: 8px; margin: 0 0 30px 0; border-left: 4px solid #667eea;">
+                                <h3 style="margin: 0 0 16px 0; color: #2c3e50; font-size: 18px; font-weight: 600; font-family: 'Segoe UI', Arial, sans-serif;">What's waiting for you:</h3>
+                                <ul style="margin: 0; padding-left: 20px; color: #34495e; font-size: 14px; line-height: 1.8; font-family: 'Segoe UI', Arial, sans-serif;">
+                                    <li>📊 Track your workouts and progress</li>
+                                    <li>🤝 Connect with fitness enthusiasts</li>
+                                    <li>📱 Share your achievements</li>
+                                    <li>🏆 Join challenges and competitions</li>
+                                </ul>
+                            </div>
+                            
+                            <p style="margin: 0 0 16px 0; color: #7f8c8d; font-size: 14px; line-height: 1.5; font-family: 'Segoe UI', Arial, sans-serif;">
+                                If the button doesn't work, copy and paste this link:
+                            </p>
+                            
+                            <p style="margin: 0 0 24px 0; color: #667eea; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif; word-break: break-all; background-color: #f8f9fa; padding: 12px; border-radius: 4px;">
+                                {{ .ConfirmationURL }}
+                            </p>
+                            
+                            <p style="margin: 0 0 16px 0; color: #7f8c8d; font-size: 14px; line-height: 1.5; font-family: 'Segoe UI', Arial, sans-serif;">
+                                This verification link expires in 24 hours. If you didn't create this account, you can safely ignore this email.
+                            </p>
+                            
+                            <p style="margin: 0; color: #2c3e50; font-size: 16px; font-family: 'Segoe UI', Arial, sans-serif;">
+                                Welcome to the community!<br>
+                                <span style="color: #667eea; font-weight: 600;">The Gymsta Team</span>
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px; background-color: #f8f9fa; border-radius: 0 0 12px 12px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <img src="https://gwcdrwlwvufdubnknyyk.supabase.co/storage/v1/object/public/assets/images/ChatGPT%20Image%20Apr%2025,%202025,%2012_38_22%20AM.png" alt="Gymsta" width="32" height="32" style="display: block; border: 0; margin: 0 auto 12px; opacity: 0.8;" />
+                            
+                            <p style="margin: 0 0 8px 0; color: #6c757d; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">
+                                © 2024 Gymsta. All rights reserved.
+                            </p>
+                            
+                            <p style="margin: 0; color: #6c757d; font-size: 12px; font-family: 'Segoe UI', Arial, sans-serif;">
+                                You received this email because you signed up for Gymsta.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                
+            </td>
+        </tr>
+    </table>
+    
+</body>
+</html> 

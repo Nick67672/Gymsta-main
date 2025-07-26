@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Image, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Calendar, 
   TrendingUp, 
@@ -25,16 +26,19 @@ import { useWorkoutStats } from '@/hooks/useWorkoutStats';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
 
 export default function WorkoutHubScreen() {
+  const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { stats, loading: statsLoading } = useWorkoutStats();
   
-  // Leaderboard state
+  // Add error handling for stats
+  const { stats, loading: statsLoading, error: statsError } = useWorkoutStats();
+  
+  // Leaderboard state with error handling
   const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
   const [leaderboardType, setLeaderboardType] = useState('Weekly Volume');
   const [showDropdown, setShowDropdown] = useState(false);
   
-  const { data: leaderboardData, loading: leaderboardLoading } = useLeaderboard(leaderboardScope, leaderboardType as any);
+  const { data: leaderboardData, loading: leaderboardLoading, error: leaderboardError } = useLeaderboard(leaderboardScope, leaderboardType as any);
 
   const leaderboardTypes = [
     'Weekly Volume',
@@ -43,6 +47,16 @@ export default function WorkoutHubScreen() {
     'Deadlift',
     'Highest Streak'
   ];
+
+  // Add error logging for debugging
+  React.useEffect(() => {
+    if (statsError) {
+      console.warn('Workout stats error:', statsError);
+    }
+    if (leaderboardError) {
+      console.warn('Leaderboard error:', leaderboardError);
+    }
+  }, [statsError, leaderboardError]);
 
   // Example usage: router.push(`/profile/${userId}`)
   const handleProfilePress = (userId: string) => {
@@ -55,8 +69,13 @@ export default function WorkoutHubScreen() {
     router.push('/fitness/workout-tracker');
   };
 
+  // Debug test navigation removed
+
+  // Responsive size helpers
+  const dropdownModalWidth = Math.min(screenWidth * 0.9, 300);
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -134,24 +153,24 @@ export default function WorkoutHubScreen() {
               <View style={[styles.statIconContainer, { backgroundColor: '#4CAF50' + '15' }]}>
                 <BarChart3 size={20} color="#4CAF50" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${(stats?.totalVolume ?? 0).toFixed(0)}kg`}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${(stats?.weeklyVolume ?? 0).toFixed(0)}kg`}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Weekly Volume</Text>
             </View>
             
             <View style={[styles.statCard, { backgroundColor: colors.card }]}>
               <View style={[styles.statIconContainer, { backgroundColor: '#FF9800' + '15' }]}>
                 <Clock size={20} color="#FF9800" />
           </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${stats?.averageDuration ?? 0}min`}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg Duration</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${stats?.weeklyAvgDuration ?? 0}min`}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Weekly Avg Duration</Text>
         </View>
 
             <View style={[styles.statCard, { backgroundColor: colors.card }]}>
               <View style={[styles.statIconContainer, { backgroundColor: '#9C27B0' + '15' }]}>
                 <Award size={20} color="#9C27B0" />
               </View>
-              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.personalRecords ?? 0}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Personal Records</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.weeklyPersonalRecords ?? 0}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Weekly PRs</Text>
             </View>
           </View>
         </View>
@@ -176,6 +195,8 @@ export default function WorkoutHubScreen() {
               <ChevronRight size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
+          
+          {/* Debug button removed */}
         </View>
 
         {/* Leaderboards Section */}
@@ -304,7 +325,8 @@ export default function WorkoutHubScreen() {
             activeOpacity={1}
             onPress={() => setShowDropdown(false)}
           >
-            <View style={[styles.dropdownModal, { backgroundColor: colors.card }]}>
+            <View style={[styles.dropdownModal, { backgroundColor: colors.card, borderColor: colors.border, width: dropdownModalWidth }]}
+            >
               {leaderboardTypes.map((type, index) => (
                 <TouchableOpacity
                   key={index}
@@ -331,7 +353,7 @@ export default function WorkoutHubScreen() {
         </Modal>
 
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -641,8 +663,6 @@ const styles = StyleSheet.create({
   dropdownModal: {
     borderRadius: BorderRadius.lg,
     ...Shadows.heavy,
-    minWidth: 200,
-    maxWidth: 300,
   },
   dropdownOption: {
     paddingVertical: Spacing.md,
@@ -656,4 +676,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  // debugButton styles removed
 });

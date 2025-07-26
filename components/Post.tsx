@@ -1,6 +1,6 @@
-import React, { useCallback, useState, useRef } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable } from 'react-native';
-import { Pause, Play, Heart, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X } from 'lucide-react-native';
+import { Pause, Play, Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X } from 'lucide-react-native';
 import { VideoView } from 'expo-video';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -9,12 +9,13 @@ import { Post } from '../types/social';
 import { BorderRadius, Spacing } from '@/constants/Spacing';
 import { ConfirmModal } from './ConfirmModal';
 import { ThemedButton } from './ThemedButton';
+import { CommentSystem } from './CommentSystem';
 
 // Temporary alias to bypass missing TS prop typings for expo-video
 const Video: any = VideoView;
 
 interface PostProps {
-  post: Post;
+  post: Post & { comments_count?: number };
   colors: any;
   playingVideo: string | null;
   currentUserId: string | null;
@@ -30,6 +31,7 @@ interface PostProps {
   handleUnlike: (postId: string) => void;
   videoRefs: React.MutableRefObject<{ [key: string]: any }>;
   handleDeletePost: (postId: string) => void;
+  onCommentCountChange?: (postId: string, count: number) => void;
 }
 
 const PostComponent: React.FC<PostProps> = ({
@@ -49,6 +51,7 @@ const PostComponent: React.FC<PostProps> = ({
   handleUnlike,
   videoRefs,
   handleDeletePost,
+  onCommentCountChange,
 }) => {
   const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
   const [likeAnimation] = useState(new Animated.Value(1));
@@ -60,6 +63,8 @@ const PostComponent: React.FC<PostProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [isProcessingLike, setIsProcessingLike] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [localCommentsCount, setLocalCommentsCount] = useState(post.comments_count || 0);
   const likeActionRef = useRef(false);
   const lastLikeActionRef = useRef(0);
   const singleTapTimeout = useRef<number | null>(null);
@@ -78,6 +83,19 @@ const PostComponent: React.FC<PostProps> = ({
     if (diffInWeeks < 4) return `${diffInWeeks}w`;
     return postDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
+
+  // Handle comment count updates
+  const handleCommentCountUpdate = useCallback((count: number) => {
+    setLocalCommentsCount(count);
+    if (onCommentCountChange) {
+      onCommentCountChange(post.id, count);
+    }
+  }, [post.id, onCommentCountChange]);
+
+  // Update local comment count when post.comments_count changes
+  useEffect(() => {
+    setLocalCommentsCount(post.comments_count || 0);
+  }, [post.comments_count]);
 
   // Centralized like handler to prevent double-firing
   const performLikeAction = useCallback(async () => {
@@ -216,13 +234,12 @@ const PostComponent: React.FC<PostProps> = ({
     ? post.caption!.substring(0, 150) + '...' 
     : post.caption;
 
-  // Format likes count
+  // Format likes count - just show the number
   const formatLikesCount = (count: number) => {
     if (count === 0) return '';
-    if (count === 1) return '1 like';
-    if (count < 1000) return `${count} likes`;
-    if (count < 1000000) return `${(count / 1000).toFixed(1)}k likes`;
-    return `${(count / 1000000).toFixed(1)}M likes`;
+    if (count < 1000) return `${count}`;
+    if (count < 1000000) return `${(count / 1000).toFixed(1)}k`;
+    return `${(count / 1000000).toFixed(1)}M`;
   };
 
   return (
@@ -338,28 +355,55 @@ const PostComponent: React.FC<PostProps> = ({
 
       {/* Interaction Section */}
       <View style={styles.interactionSection}>
-        <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
-          <TouchableOpacity 
-            onPress={handleLikePress} 
-            style={[styles.likeButton, isProcessingLike && { opacity: 0.6 }]}
+        {/* Like Button & Count */}
+        <View style={styles.interactionGroup}>
+          <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+            <TouchableOpacity
+              onPress={handleLikePress}
+              style={styles.interactionButton}
+              activeOpacity={0.7}
+              disabled={isProcessingLike}
+            >
+              <Heart
+                size={28}
+                color={isLiked ? '#FF3B30' : colors.textSecondary}
+                fill={isLiked ? '#FF3B30' : 'none'}
+                strokeWidth={1.5}
+              />
+            </TouchableOpacity>
+          </Animated.View>
+          {post.likes.length > 0 && (
+            <Text style={[styles.countText, { color: colors.text }]}>
+              {formatLikesCount(post.likes.length)}
+            </Text>
+          )}
+        </View>
+  
+        {/* Comment Button & Count */}
+        <View style={styles.interactionGroup}>
+          <TouchableOpacity
+            onPress={() => {
+              if (!isAuthenticated) {
+                showAuthModal();
+                return;
+              }
+              setShowComments(true);
+            }}
+            style={styles.interactionButton}
             activeOpacity={0.7}
-            disabled={isProcessingLike}
           >
-            <Heart 
-              size={28} 
-              color={isLiked ? '#FF3B30' : colors.textSecondary} 
-              fill={isLiked ? '#FF3B30' : 'none'} 
+            <MessageCircle
+              size={28}
+              color={colors.textSecondary}
               strokeWidth={1.5}
             />
           </TouchableOpacity>
-        </Animated.View>
-        
-        {/* Likes count with elegant styling */}
-        {post.likes.length > 0 && (
-          <Text style={[styles.likesCount, { color: colors.text }]}>
-            {formatLikesCount(post.likes.length)}
-          </Text>
-        )}
+          {localCommentsCount > 0 && (
+            <Text style={[styles.countText, { color: colors.text }]}>
+              {localCommentsCount}
+            </Text>
+          )}
+        </View>
       </View>
 
       {/* Content Section */}
@@ -470,6 +514,15 @@ const PostComponent: React.FC<PostProps> = ({
         onConfirm={onConfirmDelete}
         confirmButtonTitle="Delete"
         isDestructive={true}
+      />
+      
+      {/* Comments Modal */}
+      <CommentSystem 
+        postId={post.id}
+        visible={showComments}
+        onClose={() => setShowComments(false)}
+        postOwnerId={post.user_id}
+        onCommentCountChange={handleCommentCountUpdate}
       />
     </View>
   );
@@ -597,15 +650,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
-  likeButton: {
-    padding: Spacing.xs,
+  interactionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  likesCount: {
+  interactionButton: {
+    padding: Spacing.sm,
+  },
+  countText: {
     fontSize: 15,
     fontWeight: '600',
-    letterSpacing: -0.2,
   },
   
   // Content Section

@@ -30,6 +30,19 @@ export default function FitnessHubScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Motivational Quote Section */}
+        <View style={styles.motivationSection}>
+          <View style={[styles.motivationCard, { backgroundColor: colors.backgroundSecondary }]}>
+            <View style={styles.motivationHeader}>
+              <Sparkles size={20} color={colors.tint} />
+              <Text style={[styles.motivationTitle, { color: colors.text }]}>Daily Motivation</Text>
+            </View>
+            <Text style={[styles.motivationText, { color: colors.textSecondary }]}>
+              "Your body can do it. It's your mind you need to convince."
+            </Text>
+          </View>
+        </View>
+
         {/* Main Hub Options */}
         <View style={styles.hubSection}>
           {/* Workout Hub */}
@@ -103,19 +116,6 @@ export default function FitnessHubScreen() {
               </View>
             </View>
           </TouchableOpacity>
-        </View>
-
-        {/* Motivational Quote Section */}
-        <View style={styles.motivationSection}>
-          <View style={[styles.motivationCard, { backgroundColor: colors.backgroundSecondary }]}>
-            <View style={styles.motivationHeader}>
-              <Sparkles size={20} color={colors.tint} />
-              <Text style={[styles.motivationTitle, { color: colors.text }]}>Daily Motivation</Text>
-            </View>
-            <Text style={[styles.motivationText, { color: colors.textSecondary }]}>
-              "Your body can do it. It's your mind you need to convince."
-            </Text>
-          </View>
         </View>
       </ScrollView>
     </View>

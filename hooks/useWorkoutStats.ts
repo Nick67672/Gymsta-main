@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { formatISO, subDays } from 'date-fns';
+import { formatISO, startOfWeek, endOfWeek } from 'date-fns';
 
 interface WorkoutStats {
   weeklyWorkouts: number;
-  totalVolume: number;
-  averageDuration: number; // minutes
-  personalRecords: number;
+  weeklyVolume: number; // Changed from totalVolume to weeklyVolume
+  weeklyAvgDuration: number; // Changed to weekly average
+  weeklyPersonalRecords: number; // Changed to weekly PRs
 }
 
 export function useWorkoutStats() {
@@ -24,23 +24,34 @@ export function useWorkoutStats() {
         setLoading(true);
         setError(null);
 
-        // 1. Get all completed workouts for total volume and average duration
-        const { data: workouts, error: workoutsErr } = await supabase
+        // Get current week boundaries (Monday to Sunday)
+        const now = new Date();
+        const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday = 1
+        const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+        
+        const weekStartISO = formatISO(weekStart, { representation: 'date' });
+        const weekEndISO = formatISO(weekEnd, { representation: 'date' });
+
+        // 1. Get current week's completed workouts
+        const { data: weekWorkouts, error: weeklyErr } = await supabase
           .from('workouts')
-          .select('total_volume, duration_minutes')
+          .select('total_volume, duration_minutes, date')
           .eq('user_id', user.id)
-          .eq('is_completed', true);
+          .eq('is_completed', true)
+          .gte('date', weekStartISO)
+          .lte('date', weekEndISO);
 
-        if (workoutsErr) throw workoutsErr;
+        if (weeklyErr) throw weeklyErr;
 
-        // Calculate total volume and average duration
-        let totalVolume = 0;
+        // Calculate weekly stats
+        let weeklyVolume = 0;
         let totalDuration = 0;
         let validDurations = 0;
+        const weeklyWorkoutsCount = weekWorkouts?.length || 0;
 
-        workouts?.forEach(workout => {
+        weekWorkouts?.forEach(workout => {
           if (workout.total_volume) {
-            totalVolume += workout.total_volume;
+            weeklyVolume += workout.total_volume;
           }
           if (workout.duration_minutes) {
             totalDuration += workout.duration_minutes;
@@ -48,44 +59,47 @@ export function useWorkoutStats() {
           }
         });
 
-        const averageDuration = validDurations > 0 ? Math.round(totalDuration / validDurations) : 0;
+        const weeklyAvgDuration = validDurations > 0 ? Math.round(totalDuration / validDurations) : 0;
 
-        // 2. Weekly workouts count (last 7 days, completed only)
-        const sevenDaysAgo = formatISO(subDays(new Date(), 6), { representation: 'date' });
-        const { count: weeklyCount, error: weeklyErr } = await supabase
-          .from('workouts')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_completed', true)
-          .gte('date', sevenDaysAgo);
-
-        if (weeklyErr) throw weeklyErr;
-
-        // 3. Personal Records – distinct exercises where this user has at least one completed workout
-        let prCount = 0;
+        // 2. Get current week's Personal Records (new exercises or weight PRs this week)
+        let weeklyPRs = 0;
         try {
+          // Check if workout_exercises table exists and has data
           const { data: prData, error: prErr } = await supabase
-            .from('workout_exercises')
-            .select('name, weight, workout_id, workouts!inner(user_id, is_completed)')
-            .eq('workouts.user_id', user.id)
-            .eq('workouts.is_completed', true);
-          if (prErr) throw prErr;
-          if (prData) {
+            .from('workouts')
+            .select('exercises, date')
+            .eq('user_id', user.id)
+            .eq('is_completed', true)
+            .gte('date', weekStartISO)
+            .lte('date', weekEndISO);
+          
+          if (prErr) {
+            console.warn('Weekly PR query failed - using fallback method:', prErr);
+            weeklyPRs = 0; // Set to 0 on error
+          } else if (prData && prData.length > 0) {
+            // Success: count unique exercises from workouts
             const uniqueExercises = new Set<string>();
-            prData.forEach((row: any) => {
-              if (row.name) uniqueExercises.add(row.name);
+            prData.forEach((workout: any) => {
+              if (workout.exercises && Array.isArray(workout.exercises)) {
+                workout.exercises.forEach((exercise: any) => {
+                  if (exercise.name) {
+                    uniqueExercises.add(exercise.name);
+                  }
+                });
+              }
             });
-            prCount = uniqueExercises.size;
+            weeklyPRs = uniqueExercises.size;
           }
         } catch (e) {
-          console.warn('PR query failed', e);
+          console.warn('Weekly PR query failed - setting to 0:', e);
+          weeklyPRs = 0; // Safe fallback
         }
 
         setStats({
-          weeklyWorkouts: weeklyCount || 0,
-          totalVolume: totalVolume,
-          averageDuration: averageDuration,
-          personalRecords: prCount,
+          weeklyWorkouts: weeklyWorkoutsCount,
+          weeklyVolume: weeklyVolume,
+          weeklyAvgDuration: weeklyAvgDuration,
+          weeklyPersonalRecords: weeklyPRs,
         });
       } catch (err: any) {
         console.error('useWorkoutStats error', err);
