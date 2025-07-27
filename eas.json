@@ -8,7 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "buildConfiguration": "Debug",
+        "image": "latest"
       }
     },
     "preview": {
@@ -18,7 +20,9 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3Y2Ryd2x3dnVmZHVibmtueXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzODAzMzAsImV4cCI6MjA1OTk1NjMzMH0.DIEa0TttW1UdRCUywkljuGZibDnVd1Z7C3ZUwJ_7NSE"
       },
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "buildConfiguration": "Release",
+        "image": "latest"
       }
     },
     "production": {
@@ -27,7 +31,9 @@
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3Y2Ryd2x3dnVmZHVibmtueXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQzODAzMzAsImV4cCI6MjA1OTk1NjMzMH0.DIEa0TttW1UdRCUywkljuGZibDnVd1Z7C3ZUwJ_7NSE"
       },
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "buildConfiguration": "Release",
+        "image": "latest"
       }
     }
   },

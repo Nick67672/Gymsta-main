@@ -426,7 +426,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   const handleCopyLink = async () => {
     try {
-      const link = postUrl || `https://gymsta.app/post/${postId}`;
+      const link = postUrl || `https://rerack.app/post/${postId}`;
       await Clipboard.setString(link);
       
       if (Platform.OS === 'ios') {
@@ -452,8 +452,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     try {
       const shareContent = {
         title: postTitle || `Check out this post by ${authorUsername}`,
-        message: `Check out this amazing post on Gymsta! ${postUrl || `https://gymsta.app/post/${postId}`}`,
-        url: postUrl || `https://gymsta.app/post/${postId}`,
+        message: `Check out this amazing post on ReRack! ${postUrl || `https://rerack.app/post/${postId}`}`,
+        url: postUrl || `https://rerack.app/post/${postId}`,
       };
 
       const result = await Share.share(shareContent);

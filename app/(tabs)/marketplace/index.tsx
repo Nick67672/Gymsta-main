@@ -427,7 +427,7 @@ export default function MarketplaceScreen() {
         <View style={[styles.searchContainer, {backgroundColor: colors.inputBackground}]}>
           <Search color={colors.textSecondary} size={20} />
           <TextInput
-            placeholder="Search Gymsta Marketplace"
+            placeholder="Search ReRack Marketplace"
             placeholderTextColor={colors.textSecondary}
             style={[styles.searchInput, { color: colors.text }]}
             value={searchQuery}
@@ -479,7 +479,7 @@ export default function MarketplaceScreen() {
               Verified Accounts Only
             </Text>
             <Text style={[styles.modalText, { color: colors.textSecondary }]}>
-              Only verified accounts can list products on Gymsta Marketplace. This helps ensure quality and authenticity for our users.
+              Only verified accounts can list products on ReRack Marketplace. This helps ensure quality and authenticity for our users.
             </Text>
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: colors.tint }]}

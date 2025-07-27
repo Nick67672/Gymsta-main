@@ -437,16 +437,16 @@ export default function AuthScreen() {
                 <Text style={[styles.modalText, { color: colors.text }]}>{`
 END USER LICENSE AGREEMENT (EULA)
 
-This End User License Agreement ("Agreement") is a legal agreement between you and Gymsta ("the App"). By using the App, you agree to be bound by the terms of this Agreement.
+This End User License Agreement ("Agreement") is a legal agreement between you and ReRack ("the App"). By using the App, you agree to be bound by the terms of this Agreement.
 
 1. LICENSE
 You are granted a non-exclusive, non-transferable, revocable license to use the App for personal, non-commercial purposes on your iOS device.
 
 2. THIRD-PARTY CONTENT
-The App may display, include, or make available third-party content (including data, information, applications, and other products or services) or provide links to third-party websites or services ("Third-Party Content"). You acknowledge and agree that Gymsta is not responsible for any Third-Party Content, including its accuracy, completeness, timeliness, validity, copyright compliance, legality, decency, quality, or any other aspect thereof. Gymsta does not assume and will not have any liability or responsibility to you or any other person or entity for any Third-Party Content.
+The App may display, include, or make available third-party content (including data, information, applications, and other products or services) or provide links to third-party websites or services ("Third-Party Content"). You acknowledge and agree that ReRack is not responsible for any Third-Party Content, including its accuracy, completeness, timeliness, validity, copyright compliance, legality, decency, quality, or any other aspect thereof. ReRack does not assume and will not have any liability or responsibility to you or any other person or entity for any Third-Party Content.
 
 3. ZERO TOLERANCE FOR OBJECTIONABLE CONTENT AND ABUSIVE USERS
-You agree that you will not post, upload, share, or otherwise make available any content that is objectionable, offensive, abusive, harassing, threatening, defamatory, obscene, or otherwise inappropriate. Gymsta maintains a strict zero-tolerance policy for objectionable content and abusive users. Any user found to be engaging in such behavior may have their account suspended or terminated without notice, and any such content may be removed at the sole discretion of Gymsta.
+You agree that you will not post, upload, share, or otherwise make available any content that is objectionable, offensive, abusive, harassing, threatening, defamatory, obscene, or otherwise inappropriate. ReRack maintains a strict zero-tolerance policy for objectionable content and abusive users. Any user found to be engaging in such behavior may have their account suspended or terminated without notice, and any such content may be removed at the sole discretion of ReRack.
 
 4. RESTRICTIONS
 You may not:
@@ -456,16 +456,16 @@ You may not:
 - Use the App for any unlawful purpose.
 
 5. INTELLECTUAL PROPERTY
-All rights, title, and interest in and to the App (excluding Third-Party Content) are owned by Gymsta and its licensors.
+All rights, title, and interest in and to the App (excluding Third-Party Content) are owned by ReRack and its licensors.
 
 6. TERMINATION
-This Agreement is effective until terminated by you or Gymsta. Your rights under this Agreement will terminate automatically if you fail to comply with any term(s) of this Agreement.
+This Agreement is effective until terminated by you or ReRack. Your rights under this Agreement will terminate automatically if you fail to comply with any term(s) of this Agreement.
 
 7. DISCLAIMER OF WARRANTIES
-The App is provided "AS IS" and "AS AVAILABLE" without warranty of any kind. Gymsta disclaims all warranties, express or implied, including but not limited to merchantability, fitness for a particular purpose, and non-infringement.
+The App is provided "AS IS" and "AS AVAILABLE" without warranty of any kind. ReRack disclaims all warranties, express or implied, including but not limited to merchantability, fitness for a particular purpose, and non-infringement.
 
 8. LIMITATION OF LIABILITY
-To the maximum extent permitted by law, Gymsta shall not be liable for any damages arising out of or in connection with your use or inability to use the App or any Third-Party Content.
+To the maximum extent permitted by law, ReRack shall not be liable for any damages arising out of or in connection with your use or inability to use the App or any Third-Party Content.
 
 9. GOVERNING LAW
 This Agreement shall be governed by and construed in accordance with the laws of your jurisdiction.

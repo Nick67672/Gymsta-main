@@ -13,7 +13,8 @@
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
-        "listUnknownPackages": false
+        "listUnknownPackages": false,
+        "exclude": ["react-native-chart-kit"]
       }
     }
   },
@@ -22,7 +23,7 @@
     "@expo/vector-icons": "^14.1.0",
     "@lucide/lab": "^0.1.2",
     "@react-native-async-storage/async-storage": "2.1.2",
-    "@react-native-community/datetimepicker": "^8.4.2",
+    "@react-native-community/datetimepicker": "8.4.1",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@shopify/flash-list": "1.7.6",
@@ -31,11 +32,11 @@
     "buffer": "^6.0.3",
     "date-fns": "^4.1.0",
     "events": "^3.3.0",
-    "expo": "53.0.15",
-    "expo-audio": "~0.4.7",
+    "expo": "53.0.20",
+    "expo-audio": "~0.4.8",
     "expo-av": "15.1.7",
     "expo-blur": "~14.1.5",
-    "expo-camera": "16.1.10",
+    "expo-camera": "~16.1.11",
     "expo-constants": "~17.1.6",
     "expo-crypto": "~14.1.5",
     "expo-font": "13.3.2",
@@ -43,20 +44,20 @@
     "expo-image-manipulator": "^13.1.7",
     "expo-image-picker": "~16.1.4",
     "expo-linear-gradient": "~14.1.5",
-    "expo-linking": "7.1.6",
-    "expo-router": "5.1.2",
-    "expo-splash-screen": "~0.30.9",
+    "expo-linking": "~7.1.7",
+    "expo-router": "~5.1.4",
+    "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "~0.4.5",
-    "expo-system-ui": "~5.0.9",
-    "expo-updates": "~0.28.15",
+    "expo-system-ui": "~5.0.10",
+    "expo-updates": "~0.28.17",
     "expo-video": "~2.2.2",
     "expo-web-browser": "~14.2.0",
     "lucide-react-native": "^0.513.0",
     "process": "^0.11.10",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "react-native": "0.79.4",
+    "react-native": "0.79.5",
     "react-native-autocomplete-dropdown": "^5.0.0",
     "react-native-calendars": "^1.1313.0",
     "react-native-chart-kit": "^6.12.0",
@@ -81,11 +82,10 @@
     "@babel/core": "^7.25.2",
     "@react-native-community/cli": "latest",
     "@types/react": "~19.0.10",
-    "@types/react-native": "^0.72.8",
     "cross-env": "^7.0.3",
+    "dotenv-cli": "^5.1.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~9.2.0",
-    "typescript": "~5.8.3",
-    "dotenv-cli": "^5.1.0"
+    "typescript": "~5.8.3"
   }
 }

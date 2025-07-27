@@ -199,6 +199,16 @@ export default function HomeScreen() {
   const [currentUserGym, setCurrentUserGym] = useState<string | null>(null);
   const [gymWorkouts, setGymWorkouts] = useState<Workout[]>([]);
 
+  // Debug log for active tab changes
+  useEffect(() => {
+    console.log('🔍 [DEBUG] Active tab changed', {
+      activeTab,
+      currentUserGym,
+      hasGym: !!currentUserGym,
+      timestamp: new Date().toISOString()
+    });
+  }, [activeTab, currentUserGym]);
+
   const videoRefs = useRef<{ [key: string]: any }>({});
   const [flaggedPosts, setFlaggedPosts] = useState<{ [postId: string]: boolean }>({});
   const [flagging, setFlagging] = useState<{ [postId: string]: boolean }>({});
@@ -402,7 +412,21 @@ export default function HomeScreen() {
   const loadGymWorkouts = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !currentUserGym) return;
+      if (!user || !currentUserGym) {
+        console.log('🔍 [DEBUG] loadGymWorkouts: User or gym not available', {
+          user: user?.id,
+          currentUserGym,
+          hasUser: !!user,
+          hasGym: !!currentUserGym
+        });
+        return;
+      }
+
+      console.log('🔍 [DEBUG] loadGymWorkouts: Starting query', {
+        userId: user.id,
+        currentUserGym,
+        timestamp: new Date().toISOString()
+      });
 
       const { data: workouts, error } = await supabase
         .from('workouts')
@@ -428,10 +452,34 @@ export default function HomeScreen() {
         .order('created_at', { ascending: false })
         .limit(20);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ [DEBUG] loadGymWorkouts: Query error', error);
+        throw error;
+      }
+
+      console.log('✅ [DEBUG] loadGymWorkouts: Query successful', {
+        workoutsCount: workouts?.length || 0,
+        workouts: workouts?.map(w => ({
+          id: w.id,
+          userId: w.user_id,
+          username: w.profiles?.[0]?.username,
+          userGym: w.profiles?.[0]?.gym,
+          hasSharingInfo: !!w.workout_sharing_information,
+          isMyGym: w.workout_sharing_information?.[0]?.is_my_gym,
+          title: w.workout_sharing_information?.[0]?.title,
+          created: w.created_at
+        })) || [],
+        currentUserGym,
+        timestamp: new Date().toISOString()
+      });
+
       setGymWorkouts((workouts || []) as Workout[]);
     } catch (err) {
-      console.error('Error loading gym workouts:', err);
+      console.error('❌ [DEBUG] loadGymWorkouts: Caught error', {
+        error: err,
+        currentUserGym,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
@@ -1024,7 +1072,10 @@ export default function HomeScreen() {
 
   // Get combined and sorted gym content (posts + workouts)
   const getGymContent = () => {
-    if (!currentUserGym) return [];
+    if (!currentUserGym) {
+      console.log('🔍 [DEBUG] getGymContent: No currentUserGym available');
+      return [];
+    }
     
     const gymPosts = posts.filter(post => (post.profiles as any).gym === currentUserGym);
     const gymWorkoutItems = gymWorkouts.map(workout => ({
@@ -1040,6 +1091,16 @@ export default function HomeScreen() {
     const combinedContent = [...gymPostItems, ...gymWorkoutItems].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
+    
+    console.log('🔍 [DEBUG] getGymContent: Combined content', {
+      currentUserGym,
+      gymPostsCount: gymPosts.length,
+      gymWorkoutsCount: gymWorkouts.length,
+      combinedContentCount: combinedContent.length,
+      posts: gymPosts.map(p => ({ id: p.id, caption: p.caption?.substring(0, 50) })),
+      workouts: gymWorkouts.map(w => ({ id: w.id, title: w.workout_sharing_information?.[0]?.title })),
+      timestamp: new Date().toISOString()
+    });
     
     return combinedContent;
   };
@@ -1162,7 +1223,7 @@ export default function HomeScreen() {
         <View style={styles.headerContent}>
           {/* Logo/Brand */}
           <View style={styles.logoContainer}>
-            <Text style={[styles.logoText, { color: colors.text }]}>Gymsta</Text>
+            <Text style={[styles.logoText, { color: colors.text }]}>ReRack</Text>
           </View>
 
           {/* Action Buttons */}
@@ -1257,7 +1318,71 @@ export default function HomeScreen() {
                   paddingBottom: 20 
                 }}
               >
-                {/* Gym content rendering logic remains the same */}
+                {(() => {
+                  console.log('🔍 [DEBUG] My Gym Tab: Rendering content', {
+                    activeTab,
+                    currentUserGym,
+                    hasGym: !!currentUserGym,
+                    timestamp: new Date().toISOString()
+                  });
+                  
+                  const gymContent = getGymContent();
+                  
+                  console.log('🔍 [DEBUG] My Gym Tab: Gym content details', {
+                    gymContentLength: gymContent.length,
+                    contentTypes: gymContent.map(item => item.type),
+                    timestamp: new Date().toISOString()
+                  });
+                  
+                  return gymContent.length > 0 ? (
+                    <>
+                      {gymContent.map((item) => (
+                        item.type === 'post' ? (
+                          <FeedPost
+                            key={`post-${item.id}`}
+                            post={item}
+                            colors={colors}
+                            playingVideo={playingVideo}
+                            currentUserId={currentUserId}
+                            flaggedPosts={flaggedPosts}
+                            flagging={flagging}
+                            setFlagging={setFlagging}
+                            setFlaggedPosts={setFlaggedPosts}
+                            isAuthenticated={isAuthenticated}
+                            showAuthModal={showAuthModal}
+                            toggleVideoPlayback={toggleVideoPlayback}
+                            navigateToProfile={navigateToProfile}
+                            handleLike={handleLike}
+                            handleUnlike={handleUnlike}
+                            handleDeletePost={handleDeletePost}
+                            videoRefs={videoRefs}
+                            onCommentCountChange={handleCommentCountChange}
+                          />
+                        ) : (
+                          <WorkoutPost
+                            key={`workout-${item.id}`}
+                            workout={item}
+                            colors={colors}
+                            currentUserId={currentUserId}
+                            isAuthenticated={isAuthenticated}
+                            showAuthModal={showAuthModal}
+                            navigateToProfile={navigateToProfile}
+                            handleLike={handleLike}
+                            handleUnlike={handleUnlike}
+                            handleDeletePost={handleDeletePost}
+                            onCommentCountChange={handleCommentCountChange}
+                          />
+                        )
+                      ))}
+                    </>
+                  ) : (
+                    <View style={styles.emptyGymContainer}>
+                      <Text style={[styles.emptyGymText, { color: colors.textSecondary }]}>
+                        No posts or workouts from your gym yet
+                      </Text>
+                    </View>
+                  );
+                })()}
               </ScrollView>
             ) : (
               <FlashList
@@ -1664,6 +1789,16 @@ const styles = StyleSheet.create({
   loadMoreText: {
     ...Typography.bodyMedium,
     color: 'white',
+  },
+  emptyGymContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+  },
+  emptyGymText: {
+    fontSize: 18,
+    textAlign: 'center',
   },
 });
 

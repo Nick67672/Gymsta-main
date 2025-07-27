@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Gymsta",
+    "name": "ReRack",
     "slug": "gymsta",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "jsEngine": "hermes",
     "icon": "./assets/images/icon.png",
-    "scheme": "gymsta",
+    "scheme": "rerack",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "plugins": [
@@ -26,7 +26,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.vanta.gymsta",
-      "buildNumber": "33",
+      "buildNumber": "36",
       "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false
@@ -37,7 +37,7 @@
         "NSPhotoLibraryAddUsageDescription": "This app saves photos to your photo library.",
         "NSMicrophoneUsageDescription": "This app uses the microphone for video recording features."
       },
-      "runtimeVersion": "1.0.0"
+      "runtimeVersion": "1.0.3"
     },
     "web": {
       "bundler": "metro",
@@ -59,6 +59,7 @@
       "url": "https://u.expo.dev/c4a99eb9-0c86-4b84-b02b-b716d699e463"
     },
     "android": {
+      "package": "com.vanta.gymsta",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"

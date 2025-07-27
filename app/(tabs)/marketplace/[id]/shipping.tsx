@@ -91,7 +91,7 @@ export default function ShippingScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Get product details, seller info, buyer info, and Gymsta account
+      // Get product details, seller info, buyer info, and ReRack account
       const [
         { data: product, error: productError },
         { data: buyer, error: buyerError },
@@ -110,13 +110,13 @@ export default function ShippingScreen() {
         supabase
           .from('profiles')
           .select('id')
-          .eq('username', 'Gymsta')
+          .eq('username', 'ReRack')
           .single()
       ]);
 
       if (productError || !product) throw new Error('Product not found');
       if (buyerError || !buyer) throw new Error('Buyer profile not found');
-      if (gymstaError || !gymsta) throw new Error('Gymsta account not found');
+      if (gymstaError || !gymsta) throw new Error('ReRack account not found');
 
       // Construct the message
       let message = `Congrats your ${product.name} has been sold for $${product.price} to ${buyer.username} if your product is physical send the product to this address:\n`;
@@ -129,7 +129,7 @@ export default function ShippingScreen() {
       message += `${form.country}\n\n`;
       message += `If you need any clarification or your product is not physical and you need to provide a service please contact ${buyer.username}.`;
 
-      // Check if a chat already exists between Gymsta and the seller
+      // Check if a chat already exists between ReRack and the seller
       const { data: existingChats } = await supabase
         .from('a_chat_users')
         .select('chat_id')
@@ -181,7 +181,7 @@ export default function ShippingScreen() {
 
         const startId = (lastUser?.id || 0) + 1;
 
-        // Add chat participants (only Gymsta and seller)
+        // Add chat participants (only ReRack and seller)
         const { error: usersError } = await supabase
           .from('a_chat_users')
           .insert([
@@ -225,7 +225,7 @@ export default function ShippingScreen() {
           .insert({ id: nextId, chat_id: chatId, user_id: user.id });
       }
 
-      // Fix: Add message as the current user instead of as Gymsta to comply with RLS
+              // Fix: Add message as the current user instead of as ReRack to comply with RLS
       const { error: messageError } = await supabase
         .from('a_chat_messages')
         .insert({

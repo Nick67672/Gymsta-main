@@ -2044,11 +2044,12 @@ export default function WorkoutTrackerScreen() {
       <Modal
         visible={showExercisePickerModal}
         animationType="slide"
-        transparent={true}
+        transparent={false}
+        presentationStyle="formSheet"
         onRequestClose={() => setShowExercisePickerModal(false)}
       >
-        <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
-          <View style={[styles.exercisePickerModalContent, { backgroundColor: colors.background }]}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={[{ flex: 1, backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
               <TouchableOpacity 
                 onPress={() => setShowExercisePickerModal(false)}
@@ -2141,76 +2142,54 @@ export default function WorkoutTrackerScreen() {
                     borderLeftWidth: 4,
                     marginHorizontal: 16, 
                     marginBottom: 16,
-                    shadowColor: color,
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.2,
-                    shadowRadius: 8,
-                    elevation: 4
+                    borderRadius: 12,
+                    padding: 16,
                   }]}>
                     <View style={styles.categoryHeader}>
-                      <View style={[styles.categoryEmojiContainer, { backgroundColor: color }]}>
-                        {getCategoryIcon(category)}
+                      <View style={[styles.categoryIcon, { backgroundColor: color + '30' }]}>
+                        {getCategoryIcon(category, 20, color)}
                       </View>
-                      <Text style={[styles.categoryTitle, { color: colors.text }]}>
-                        {category}
-                      </Text>
-                      <View style={styles.categoryStats}>
-                        <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-                          {Object.values(subcategories).flat().length} exercises
-                        </Text>
-                      </View>
+                      <Text style={[styles.categoryTitle, { color: colors.text }]}>{category}</Text>
                     </View>
                     
-                    <View style={styles.categoryExercises}>
-                      {Object.entries(subcategories).map(([subcategory, exercises]) => (
-                        <View key={subcategory} style={[styles.subcategorySection, { 
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                          borderColor: color + '30',
-                          borderWidth: 1
-                        }]}>
-                          <View style={styles.subcategoryHeader}>
-                            <Text style={[styles.subcategoryTitle, { color: colors.text }]}>
-                              {subcategory}
-                            </Text>
-                            <View style={[styles.subcategoryBadge, { backgroundColor: color + '40' }]}>
-                              <Text style={[styles.subcategoryBadgeText, { color: color }]}>
-                                {exercises.length}
+                    {Object.entries(subcategories).map(([subcategory, exercises]) => (
+                      <View key={subcategory} style={styles.subcategoryContainer}>
+                        <Text style={[styles.subcategoryTitle, { color: colors.textSecondary }]}>
+                          {subcategory}
+                        </Text>
+                        
+                        <View style={styles.subcategoryExercises}>
+                          {exercises.map((exercise) => (
+                            <TouchableOpacity
+                              key={exercise}
+                              style={[styles.modernCategoryExerciseItem, { 
+                                backgroundColor: colors.card,
+                                borderColor: color + '30',
+                                shadowColor: color,
+                              }]}
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                setExerciseName(exercise);
+                                setShowExercisePickerModal(false);
+                              }}
+                            >
+                              <View style={[styles.miniExerciseIcon, { backgroundColor: color + '20' }]}>
+                                <Dumbbell size={12} color={color} />
+                              </View>
+                              <Text style={[styles.modernCategoryExerciseText, { color: colors.text }]}>
+                                {exercise}
                               </Text>
-                            </View>
-                          </View>
-                          <View style={styles.subcategoryExercises}>
-                            {exercises.map((exercise) => (
-                              <TouchableOpacity
-                                key={exercise}
-                                style={[styles.modernCategoryExerciseItem, { 
-                                  backgroundColor: colors.card,
-                                  borderColor: color + '30',
-                                  shadowColor: color,
-                                }]}
-                                activeOpacity={0.7}
-                                onPress={() => {
-                                  setExerciseName(exercise);
-                                  setShowExercisePickerModal(false);
-                                }}
-                              >
-                                <View style={[styles.miniExerciseIcon, { backgroundColor: color + '20' }]}>
-                                  <Dumbbell size={12} color={color} />
-                                </View>
-                                <Text style={[styles.modernCategoryExerciseText, { color: colors.text }]}>
-                                  {exercise}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
+                            </TouchableOpacity>
+                          ))}
                         </View>
-                      ))}
-                    </View>
+                      </View>
+                    ))}
                   </View>
                 ))}
               </ScrollView>
             )}
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );
@@ -3251,6 +3230,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     shadowRadius: 10,
     shadowOpacity: 0.5,
+  },
+  
+  // Category and subcategory styles
+  categoryIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  subcategoryContainer: {
+    marginTop: 12,
   },
 
 });
