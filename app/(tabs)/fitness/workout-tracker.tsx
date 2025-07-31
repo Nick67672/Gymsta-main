@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { SwipeableExerciseCard } from '@/components/SwipeableExerciseCard';
 import { EnhancedWorkoutCard } from '@/components/EnhancedWorkoutCard';
 
 import { LiveWorkoutTimer } from '@/components/LiveWorkoutTimer';
+import { ExercisePicker } from '@/components/ExercisePicker';
 
 
 import { 
@@ -606,8 +607,15 @@ export default function WorkoutTrackerScreen() {
   const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
-  const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+
+  // Callback for opening exercise picker modal
+  const openExercisePicker = useCallback(() => {
+    console.log('openExercisePicker called');
+    console.log('showExercisePickerModal before:', showExercisePickerModal);
+    setShowExercisePickerModal(true);
+    console.log('showExercisePickerModal after: true');
+  }, [showExercisePickerModal]);
 
   // Form states
   const [workoutName, setWorkoutName] = useState('');
@@ -622,6 +630,11 @@ export default function WorkoutTrackerScreen() {
       loadProgressData();
     }
   }, [user, timeScale, selectedWorkoutFilter]);
+
+  // Monitor showExercisePickerModal state changes
+  useEffect(() => {
+    console.log('showExercisePickerModal state changed to:', showExercisePickerModal);
+  }, [showExercisePickerModal]);
 
   // Load workouts
   const loadWorkouts = async () => {
@@ -1378,7 +1391,15 @@ export default function WorkoutTrackerScreen() {
   const renderCreateScreen = () => (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setCurrentView('main')}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => {
+            console.log('X button pressed - going back to main view');
+            setCurrentWorkout(null);
+            setWorkoutName('');
+            setCurrentView('main');
+          }}
+        >
           <X size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Create Workout</Text>
@@ -1668,11 +1689,9 @@ export default function WorkoutTrackerScreen() {
                     style={[styles.exerciseInput, { backgroundColor: colors.background }]}
                     activeOpacity={0.7}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={() => {
-                      console.log('Inline exercise input pressed!'); // Debug log
-                      setExerciseSearchQuery('');
-                      setShowExercisePickerModal(true);
-                    }}
+                    onPress={openExercisePicker}
+                    onPressIn={() => console.log('TouchableOpacity onPressIn triggered')}
+                    onPressOut={() => console.log('TouchableOpacity onPressOut triggered')}
                   >
                     <Text style={[styles.exerciseInputText, { color: exerciseName ? colors.text : colors.text + '80' }]}>
                       {exerciseName || 'Select exercise...'}
@@ -1817,7 +1836,6 @@ export default function WorkoutTrackerScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               onPress={() => {
                 console.log('Exercise input pressed!'); // Debug log
-                setExerciseSearchQuery('');
                 setShowExercisePickerModal(true);
               }}
             >
@@ -2040,157 +2058,15 @@ export default function WorkoutTrackerScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Exercise Picker Modal - Cross-Platform Compatible */}
-      <Modal
+      {/* Exercise Picker Component */}
+      <ExercisePicker
         visible={showExercisePickerModal}
-        animationType="slide"
-        transparent={false}
-        presentationStyle="formSheet"
-        onRequestClose={() => setShowExercisePickerModal(false)}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-          <View style={[{ flex: 1, backgroundColor: colors.background }]}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                onPress={() => setShowExercisePickerModal(false)}
-                activeOpacity={0.7}
-                style={{ padding: 8 }}
-              >
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Select Exercise</Text>
-              <View style={{ width: 24 }} />
-            </View>
-
-            <View style={[styles.exercisePickerHeader, { backgroundColor: colors.card, marginHorizontal: 16, marginBottom: 8 }]}>
-              <Search size={20} color={colors.text + '80'} />
-              <TextInput
-                placeholder="Search exercises..."
-                placeholderTextColor={colors.text + '80'}
-                style={[styles.exercisePickerSearchInput, { color: colors.text }]}
-                value={exerciseSearchQuery}
-                onChangeText={setExerciseSearchQuery}
-                autoFocus={false}
-              />
-            </View>
-
-            {exerciseSearchQuery.length > 0 ? (
-              // Show search results with enhanced design
-              <FlatList
-                data={EXERCISE_OPTIONS.filter(exercise => 
-                  exercise.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-                )}
-                renderItem={({ item }) => {
-                  const exerciseType = getExerciseType(item);
-                  const categoryInfo = Object.entries(EXERCISE_CATEGORIES).find(([_, { subcategories }]) =>
-                    Object.values(subcategories).some(exercises => exercises.includes(item))
-                  );
-                  const categoryColor = categoryInfo ? categoryInfo[1].color : colors.tint;
-                  
-                  return (
-                    <TouchableOpacity
-                      style={[styles.modernExerciseItem, { 
-                        backgroundColor: colors.card,
-                        borderLeftColor: categoryColor,
-                        marginHorizontal: 16, 
-                        marginBottom: 8,
-                      }]}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setExerciseName(item);
-                        setShowExercisePickerModal(false);
-                      }}
-                    >
-                      <View style={[styles.exerciseIconContainer, { backgroundColor: categoryColor + '20' }]}>
-                        <Dumbbell size={20} color={categoryColor} />
-                      </View>
-                      <View style={styles.exerciseInfo}>
-                        <Text style={[styles.modernExerciseName, { color: colors.text }]}>{item}</Text>
-                        <Text style={[styles.exerciseTypeLabel, { color: colors.textSecondary }]}>
-                          {exerciseType.replace('_', ' ').toLowerCase()}
-                        </Text>
-                      </View>
-                      <View style={[styles.exerciseArrow, { backgroundColor: categoryColor + '15' }]}>
-                        <ChevronDown size={16} color={categoryColor} style={{ transform: [{ rotate: '-90deg' }] }} />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }}
-                keyExtractor={(item) => item}
-                ListEmptyComponent={() => (
-                  <View style={[styles.modernExerciseEmpty, { backgroundColor: colors.card, marginHorizontal: 16 }]}>
-                    <Search size={32} color={colors.textSecondary + '40'} />
-                    <Text style={[styles.modernEmptyTitle, { color: colors.text }]}>
-                      No exercises found
-                    </Text>
-                    <Text style={[styles.modernEmptySubtitle, { color: colors.textSecondary }]}>
-                      Try searching for "{exerciseSearchQuery.split(' ')[0]}" or browse categories below
-                    </Text>
-                  </View>
-                )}
-                showsVerticalScrollIndicator={false}
-                bounces={true}
-                contentContainerStyle={{ paddingBottom: 20 }}
-              />
-            ) : (
-              // Show categories
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-                {Object.entries(EXERCISE_CATEGORIES).map(([category, { color, subcategories }]) => (
-                  <View key={category} style={[styles.categorySection, { 
-                    backgroundColor: color + '20', 
-                    borderLeftColor: color,
-                    borderLeftWidth: 4,
-                    marginHorizontal: 16, 
-                    marginBottom: 16,
-                    borderRadius: 12,
-                    padding: 16,
-                  }]}>
-                    <View style={styles.categoryHeader}>
-                      <View style={[styles.categoryIcon, { backgroundColor: color + '30' }]}>
-                        {getCategoryIcon(category, 20, color)}
-                      </View>
-                      <Text style={[styles.categoryTitle, { color: colors.text }]}>{category}</Text>
-                    </View>
-                    
-                    {Object.entries(subcategories).map(([subcategory, exercises]) => (
-                      <View key={subcategory} style={styles.subcategoryContainer}>
-                        <Text style={[styles.subcategoryTitle, { color: colors.textSecondary }]}>
-                          {subcategory}
-                        </Text>
-                        
-                        <View style={styles.subcategoryExercises}>
-                          {exercises.map((exercise) => (
-                            <TouchableOpacity
-                              key={exercise}
-                              style={[styles.modernCategoryExerciseItem, { 
-                                backgroundColor: colors.card,
-                                borderColor: color + '30',
-                                shadowColor: color,
-                              }]}
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                setExerciseName(exercise);
-                                setShowExercisePickerModal(false);
-                              }}
-                            >
-                              <View style={[styles.miniExerciseIcon, { backgroundColor: color + '20' }]}>
-                                <Dumbbell size={12} color={color} />
-                              </View>
-                              <Text style={[styles.modernCategoryExerciseText, { color: colors.text }]}>
-                                {exercise}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </SafeAreaView>
-      </Modal>
+        onClose={() => setShowExercisePickerModal(false)}
+        onSelectExercise={(exercise) => {
+          setExerciseName(exercise);
+          setShowExercisePickerModal(false);
+        }}
+      />
     </>
   );
 
