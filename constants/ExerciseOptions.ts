@@ -68,13 +68,13 @@ export const EXERCISE_OPTIONS: string[] = [
   // Biceps
   'Barbell Curls', 'Dumbbell Curls', 'Hammer Curls', 'Preacher Curls',
   'Cable Curls', 'Concentration Curls', 'Spider Curls', 'Incline Dumbbell Curls',
-  '21s', 'Drag Curls', 'Reverse Curls', 'Zottman Curls', 'Cable Hammer Curls',
+  '21s', 'Drag Curls', 'Zottman Curls', 'Cable Hammer Curls',
   'Machine Bicep Curls', 'Chin-Up Curls', 'Cross-Body Hammer Curls',
   'Wide-Grip Curls', 'Close-Grip Curls', 'Waiter Curls',
   
   // Triceps
   'Tricep Dips', 'Close-Grip Push-Ups', 'Tricep Pushdowns', 'Overhead Tricep Extension',
-  'Skull Crushers', 'Diamond Push-Ups', 'Tricep Kickbacks', 'French Press',
+  'Skull Crushers', 'Tricep Kickbacks', 'French Press',
   'JM Press', 'Tate Press', 'California Press', 'Rolling Tricep Extensions',
   'Single-Arm Tricep Extensions', 'Rope Pushdowns', 'V-Bar Pushdowns',
   
