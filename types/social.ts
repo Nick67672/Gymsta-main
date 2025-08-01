@@ -19,6 +19,7 @@ export interface Post {
   user_id: string;
   caption: string | null;
   image_url: string;
+  image_urls?: string[]; // Array of multiple images for carousel
   media_type: string;
   created_at: string;
   product_id: string | null;

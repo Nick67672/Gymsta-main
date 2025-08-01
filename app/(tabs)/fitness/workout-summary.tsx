@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Check, Image as ImageIcon, ChevronLeft, Camera, Save, Share2, Eye } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
@@ -11,11 +11,14 @@ import { showImagePickerOptions } from '@/lib/imagePickerUtils';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useTab } from '@/context/TabContext';
 
 export default function WorkoutSummaryScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { setActiveTab, setActiveTabIndex } = useTab();
+  const insets = useSafeAreaInsets();
 
   const [myGymChecked, setMyGymChecked] = useState(false);
   const [justForMeChecked, setJustForMeChecked] = useState(false);
@@ -233,7 +236,11 @@ export default function WorkoutSummaryScreen() {
         [
           {
             text: 'View Feed',
-            onPress: () => router.push('/(tabs)/index'),
+            onPress: () => {
+              setActiveTab('my-gym');
+              setActiveTabIndex(2);
+              router.replace('/(tabs)');
+            },
           },
           {
             text: 'Post Another',
@@ -270,7 +277,10 @@ export default function WorkoutSummaryScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header with Progress */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { 
+        borderBottomColor: colors.border,
+        paddingTop: insets.top
+      }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.push('/fitness/workout-tracker')}>
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>
@@ -516,7 +526,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 60,
     paddingHorizontal: 15,
     paddingBottom: 15,
     borderBottomWidth: 1,
@@ -529,6 +538,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 20,
     fontWeight: 'bold',
+    marginTop: -10,
   },
   content: {
     padding: 20,

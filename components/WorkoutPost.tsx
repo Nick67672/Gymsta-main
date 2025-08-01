@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable, PanResponder, Dimensions, ScrollView } from 'react-native';
-import { Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X, Dumbbell, Clock, TrendingUp, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X, Dumbbell, Clock, TrendingUp, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
@@ -344,17 +344,20 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
                 />
                 {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
                 
-                {/* Swipe indicator */}
-                <View style={styles.swipeIndicator}>
-                  <ChevronRight size={20} color="white" />
-                  <Text style={styles.swipeText}>Swipe to view workout</Text>
-                </View>
+
                 
                 {/* Workout badge */}
-                <View style={styles.workoutBadge}>
+                <TouchableOpacity 
+                  style={styles.workoutBadge}
+                  onPress={() => {
+                    console.log('🔍 [DEBUG] Workout badge pressed for workout:', workout.id);
+                    setShowWorkoutView(true);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <Dumbbell size={16} color="white" />
                   <Text style={styles.workoutBadgeText}>{workout.exercises.length} exercises</Text>
-                </View>
+                </TouchableOpacity>
                 
                 {/* Double tap heart effect */}
                 <Animated.View 
@@ -718,23 +721,7 @@ const styles = StyleSheet.create({
     top: 0,
     aspectRatio: 1,
   },
-  swipeIndicator: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 4,
-  },
-  swipeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-  },
+
   workoutBadge: {
     position: 'absolute',
     top: 16,

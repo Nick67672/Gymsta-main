@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable } from 'react-native';
-import { Pause, Play, Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X } from 'lucide-react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable, Dimensions } from 'react-native';
+import { Pause, Play, Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X, ChevronLeft, Dumbbell } from 'lucide-react-native';
 import { VideoView } from 'expo-video';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -32,6 +32,7 @@ interface PostProps {
   videoRefs: React.MutableRefObject<{ [key: string]: any }>;
   handleDeletePost: (postId: string) => void;
   onCommentCountChange?: (postId: string, count: number) => void;
+  isMyGymTab?: boolean; // New prop to determine if we're on My Gym tab
 }
 
 const PostComponent: React.FC<PostProps> = ({
@@ -52,7 +53,14 @@ const PostComponent: React.FC<PostProps> = ({
   videoRefs,
   handleDeletePost,
   onCommentCountChange,
+  isMyGymTab = false, // Default to false
 }) => {
+  console.log('🔍 [DEBUG] Post component rendered:', {
+    postId: post.id,
+    isMyGymTab,
+    hasImage: !!post.image_url,
+    imageUrl: post.image_url
+  });
   const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
   const [likeAnimation] = useState(new Animated.Value(1));
   const [doubleTapAnimation] = useState(new Animated.Value(0));
@@ -68,6 +76,18 @@ const PostComponent: React.FC<PostProps> = ({
   const likeActionRef = useRef(false);
   const lastLikeActionRef = useRef(0);
   const singleTapTimeout = useRef<number | null>(null);
+
+  // Workout reveal state management
+  const [showWorkoutView, setShowWorkoutView] = useState(false);
+  const { width: screenWidth } = Dimensions.get('window');
+  
+  // Create array of images for carousel (multiple images or single image)
+  const images = post.image_urls && post.image_urls.length > 0 
+    ? post.image_urls 
+    : post.image_url 
+    ? [post.image_url] 
+    : [];
+  const hasMultipleImages = images.length > 1;
 
   // Enhanced date formatting function
   const formatDate = (dateString: string) => {
@@ -96,6 +116,17 @@ const PostComponent: React.FC<PostProps> = ({
   useEffect(() => {
     setLocalCommentsCount(post.comments_count || 0);
   }, [post.comments_count]);
+
+  // Workout reveal functions
+  const showWorkoutDetails = () => {
+    setShowWorkoutView(true);
+  };
+
+  const hideWorkoutDetails = () => {
+    setShowWorkoutView(false);
+  };
+
+  // Removed PanResponder since we're using button press instead of swipe
 
   // Centralized like handler to prevent double-firing
   const performLikeAction = useCallback(async () => {
@@ -292,8 +323,7 @@ const PostComponent: React.FC<PostProps> = ({
       </View>
 
       {/* Full-width Media */}
-      <Pressable onPress={handlePostTap}>
-        <View style={styles.mediaWrapper}>
+      <View style={styles.mediaWrapper}>
           {post.media_type === 'video' ? (
             <TouchableOpacity
               style={[styles.videoContainer, { aspectRatio: getImageAspectRatio() }]}
@@ -321,13 +351,57 @@ const PostComponent: React.FC<PostProps> = ({
             </TouchableOpacity>
           ) : (
             <>
-              <Image 
-                source={{ uri: post.image_url }} 
-                style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
-                resizeMode="cover"
-                onLoad={() => setImageLoaded(true)}
-              />
-              {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+              {!showWorkoutView ? (
+                // Photo View with Workout Reveal
+                <View style={styles.imageWrapper}>
+                  <Image 
+                    source={{ uri: post.image_url }} 
+                    style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
+                    resizeMode="cover"
+                    onLoad={() => setImageLoaded(true)}
+                  />
+                  {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+                  
+                                                  {/* Workout badge - only show on My Gym tab */}
+                {isMyGymTab && (
+                  <TouchableOpacity 
+                    style={styles.workoutBadge}
+                    onPress={() => {
+                      console.log('🔍 [DEBUG] Workout badge pressed for post:', post.id);
+                      showWorkoutDetails();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Dumbbell size={16} color="white" />
+                    <Text style={styles.workoutBadgeText}>1 exercise</Text>
+                  </TouchableOpacity>
+                )}
+                </View>
+              ) : (
+                // Workout Details View
+                <View style={styles.workoutDetailsContainer}>
+                  <View style={styles.workoutHeader}>
+                    <TouchableOpacity 
+                      style={styles.backButton} 
+                      onPress={hideWorkoutDetails}
+                    >
+                      <ChevronLeft size={20} color={colors.tint} />
+                      <Text style={[styles.backText, { color: colors.tint }]}>Back to photo</Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  <View style={styles.workoutContent}>
+                    <Text style={[styles.workoutTitle, { color: colors.text }]}>
+                      Workout Details
+                    </Text>
+                    <Text style={[styles.workoutDescription, { color: colors.textSecondary }]}>
+                      This feature shows the workout details for this post. 
+                      The actual workout data would be loaded here based on the post.
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
               <Animated.View 
                 style={[
                   styles.doubleTapEffect,
@@ -351,7 +425,6 @@ const PostComponent: React.FC<PostProps> = ({
             </>
           )}
         </View>
-      </Pressable>
 
       {/* Interaction Section */}
       <View style={styles.interactionSection}>
@@ -768,5 +841,153 @@ const styles = StyleSheet.create({
   menuItemText: {
     marginLeft: Spacing.md,
     fontSize: 18,
+  },
+  
+  // Carousel Styles
+  carouselContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  carouselContent: {
+    flexDirection: 'row',
+  },
+  carouselItem: {
+    position: 'relative',
+  },
+  carouselIndicators: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  indicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  carouselNavButton: {
+    position: 'absolute',
+    top: '50%',
+    left: 16,
+    transform: [{ translateY: -20 }],
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carouselNavButtonRight: {
+    left: 'auto',
+    right: 16,
+  },
+  
+  // Fullscreen Carousel Styles
+  fullscreenCarouselContainer: {
+    flex: 1,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  fullscreenCarouselContent: {
+    flexDirection: 'row',
+    height: '100%',
+  },
+  fullscreenCarouselItem: {
+    position: 'relative',
+    height: '100%',
+  },
+  fullscreenCarouselIndicators: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fullscreenIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  fullscreenNavButton: {
+    position: 'absolute',
+    top: '50%',
+    left: 20,
+    transform: [{ translateY: -25 }],
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenNavButtonRight: {
+    left: 'auto',
+    right: 20,
+  },
+  
+
+  workoutBadge: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  workoutBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  workoutDetailsContainer: {
+    aspectRatio: 1,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+  },
+  workoutHeader: {
+    padding: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  workoutContent: {
+    flex: 1,
+    padding: Spacing.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  workoutTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  workoutDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  imageTouchable: {
+    width: '100%',
+    height: '100%',
   },
 }); 

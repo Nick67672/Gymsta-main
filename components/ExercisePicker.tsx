@@ -22,6 +22,11 @@ interface ExercisePickerProps {
   onSelectExercise: (exercise: string) => void;
 }
 
+interface ExerciseCategory {
+  name: string;
+  exercises: string[];
+}
+
 export const ExercisePicker: React.FC<ExercisePickerProps> = ({
   visible,
   onClose,
@@ -31,31 +36,69 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
   const colors = Colors[theme];
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredExercises, setFilteredExercises] = useState<string[]>([]);
+  const [filteredCategories, setFilteredCategories] = useState<ExerciseCategory[]>([]);
 
-  // Filter exercises based on search query
+
+  // Parse exercises into categories based on the structure
+  const parseExerciseCategories = (): ExerciseCategory[] => {
+    const categories: ExerciseCategory[] = [];
+    
+    // Define the category structure based on the actual exercise counts
+    // These are approximate ranges based on the ExerciseOptions.ts structure
+    const categoryRanges = [
+      { name: 'CHEST', start: 0, count: 24 },
+      { name: 'BACK', start: 24, count: 21 },
+      { name: 'SHOULDERS', start: 45, count: 20 },
+      { name: 'ARMS', start: 65, count: 20 },
+      { name: 'LEGS', start: 85, count: 20 },
+      { name: 'CORE', start: 105, count: 20 },
+      { name: 'CARDIO', start: 125, count: 20 },
+      { name: 'FUNCTIONAL', start: 145, count: 20 },
+      { name: 'SPECIALTY', start: 165, count: 31 }
+    ];
+
+    categoryRanges.forEach(category => {
+      const exercises = EXERCISE_OPTIONS.slice(category.start, category.start + category.count);
+      if (exercises.length > 0) {
+        categories.push({
+          name: category.name,
+          exercises: exercises
+        });
+      }
+    });
+
+    return categories;
+  };
+
+  const allCategories = parseExerciseCategories();
+
+  // Filter categories and exercises based on search query
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setFilteredExercises([]);
+      setFilteredCategories(allCategories);
       return;
     }
 
-    const filtered = EXERCISE_OPTIONS.filter(exercise =>
-      exercise.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setFilteredExercises(filtered);
-  }, [searchQuery]);
+    const filtered = allCategories.map(category => ({
+      name: category.name,
+      exercises: category.exercises.filter(exercise =>
+        exercise.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    })).filter(category => category.exercises.length > 0);
+
+    setFilteredCategories(filtered);
+  }, [searchQuery, allCategories]);
 
   const handleExerciseSelect = (exercise: string) => {
     onSelectExercise(exercise);
     setSearchQuery('');
-    setFilteredExercises([]);
+    setFilteredCategories(allCategories);
     onClose();
   };
 
   const handleClose = () => {
     setSearchQuery('');
-    setFilteredExercises([]);
+    setFilteredCategories(allCategories);
     onClose();
   };
 
@@ -68,6 +111,32 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
       <Text style={[styles.exerciseText, { color: colors.text }]}>{item}</Text>
     </TouchableOpacity>
   );
+
+  const renderCategory = ({ item }: { item: ExerciseCategory }) => {
+    return (
+      <View style={styles.categoryContainer}>
+        <View style={[styles.categoryHeader, { backgroundColor: colors.card }]}>
+          <Text style={[styles.categoryTitle, { color: colors.text }]}>{item.name}</Text>
+          <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
+            {item.exercises.length} exercises
+          </Text>
+        </View>
+        
+        <View style={styles.exercisesContainer}>
+          {item.exercises.map((exercise, index) => (
+            <TouchableOpacity
+              key={`${item.name}-${index}`}
+              style={[styles.exerciseItem, { backgroundColor: colors.background }]}
+              onPress={() => handleExerciseSelect(exercise)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.exerciseText, { color: colors.text }]}>{exercise}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <Modal
@@ -122,13 +191,7 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          {searchQuery.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-                Start typing to search for exercises
-              </Text>
-            </View>
-          ) : filteredExercises.length === 0 ? (
+          {filteredCategories.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
                 No exercises found
@@ -136,9 +199,9 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
             </View>
           ) : (
             <FlatList
-              data={filteredExercises}
-              keyExtractor={(item) => item}
-              renderItem={renderExerciseItem}
+              data={filteredCategories}
+              keyExtractor={(item) => item.name}
+              renderItem={renderCategory}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
               keyboardShouldPersistTaps="handled"
@@ -223,11 +286,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  exerciseItem: {
+  categoryContainer: {
+    marginBottom: 8,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
-    marginBottom: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -240,8 +308,28 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  exerciseText: {
+  categoryTitle: {
     fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  categoryCount: {
+    fontSize: 14,
+    marginRight: 8,
+  },
+
+  exercisesContainer: {
+    marginTop: 4,
+    marginLeft: 16,
+  },
+  exerciseItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  exerciseText: {
+    fontSize: 15,
     fontWeight: '500',
   },
   emptyState: {

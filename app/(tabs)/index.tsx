@@ -14,6 +14,7 @@ import StoryViewer from '@/components/StoryViewer';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
+import { useTab } from '@/context/TabContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
@@ -167,6 +168,7 @@ export default function HomeScreen() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
+  const { activeTab, setActiveTab, activeTabIndex, setActiveTabIndex } = useTab();
   
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -179,9 +181,6 @@ export default function HomeScreen() {
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const lastScrollY = useRef(0);
   const scrollDirection = useRef<'up' | 'down'>('down');
-  
-  const [activeTab, setActiveTab] = useState<'explore' | 'following' | 'my-gym'>('explore');
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
   const panRef = useRef(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -1130,9 +1129,10 @@ export default function HomeScreen() {
         handleDeletePost={handleDeletePost}
         videoRefs={videoRefs}
         onCommentCountChange={handleCommentCountChange}
+        isMyGymTab={activeTab === 'my-gym'}
       />
     ),
-    [colors, playingVideo, currentUserId, flaggedPosts, flagging, handleDeletePost, handleCommentCountChange]
+    [colors, playingVideo, currentUserId, flaggedPosts, flagging, handleDeletePost, handleCommentCountChange, activeTab]
   );
 
   const renderExploreItem = ({ item }: { item: Post }) => (
@@ -1154,6 +1154,7 @@ export default function HomeScreen() {
       videoRefs={videoRefs}
       handleDeletePost={handleDeletePost}
       onCommentCountChange={handleCommentCountChange}
+      isMyGymTab={activeTab === 'my-gym'}
     />
   );
 
@@ -1177,6 +1178,7 @@ export default function HomeScreen() {
           handleUnlike={handleUnlike}
           videoRefs={videoRefs}
           handleDeletePost={handleDeletePost}
+          isMyGymTab={activeTab === 'my-gym'}
         />
       );
     } else {
@@ -1357,6 +1359,7 @@ export default function HomeScreen() {
                             handleDeletePost={handleDeletePost}
                             videoRefs={videoRefs}
                             onCommentCountChange={handleCommentCountChange}
+                            isMyGymTab={true}
                           />
                         ) : (
                           <WorkoutPost

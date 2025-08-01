@@ -15,6 +15,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { BlockingProvider } from '@/context/BlockingContext';
+import { TabProvider } from '@/context/TabContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function LoadingScreen() {
@@ -61,7 +62,9 @@ export default function RootLayout() {
           <ThemeProvider>
             <AuthProvider>
               <BlockingProvider>
-                <AppContent />
+                <TabProvider>
+                  <AppContent />
+                </TabProvider>
               </BlockingProvider>
             </AuthProvider>
           </ThemeProvider>

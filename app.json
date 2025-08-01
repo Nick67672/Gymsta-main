@@ -26,7 +26,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.vanta.gymsta",
-      "buildNumber": "36",
+      "buildNumber": "37",
       "supportsTablet": true,
       "config": {
         "usesNonExemptEncryption": false

@@ -43,6 +43,7 @@ import {
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
+import { ExercisePicker } from '@/components/ExercisePicker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -113,7 +114,7 @@ export default function WorkoutTrackerScreen() {
   const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
-  const [exerciseSearchQuery, setExerciseSearchQuery] = useState('');
+
   const [parentModalToReopen, setParentModalToReopen] = useState<'inline' | 'exercise' | null>(null);
 
   // Form states
@@ -957,7 +958,6 @@ export default function WorkoutTrackerScreen() {
                       // Close the parent modal and open exercise picker
                       setShowInlineExerciseForm(false);
                       setParentModalToReopen('inline');
-                      setExerciseSearchQuery('');
                       setShowExercisePickerModal(true);
                       console.log('showExercisePickerModal should now be true');
                     }}
@@ -1065,7 +1065,6 @@ export default function WorkoutTrackerScreen() {
                 // Close the parent modal and open exercise picker
                 setShowExerciseModal(false);
                 setParentModalToReopen('exercise');
-                setExerciseSearchQuery('');
                 setShowExercisePickerModal(true);
                 console.log('showExercisePickerModal should now be true');
               }}
@@ -1138,12 +1137,10 @@ export default function WorkoutTrackerScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Exercise Picker Modal - iOS Compatible */}
-      <Modal
+      {/* Exercise Picker Modal */}
+      <ExercisePicker
         visible={showExercisePickerModal}
-        animationType="none"
-        transparent
-        onRequestClose={() => {
+        onClose={() => {
           setShowExercisePickerModal(false);
           // Reopen the appropriate parent modal when cancelled
           if (parentModalToReopen === 'inline') {
@@ -1153,139 +1150,69 @@ export default function WorkoutTrackerScreen() {
           }
           setParentModalToReopen(null);
         }}
-        statusBarTranslucent={true}
-        onShow={() => console.log('Exercise picker modal is now visible')}
-      >
-        <View style={[styles.modalOverlay, { zIndex: 9999 }]}>
-          <View style={[styles.exercisePickerContainer, { backgroundColor: colors.background, zIndex: 10000 }]}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                onPress={() => {
-                  setShowExercisePickerModal(false);
-                  // Reopen the appropriate parent modal when cancelled
-                  if (parentModalToReopen === 'inline') {
-                    setShowInlineExerciseForm(true);
-                  } else if (parentModalToReopen === 'exercise') {
-                    setShowExerciseModal(true);
-                  }
-                  setParentModalToReopen(null);
-                }}
-                activeOpacity={0.7}
-                style={{ padding: 8 }}
-              >
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Select Exercise</Text>
-              <View style={{ width: 24 }} />
-            </View>
-
-            <View style={[styles.exercisePickerHeader, { backgroundColor: colors.card, marginHorizontal: 16, marginBottom: 8 }]}>
-              <Search size={20} color={colors.text + '80'} />
-              <TextInput
-                placeholder="Search exercises..."
-                placeholderTextColor={colors.text + '80'}
-                style={[styles.exercisePickerSearchInput, { color: colors.text }]}
-                value={exerciseSearchQuery}
-                onChangeText={setExerciseSearchQuery}
-                autoFocus={false}
-              />
-            </View>
-
-            <FlatList
-              data={EXERCISE_OPTIONS.filter(exercise => 
-                exercise.toLowerCase().includes(exerciseSearchQuery.toLowerCase())
-              )}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.exercisePickerItem, { 
-                    backgroundColor: colors.card, 
-                    marginHorizontal: 16, 
-                    marginBottom: 1,
-                    borderRadius: 8 
-                  }]}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    console.log('Exercise selected:', item);
-                    setExerciseName(item);
-                    console.log('Exercise name set to:', item);
-                    setShowExercisePickerModal(false);
-                    
-                    // Automatically add the exercise to the workout with default values
-                    if (parentModalToReopen === 'inline') {
-                      // We're in the edit workout context
-                      console.log('Adding exercise to editingWorkout');
-                      const newExercise: Exercise = {
-                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        name: item,
-                        sets: [{
-                          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                          reps: 10,
-                          weight: 0,
-                          completed: false,
-                        }],
-                        targetSets: 1,
-                        targetReps: 10,
-                        targetWeight: 0,
-                      };
-                      
-                      setEditingWorkout(prev => prev ? {
-                        ...prev,
-                        exercises: [...prev.exercises, newExercise]
-                      } : null);
-                      
-                      // Keep the form view open so user can edit reps and sets
-                      setExerciseName(item); // Set the exercise name in the input
-                      setSetsList([{ reps: '10', weight: '0' }]); // Set default values
-                      setShowInlineExerciseForm(true); // Keep form view open
-                    } else if (parentModalToReopen === 'exercise') {
-                      // We're in the create workout context
-                      console.log('Adding exercise to currentWorkout');
-                      const newExercise: Exercise = {
-                        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        name: item,
-                        sets: [{
-                          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                          reps: 10,
-                          weight: 0,
-                          completed: false,
-                        }],
-                        targetSets: 1,
-                        targetReps: 10,
-                        targetWeight: 0,
-                      };
-                      
-                      setCurrentWorkout(prev => prev ? {
-                        ...prev,
-                        exercises: [...prev.exercises, newExercise]
-                      } : null);
-                      
-                      // Keep the modal open with the selected exercise and default values
-                      setExerciseName(item); // Set the exercise name in the input
-                      setSetsList([{ reps: '10', weight: '0' }]); // Set default values
-                      setShowExerciseModal(true); // Keep modal open
-                    }
-                    setParentModalToReopen(null);
-                  }}
-                >
-                  <Text style={[styles.exercisePickerItemText, { color: colors.text }]}>{item}</Text>
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item}
-              ListEmptyComponent={() => (
-                <View style={[styles.exercisePickerEmpty, { backgroundColor: colors.card, marginHorizontal: 16 }]}>
-                  <Text style={[styles.exercisePickerEmptyText, { color: colors.text }]}>
-                    No exercises found for "{exerciseSearchQuery}"
-                  </Text>
-                </View>
-              )}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              keyboardShouldPersistTaps="handled"
-            />
-          </View>
-        </View>
-      </Modal>
+        onSelectExercise={(item) => {
+          console.log('Exercise selected:', item);
+          setExerciseName(item);
+          console.log('Exercise name set to:', item);
+          setShowExercisePickerModal(false);
+          
+          // Automatically add the exercise to the workout with default values
+          if (parentModalToReopen === 'inline') {
+            // We're in the edit workout context
+            console.log('Adding exercise to editingWorkout');
+            const newExercise: Exercise = {
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              name: item,
+              sets: [{
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                reps: 10,
+                weight: 0,
+                completed: false,
+              }],
+              targetSets: 1,
+              targetReps: 10,
+              targetWeight: 0,
+            };
+            
+            setEditingWorkout(prev => prev ? {
+              ...prev,
+              exercises: [...prev.exercises, newExercise]
+            } : null);
+            
+            // Keep the form view open so user can edit reps and sets
+            setExerciseName(item); // Set the exercise name in the input
+            setSetsList([{ reps: '10', weight: '0' }]); // Set default values
+            setShowInlineExerciseForm(true); // Keep form view open
+          } else if (parentModalToReopen === 'exercise') {
+            // We're in the create workout context
+            console.log('Adding exercise to currentWorkout');
+            const newExercise: Exercise = {
+              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              name: item,
+              sets: [{
+                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                reps: 10,
+                weight: 0,
+                completed: false,
+              }],
+              targetSets: 1,
+              targetReps: 10,
+              targetWeight: 0,
+            };
+            
+            setCurrentWorkout(prev => prev ? {
+              ...prev,
+              exercises: [...prev.exercises, newExercise]
+            } : null);
+            
+            // Keep the modal open with the selected exercise and default values
+            setExerciseName(item); // Set the exercise name in the input
+            setSetsList([{ reps: '10', weight: '0' }]); // Set default values
+            setShowExerciseModal(true); // Keep modal open
+          }
+          setParentModalToReopen(null);
+        }}
+      />
     </>
   );
 
@@ -1771,39 +1698,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  exercisePickerItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  exercisePickerItemText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  exercisePickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  exercisePickerSearchInput: {
-    flex: 1,
-    paddingVertical: 0,
-    paddingHorizontal: 8,
-    fontSize: 14,
-  },
-  exercisePickerEmpty: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  exercisePickerEmptyText: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
+
   exerciseInput: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1820,10 +1715,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     flex: 1,
   },
-  exercisePickerContainer: {
-    width: screenWidth * 0.9,
-    borderRadius: 16,
-    padding: 24,
-    maxHeight: '80%',
-  },
+
 });
