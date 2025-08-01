@@ -818,7 +818,7 @@ export default function WorkoutTrackerScreen() {
         ))}
 
         <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.tint, marginVertical:24, alignSelf:'center', width:'90%' }]}
+          style={[styles.primaryButton, { backgroundColor: colors.tint, marginVertical:24, alignSelf:'flex-end', width:'auto', marginRight:20 }]}
           onPress={saveWorkout}
           disabled={!currentWorkout?.exercises.length}
         >

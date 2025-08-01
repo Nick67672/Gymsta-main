@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
   onSelectExercise,
 }) => {
   const { theme } = useTheme();
-  const colors = Colors[theme];
+  const colors = useMemo(() => Colors[theme], [theme]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredCategories, setFilteredCategories] = useState<ExerciseCategory[]>([]);
@@ -70,7 +70,8 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     return categories;
   };
 
-  const allCategories = parseExerciseCategories();
+  // Use useMemo to memoize the categories so they don't change on every render
+  const allCategories = useMemo(() => parseExerciseCategories(), []);
 
   // Filter categories and exercises based on search query
   useEffect(() => {
@@ -87,20 +88,20 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     })).filter(category => category.exercises.length > 0);
 
     setFilteredCategories(filtered);
-  }, [searchQuery, allCategories]);
+  }, [searchQuery]);
 
-  const handleExerciseSelect = (exercise: string) => {
+  const handleExerciseSelect = useCallback((exercise: string) => {
     onSelectExercise(exercise);
     setSearchQuery('');
     setFilteredCategories(allCategories);
     onClose();
-  };
+  }, [onSelectExercise, onClose, allCategories]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setSearchQuery('');
     setFilteredCategories(allCategories);
     onClose();
-  };
+  }, [onClose, allCategories]);
 
   const renderExerciseItem = ({ item }: { item: string }) => (
     <TouchableOpacity
@@ -112,7 +113,7 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     </TouchableOpacity>
   );
 
-  const renderCategory = ({ item }: { item: ExerciseCategory }) => {
+  const renderCategory = useCallback(({ item }: { item: ExerciseCategory }) => {
     return (
       <View style={styles.categoryContainer}>
         <View style={[styles.categoryHeader, { backgroundColor: colors.card }]}>
@@ -136,7 +137,7 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
         </View>
       </View>
     );
-  };
+  }, [colors, handleExerciseSelect]);
 
   return (
     <Modal
