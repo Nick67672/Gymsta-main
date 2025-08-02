@@ -14,7 +14,9 @@
     "doctor": {
       "reactNativeDirectoryCheck": {
         "listUnknownPackages": false,
-        "exclude": ["react-native-chart-kit"]
+        "exclude": [
+          "react-native-chart-kit"
+        ]
       }
     }
   },
@@ -69,6 +71,7 @@
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
     "react-native-svg": "15.11.2",
+    "react-native-swipe-gestures": "^1.0.5",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",

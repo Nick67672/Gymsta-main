@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable, PanResponder, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable, Dimensions, ScrollView } from 'react-native';
 import { Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X, Dumbbell, Clock, TrendingUp, ChevronLeft } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -9,6 +9,15 @@ import { ConfirmModal } from './ConfirmModal';
 import { ThemedButton } from './ThemedButton';
 import { CommentSystem } from './CommentSystem';
 import { LinearGradient } from 'expo-linear-gradient';
+import GestureRecognizer from 'react-native-swipe-gestures';
+
+// Define swipe directions manually since TypeScript definitions don't include them
+const swipeDirections = {
+  SWIPE_UP: "SWIPE_UP",
+  SWIPE_DOWN: "SWIPE_DOWN",
+  SWIPE_LEFT: "SWIPE_LEFT",
+  SWIPE_RIGHT: "SWIPE_RIGHT"
+};
 
 interface WorkoutPostProps {
   workout: {
@@ -79,9 +88,55 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
   const [localCommentsCount, setLocalCommentsCount] = useState(workout.comments_count || 0);
   
   // Animation and gesture handling
-  const translateX = useRef(new Animated.Value(0)).current;
   const { width: screenWidth } = Dimensions.get('window');
   const singleTapTimeout = useRef<number | null>(null);
+
+  // Swipe gesture configuration
+  const swipeConfig = {
+    velocityThreshold: 0.1,        // Very low threshold for easier detection
+    directionalOffsetThreshold: 150, // Higher threshold to allow more vertical movement
+    gestureIsClickThreshold: 15     // Higher threshold to distinguish from taps
+  };
+
+  // Swipe gesture handlers
+  const onSwipeLeft = useCallback((gestureState: any) => {
+    console.log('🔍 [DEBUG] onSwipeLeft called with gestureState:', gestureState);
+    if (hasPhoto && !showWorkoutView) {
+      console.log('🔍 [DEBUG] Swipe left detected for workout:', workout.id);
+      setShowWorkoutView(true);
+      
+      // Optional: Add haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    }
+  }, [hasPhoto, showWorkoutView, workout.id]);
+
+  const onSwipeRight = useCallback((gestureState: any) => {
+    console.log('🔍 [DEBUG] onSwipeRight called with gestureState:', gestureState);
+    if (showWorkoutView) {
+      console.log('🔍 [DEBUG] Swipe right detected for workout:', workout.id);
+      setShowWorkoutView(false);
+      
+      // Optional: Add haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    }
+  }, [showWorkoutView, workout.id]);
+
+  const onSwipe = useCallback((gestureName: string, gestureState: any) => {
+    console.log('🔍 [DEBUG] onSwipe called with gestureName:', gestureName, 'gestureState:', gestureState);
+    const { SWIPE_LEFT, SWIPE_RIGHT, SWIPE_UP, SWIPE_DOWN } = swipeDirections;
+    
+    if (gestureName === SWIPE_LEFT) {
+      onSwipeLeft(gestureState);
+    } else if (gestureName === SWIPE_RIGHT) {
+      onSwipeRight(gestureState);
+    } else {
+      console.log('🔍 [DEBUG] Other swipe detected:', gestureName);
+    }
+  }, [onSwipeLeft, onSwipeRight]);
 
   // Calculate workout stats
   const totalSets = workout.exercises.reduce((total, exercise) => {
@@ -184,43 +239,6 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
     performLikeAction();
   }, [isProcessingLike, performLikeAction, likeAnimation]);
 
-  // Pan responder for swipe gestures
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only respond to horizontal swipes when photo is visible and we're not in workout view
-        return hasPhoto && !showWorkoutView && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        // Only allow left swipe (negative dx)
-        if (gestureState.dx < 0) {
-          translateX.setValue(gestureState.dx);
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        const threshold = -screenWidth * 0.3; // 30% of screen width
-        
-        if (gestureState.dx < threshold) {
-          // Swipe left enough - show workout details
-          Animated.timing(translateX, {
-            toValue: -screenWidth,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
-            setShowWorkoutView(true);
-            translateX.setValue(0);
-          });
-        } else {
-          // Not enough swipe - bounce back
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
   // Handle post tap for fullscreen/double tap like
   const handlePostTap = useCallback(() => {
     if (showWorkoutView) return; // Don't handle taps in workout view
@@ -283,59 +301,62 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
   };
 
   return (
-    <View style={styles.postContainer}>
-      {/* Floating Header */}
-      <View style={styles.headerContainer}>
-        <TouchableOpacity
-          style={styles.profileSection}
-          onPress={() => navigateToProfile(workout.profiles.id ?? '', workout.profiles.username)}
-          activeOpacity={0.8}
-        >
-          <View style={styles.avatarWrapper}>
-            <Image
-              source={{
-                uri:
-                  workout.profiles.avatar_url ||
-                  `https://source.unsplash.com/random/50x50/?portrait&${workout.profiles.id}`,
-              }}
-              style={styles.profileAvatar}
-            />
-            {workout.profiles.is_verified && (
-              <View style={styles.verifiedBadge}>
-                <CheckCircle2 size={12} color="#fff" fill="#3B82F6" />
-              </View>
-            )}
-          </View>
-          <View style={styles.userDetails}>
-            <Text style={[styles.displayName, { color: colors.text }]}>
-              {workout.profiles.username}
-            </Text>
-            <Text style={[styles.postTime, { color: colors.textSecondary }]}>
-              {formatDate(workout.created_at)}
-            </Text>
-          </View>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          onPress={() => setShowMenu(true)}
-          style={[styles.menuButton, { backgroundColor: colors.backgroundSecondary }]}
-          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          activeOpacity={0.8}
-        >
-          <MoreHorizontal size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-      </View>
+    <GestureRecognizer
+      onSwipe={onSwipe}
+      onSwipeLeft={onSwipeLeft}
+      onSwipeRight={onSwipeRight}
+      config={swipeConfig}
+      style={styles.mediaWrapper}
+    >
+      <View style={styles.postContainer}>
+        {/* Floating Header */}
+        <View style={styles.headerContainer}>
+          <TouchableOpacity
+            style={styles.profileSection}
+            onPress={() => navigateToProfile(workout.profiles.id ?? '', workout.profiles.username)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.avatarWrapper}>
+              <Image
+                source={{
+                  uri:
+                    workout.profiles.avatar_url ||
+                    `https://source.unsplash.com/random/50x50/?portrait&${workout.profiles.id}`,
+                }}
+                style={styles.profileAvatar}
+              />
+              {workout.profiles.is_verified && (
+                <View style={styles.verifiedBadge}>
+                  <CheckCircle2 size={12} color="#fff" fill="#3B82F6" />
+                </View>
+              )}
+            </View>
+            <View style={styles.userDetails}>
+              <Text style={[styles.displayName, { color: colors.text }]}>
+                {workout.profiles.username}
+              </Text>
+              <Text style={[styles.postTime, { color: colors.textSecondary }]}>
+                {formatDate(workout.created_at)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => setShowMenu(true)}
+            style={[styles.menuButton, { backgroundColor: colors.backgroundSecondary }]}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.8}
+          >
+            <MoreHorizontal size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
 
-      {/* Media Section */}
-      <Pressable onPress={handlePostTap}>
+        {/* Media Section */}
         <View style={styles.mediaWrapper}>
           {!showWorkoutView ? (
             // Progress Photo View
             hasPhoto && photoUrl ? (
-              <Animated.View 
-                style={[styles.imageWrapper, { transform: [{ translateX }] }]}
-                {...panResponder.panHandlers}
-              >
+              <View style={styles.imageWrapper}>
                 <Image 
                   source={{ uri: photoUrl }} 
                   style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
@@ -353,7 +374,8 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
                     console.log('🔍 [DEBUG] Workout badge pressed for workout:', workout.id);
                     setShowWorkoutView(true);
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={0.5}
+                  hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 >
                   <Dumbbell size={16} color="white" />
                   <Text style={styles.workoutBadgeText}>{workout.exercises.length} exercises</Text>
@@ -380,7 +402,19 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
                 >
                   <Heart size={90} color="rgba(255, 255, 255, 0.9)" fill="rgba(255, 255, 255, 0.9)" />
                 </Animated.View>
-              </Animated.View>
+
+                {/* Carousel dots */}
+                <View style={styles.carouselDots}>
+                  <View style={[
+                    styles.carouselDot, 
+                    { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)' }
+                  ]} />
+                  <View style={[
+                    styles.carouselDot, 
+                    { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)' }
+                  ]} />
+                </View>
+              </View>
             ) : (
               // Fallback to workout stats if no photo
               <View style={[styles.workoutStatsContainer, { backgroundColor: colors.backgroundSecondary }]}>
@@ -449,16 +483,6 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
           ) : (
             // Workout Details View
             <View style={styles.workoutDetailsContainer}>
-              <View style={styles.workoutHeader}>
-                <TouchableOpacity 
-                  style={styles.backButton} 
-                  onPress={() => setShowWorkoutView(false)}
-                >
-                  <ChevronLeft size={20} color={colors.tint} />
-                  <Text style={[styles.backText, { color: colors.tint }]}>Back to photo</Text>
-                </TouchableOpacity>
-              </View>
-              
               <ScrollView style={styles.exercisesList} showsVerticalScrollIndicator={false}>
                 {workout.exercises.map((exercise, index) => (
                   <View key={index} style={[styles.exerciseItem, { backgroundColor: colors.background }]}>
@@ -477,167 +501,179 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
                   </View>
                 ))}
               </ScrollView>
+
+              {/* Carousel dots for workout view */}
+              <View style={styles.carouselDots}>
+                <View style={[
+                  styles.carouselDot, 
+                  { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)' }
+                ]} />
+                <View style={[
+                  styles.carouselDot, 
+                  { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)' }
+                ]} />
+              </View>
             </View>
           )}
         </View>
-      </Pressable>
 
-      {/* Interaction Section */}
-      <View style={styles.interactionSection}>
-        {/* Like Button & Count */}
-        <View style={styles.interactionGroup}>
-          <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+        {/* Interaction Section */}
+        <View style={styles.interactionSection}>
+          {/* Like Button & Count */}
+          <View style={styles.interactionGroup}>
+            <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+              <TouchableOpacity
+                onPress={handleLikePress}
+                style={styles.interactionButton}
+                activeOpacity={0.7}
+                disabled={isProcessingLike}
+              >
+                <Heart
+                  size={28}
+                  color={isLiked ? '#FF3B30' : colors.textSecondary}
+                  fill={isLiked ? '#FF3B30' : 'none'}
+                  strokeWidth={1.5}
+                />
+              </TouchableOpacity>
+            </Animated.View>
+            {workout.likes && workout.likes.length > 0 && (
+              <Text style={[styles.countText, { color: colors.text }]}>
+                {formatLikesCount(workout.likes.length)}
+              </Text>
+            )}
+          </View>
+    
+          {/* Comment Button & Count */}
+          <View style={styles.interactionGroup}>
             <TouchableOpacity
-              onPress={handleLikePress}
+              onPress={() => {
+                if (!isAuthenticated) {
+                  showAuthModal();
+                  return;
+                }
+                setShowComments(true);
+              }}
               style={styles.interactionButton}
               activeOpacity={0.7}
-              disabled={isProcessingLike}
             >
-              <Heart
+              <MessageCircle
                 size={28}
-                color={isLiked ? '#FF3B30' : colors.textSecondary}
-                fill={isLiked ? '#FF3B30' : 'none'}
+                color={colors.textSecondary}
                 strokeWidth={1.5}
               />
             </TouchableOpacity>
-          </Animated.View>
-          {workout.likes && workout.likes.length > 0 && (
-            <Text style={[styles.countText, { color: colors.text }]}>
-              {formatLikesCount(workout.likes.length)}
-            </Text>
-          )}
-        </View>
-  
-        {/* Comment Button & Count */}
-        <View style={styles.interactionGroup}>
-          <TouchableOpacity
-            onPress={() => {
-              if (!isAuthenticated) {
-                showAuthModal();
-                return;
-              }
-              setShowComments(true);
-            }}
-            style={styles.interactionButton}
-            activeOpacity={0.7}
-          >
-            <MessageCircle
-              size={28}
-              color={colors.textSecondary}
-              strokeWidth={1.5}
-            />
-          </TouchableOpacity>
-          {localCommentsCount > 0 && (
-            <Text style={[styles.countText, { color: colors.text }]}>
-              {localCommentsCount}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* Content Section */}
-      <View style={styles.contentSection}>
-        {title && (
-          <Text style={[styles.workoutTitle, { color: colors.text }]}>
-            <Text style={[styles.captionAuthor, { color: colors.text }]}>
-              {workout.profiles.username}
-            </Text>
-            {' '}
-            {title}
-          </Text>
-        )}
-        {caption && (
-          <Text style={[styles.captionText, { color: colors.text }]}>
-            {caption}
-          </Text>
-        )}
-        
-        {/* Exercise preview */}
-        {workout.exercises.length > 0 && (
-          <Text style={[styles.exercisePreview, { color: colors.textSecondary }]}>
-            {workout.exercises.slice(0, 3).map(ex => ex.name).join(' • ')}
-            {workout.exercises.length > 3 && ` +${workout.exercises.length - 3} more`}
-          </Text>
-        )}
-      </View>
-
-      {/* Fullscreen Modal */}
-      <Modal
-        visible={showFullscreen}
-        transparent={false}
-        onRequestClose={() => setShowFullscreen(false)}
-        animationType="fade"
-      >
-        <View style={styles.fullscreenContainer}>
-          {hasPhoto && photoUrl && (
-            <Image
-              source={{ uri: photoUrl }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
-          )}
-          <TouchableOpacity 
-            style={styles.closeButton}
-            onPress={() => setShowFullscreen(false)}
-          >
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* Menu Modal */}
-      <Modal
-        transparent={true}
-        visible={showMenu}
-        onRequestClose={() => setShowMenu(false)}
-        animationType="slide"
-      >
-        <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowMenu(false)}>
-          <View style={[styles.bottomSheetContainer, { backgroundColor: colors.card }]}>
-            <View style={styles.handle} />
-            {currentUserId === workout.user_id ? (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={showDeleteConfirmation}
-              >
-                <Trash2 size={22} color={colors.error} />
-                <Text style={[styles.menuItemText, { color: colors.error }]}>Delete Workout</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.menuItem} onPress={onReportPress}>
-                <CheckCircle2 size={22} color={colors.error} />
-                <Text style={[styles.menuItemText, { color: colors.error }]}>Report Workout</Text>
-              </TouchableOpacity>
+            {localCommentsCount > 0 && (
+              <Text style={[styles.countText, { color: colors.text }]}>
+                {localCommentsCount}
+              </Text>
             )}
-             <ThemedButton
-                title="Cancel"
-                onPress={() => setShowMenu(false)}
-                variant="secondary"
-                style={{marginTop: Spacing.md}}
-              />
           </View>
-        </Pressable>
-      </Modal>
+        </View>
 
-      <ConfirmModal
-        visible={showDeleteConfirm}
-        title="Delete Workout"
-        message="Are you sure you want to delete this workout? This action cannot be undone."
-        onCancel={() => setShowDeleteConfirm(false)}
-        onConfirm={onConfirmDelete}
-        confirmButtonTitle="Delete"
-        isDestructive={true}
-      />
-      
-      {/* Comments Modal */}
-      <CommentSystem 
-        postId={workout.id}
-        visible={showComments}
-        onClose={() => setShowComments(false)}
-        postOwnerId={workout.user_id}
-        onCommentCountChange={handleCommentCountUpdate}
-      />
-    </View>
+        {/* Content Section */}
+        <View style={styles.contentSection}>
+          {title && (
+            <Text style={[styles.workoutTitle, { color: colors.text }]}>
+              <Text style={[styles.captionAuthor, { color: colors.text }]}>
+                {workout.profiles.username}
+              </Text>
+              {' '}
+              {title}
+            </Text>
+          )}
+          {caption && (
+            <Text style={[styles.captionText, { color: colors.text }]}>
+              {caption}
+            </Text>
+          )}
+          
+          {/* Exercise preview */}
+          {workout.exercises.length > 0 && (
+            <Text style={[styles.exercisePreview, { color: colors.textSecondary }]}>
+              {workout.exercises.slice(0, 3).map(ex => ex.name).join(' • ')}
+              {workout.exercises.length > 3 && ` +${workout.exercises.length - 3} more`}
+            </Text>
+          )}
+        </View>
+
+        {/* Fullscreen Modal */}
+        <Modal
+          visible={showFullscreen}
+          transparent={false}
+          onRequestClose={() => setShowFullscreen(false)}
+          animationType="fade"
+        >
+          <View style={styles.fullscreenContainer}>
+            {hasPhoto && photoUrl && (
+              <Image
+                source={{ uri: photoUrl }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+            )}
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowFullscreen(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+
+        {/* Menu Modal */}
+        <Modal
+          transparent={true}
+          visible={showMenu}
+          onRequestClose={() => setShowMenu(false)}
+          animationType="slide"
+        >
+          <Pressable style={styles.bottomSheetOverlay} onPress={() => setShowMenu(false)}>
+            <View style={[styles.bottomSheetContainer, { backgroundColor: colors.card }]}>
+              <View style={styles.handle} />
+              {currentUserId === workout.user_id ? (
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={showDeleteConfirmation}
+                >
+                  <Trash2 size={22} color={colors.error} />
+                  <Text style={[styles.menuItemText, { color: colors.error }]}>Delete Workout</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.menuItem} onPress={onReportPress}>
+                  <CheckCircle2 size={22} color={colors.error} />
+                  <Text style={[styles.menuItemText, { color: colors.error }]}>Report Workout</Text>
+                </TouchableOpacity>
+              )}
+               <ThemedButton
+                  title="Cancel"
+                  onPress={() => setShowMenu(false)}
+                  variant="secondary"
+                  style={{marginTop: Spacing.md}}
+                />
+            </View>
+          </Pressable>
+        </Modal>
+
+        <ConfirmModal
+          visible={showDeleteConfirm}
+          title="Delete Workout"
+          message="Are you sure you want to delete this workout? This action cannot be undone."
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={onConfirmDelete}
+          confirmButtonTitle="Delete"
+          isDestructive={true}
+        />
+        
+        {/* Comments Modal */}
+        <CommentSystem 
+          postId={workout.id}
+          visible={showComments}
+          onClose={() => setShowComments(false)}
+          postOwnerId={workout.user_id}
+          onCommentCountChange={handleCommentCountUpdate}
+        />
+      </View>
+    </GestureRecognizer>
   );
 };
 
@@ -786,20 +822,6 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     backgroundColor: 'rgba(0,0,0,0.02)',
   },
-  workoutHeader: {
-    padding: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  backText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
   exercisesList: {
     flex: 1,
     padding: Spacing.lg,
@@ -934,5 +956,17 @@ const styles = StyleSheet.create({
   menuItemText: {
     marginLeft: Spacing.md,
     fontSize: 18,
+  },
+  carouselDots: {
+    position: 'absolute',
+    bottom: 10,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 }); 

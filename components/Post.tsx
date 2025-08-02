@@ -10,9 +10,18 @@ import { BorderRadius, Spacing } from '@/constants/Spacing';
 import { ConfirmModal } from './ConfirmModal';
 import { ThemedButton } from './ThemedButton';
 import { CommentSystem } from './CommentSystem';
+import GestureRecognizer from 'react-native-swipe-gestures';
 
 // Temporary alias to bypass missing TS prop typings for expo-video
 const Video: any = VideoView;
+
+// Define swipe directions manually since TypeScript definitions don't include them
+const swipeDirections = {
+  SWIPE_UP: "SWIPE_UP",
+  SWIPE_DOWN: "SWIPE_DOWN",
+  SWIPE_LEFT: "SWIPE_LEFT",
+  SWIPE_RIGHT: "SWIPE_RIGHT"
+};
 
 interface PostProps {
   post: Post & { comments_count?: number };
@@ -125,6 +134,48 @@ const PostComponent: React.FC<PostProps> = ({
   const hideWorkoutDetails = () => {
     setShowWorkoutView(false);
   };
+
+  // Swipe gesture configuration
+  const swipeConfig = {
+    velocityThreshold: 0.2,        // Lower threshold for easier detection
+    directionalOffsetThreshold: 100, // Higher threshold to allow more vertical movement
+    gestureIsClickThreshold: 10     // Higher threshold to distinguish from taps
+  };
+
+  // Swipe gesture handlers
+  const onSwipeLeft = useCallback((gestureState: any) => {
+    if (isMyGymTab && !showWorkoutView && (post.image_url || (post.image_urls && post.image_urls.length > 0))) {
+      console.log('🔍 [DEBUG] Swipe left detected for post:', post.id);
+      showWorkoutDetails();
+      
+      // Optional: Add haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    }
+  }, [isMyGymTab, showWorkoutView, post.id, post.image_url, post.image_urls]);
+
+  const onSwipeRight = useCallback((gestureState: any) => {
+    if (isMyGymTab && showWorkoutView) {
+      console.log('🔍 [DEBUG] Swipe right detected for post:', post.id);
+      hideWorkoutDetails();
+      
+      // Optional: Add haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    }
+  }, [isMyGymTab, showWorkoutView, post.id]);
+
+  const onSwipe = useCallback((gestureName: string, gestureState: any) => {
+    const { SWIPE_LEFT, SWIPE_RIGHT } = swipeDirections;
+    
+    if (gestureName === SWIPE_LEFT) {
+      onSwipeLeft(gestureState);
+    } else if (gestureName === SWIPE_RIGHT) {
+      onSwipeRight(gestureState);
+    }
+  }, [onSwipeLeft, onSwipeRight]);
 
   // Removed PanResponder since we're using button press instead of swipe
 
@@ -323,7 +374,13 @@ const PostComponent: React.FC<PostProps> = ({
       </View>
 
       {/* Full-width Media */}
-      <View style={styles.mediaWrapper}>
+      <GestureRecognizer
+        onSwipe={onSwipe}
+        onSwipeLeft={onSwipeLeft}
+        onSwipeRight={onSwipeRight}
+        config={swipeConfig}
+        style={styles.mediaWrapper}
+      >
           {post.media_type === 'video' ? (
             <TouchableOpacity
               style={[styles.videoContainer, { aspectRatio: getImageAspectRatio() }]}
@@ -370,26 +427,31 @@ const PostComponent: React.FC<PostProps> = ({
                       console.log('🔍 [DEBUG] Workout badge pressed for post:', post.id);
                       showWorkoutDetails();
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={0.5}
+                    hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                   >
                     <Dumbbell size={16} color="white" />
                     <Text style={styles.workoutBadgeText}>1 exercise</Text>
                   </TouchableOpacity>
                 )}
+
+                {/* Carousel dots for image view */}
+                {isMyGymTab && (
+                  <View style={styles.carouselDots}>
+                    <View style={[
+                      styles.carouselDot, 
+                      { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)' }
+                    ]} />
+                    <View style={[
+                      styles.carouselDot, 
+                      { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)' }
+                    ]} />
+                  </View>
+                )}
                 </View>
               ) : (
                 // Workout Details View
                 <View style={styles.workoutDetailsContainer}>
-                  <View style={styles.workoutHeader}>
-                    <TouchableOpacity 
-                      style={styles.backButton} 
-                      onPress={hideWorkoutDetails}
-                    >
-                      <ChevronLeft size={20} color={colors.tint} />
-                      <Text style={[styles.backText, { color: colors.tint }]}>Back to photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                  
                   <View style={styles.workoutContent}>
                     <Text style={[styles.workoutTitle, { color: colors.text }]}>
                       Workout Details
@@ -398,6 +460,18 @@ const PostComponent: React.FC<PostProps> = ({
                       This feature shows the workout details for this post. 
                       The actual workout data would be loaded here based on the post.
                     </Text>
+                  </View>
+
+                  {/* Carousel dots for workout view */}
+                  <View style={styles.carouselDots}>
+                    <View style={[
+                      styles.carouselDot, 
+                      { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)' }
+                    ]} />
+                    <View style={[
+                      styles.carouselDot, 
+                      { backgroundColor: showWorkoutView ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.3)' }
+                    ]} />
                   </View>
                 </View>
               )}
@@ -424,7 +498,7 @@ const PostComponent: React.FC<PostProps> = ({
               </Animated.View>
             </>
           )}
-        </View>
+        </GestureRecognizer>
 
       {/* Interaction Section */}
       <View style={styles.interactionSection}>
@@ -989,5 +1063,20 @@ const styles = StyleSheet.create({
   imageTouchable: {
     width: '100%',
     height: '100%',
+  },
+  carouselDots: {
+    position: 'absolute',
+    bottom: 10, // Adjust as needed
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 }); 
