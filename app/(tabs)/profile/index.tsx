@@ -15,6 +15,8 @@ import { Typography } from '@/constants/Typography';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing } from '@/constants/Spacing';
+import EnhancedWorkoutPost from '@/components/EnhancedWorkoutPost';
+import FeedPost from '@/components/Post';
 
 interface ProfileStory {
   id: string;
@@ -51,13 +53,19 @@ interface Product {
 
 interface Post {
   id: string;
+  user_id: string;
   image_url: string;
   caption: string | null;
   created_at: string;
+  media_type: string;
+  product_id: string | null;
+  profiles: any;
   likes: {
     id: string;
     user_id: string;
   }[];
+  comments_count?: number;
+  type?: string; // Added to distinguish between posts and workouts
 }
 
 interface WorkoutSummary {
@@ -67,6 +75,26 @@ interface WorkoutSummary {
   exercises: {
     name: string;
   }[] | null;
+}
+
+interface WorkoutPost {
+  id: string;
+  user_id: string;
+  exercises: any[];
+  created_at: string;
+  profiles: any;
+  workout_sharing_information?: {
+    title?: string | null;
+    caption?: string | null;
+    photo_url?: string | null;
+    is_my_gym?: boolean;
+  }[] | null;
+  likes?: {
+    id: string;
+    user_id: string;
+  }[];
+  comments_count?: number;
+  type: string;
 }
 
 interface Follower {
@@ -101,7 +129,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [stories, setStories] = useState<ProfileStory[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<(Post | WorkoutPost)[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutSummary[]>([]);
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -195,17 +223,55 @@ export default function ProfileScreen() {
         .from('posts')
         .select(`
           id,
+          user_id,
           image_url,
           caption,
           created_at,
+          media_type,
+          product_id,
+          profiles (
+            id,
+            username,
+            avatar_url,
+            is_verified,
+            gym
+          ),
           likes(id, user_id)
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (!postsError) {
+      // Load user's workouts to include in posts feed
+      const { data: workoutPostsData, error: workoutPostsError } = await supabase
+        .from('workouts')
+        .select(`
+          id,
+          user_id,
+          created_at,
+          exercises,
+          name,
+          likes(id, user_id),
+          profiles (
+            id,
+            username,
+            avatar_url,
+            is_verified,
+            gym
+          ),
+          workout_sharing_information (
+            title, caption, photo_url, is_my_gym
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('is_completed', true)
+        .order('created_at', { ascending: false });
+
+      // Combine posts and workouts, then sort by creation date
+      let combinedPosts: any[] = [];
+      
+      if (!postsError && postsData) {
         // Get comment counts for user's posts
-        const postIds = postsData?.map(post => post.id) || [];
+        const postIds = postsData.map(post => post.id);
         let commentCounts: { [postId: string]: number } = {};
         
         if (postIds.length > 0) {
@@ -221,12 +287,49 @@ export default function ProfileScreen() {
           }, {} as { [postId: string]: number });
         }
 
-        const postsWithCommentCount = (postsData || []).map(post => ({
+        const postsWithCommentCount = postsData.map(post => ({
           ...post,
-          comments_count: commentCounts[post.id] || 0
+          comments_count: commentCounts[post.id] || 0,
+          type: 'post' // Add type identifier
         }));
-        setPosts(postsWithCommentCount);
+        
+        combinedPosts = [...combinedPosts, ...postsWithCommentCount];
       }
+
+      if (!workoutPostsError && workoutPostsData) {
+        // Get comment counts for workouts (they use post_id in comments table)
+        const workoutIds = workoutPostsData.map(workout => workout.id);
+        let workoutCommentCounts: { [workoutId: string]: number } = {};
+        
+        if (workoutIds.length > 0) {
+          const { data: workoutCommentsData } = await supabase
+            .from('comments')
+            .select('post_id, id')
+            .in('post_id', workoutIds);
+          
+          // Count comments per workout
+          workoutCommentCounts = (workoutCommentsData || []).reduce((acc, comment) => {
+            acc[comment.post_id] = (acc[comment.post_id] || 0) + 1;
+            return acc;
+          }, {} as { [workoutId: string]: number });
+        }
+
+        const workoutsWithCommentCount = workoutPostsData.map(workout => ({
+          ...workout,
+          comments_count: workoutCommentCounts[workout.id] || 0,
+          type: 'workout', // Add type identifier
+          // Transform workout to look like a post for display
+          image_url: workout.workout_sharing_information?.[0]?.photo_url,
+          caption: workout.workout_sharing_information?.[0]?.caption || `Completed ${workout.exercises?.length || 0} exercises`
+        }));
+        
+        combinedPosts = [...combinedPosts, ...workoutsWithCommentCount];
+      }
+
+      // Sort combined posts by creation date (newest first)
+      combinedPosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      setPosts(combinedPosts);
 
       // Check if user has any products
       const { data: userProducts, error: productsError } = await supabase
@@ -670,7 +773,7 @@ export default function ProfileScreen() {
                   console.log('✅ Profile - Updated post likes for:', post_id);
                   return {
                     ...post,
-                    likes: [...post.likes, { id: payload.new.id, user_id: payload.new.user_id }]
+                    likes: [...(post.likes || []), { id: payload.new.id, user_id: payload.new.user_id }]
                   };
                 }
                 return post;
@@ -685,7 +788,7 @@ export default function ProfileScreen() {
                   console.log('✅ Profile - Updated post likes for:', post_id);
                   return {
                     ...post,
-                    likes: post.likes.filter(like => like.id !== payload.old.id)
+                    likes: (post.likes || []).filter(like => like.id !== payload.old.id)
                   };
                 }
                 return post;
@@ -701,7 +804,7 @@ export default function ProfileScreen() {
     };
   }, []);
 
-  // Real-time subscription for post inserts and deletes so the UI stays up-to-date
+  // Real-time subscription for post and workout inserts and deletes so the UI stays up-to-date
   useEffect(() => {
     if (!profile?.id) return;
 
@@ -719,7 +822,31 @@ export default function ProfileScreen() {
             setPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
           } else if (payload.eventType === 'INSERT') {
             // Prepend the new post so it shows up first
-            setPosts(currentPosts => [payload.new as any, ...currentPosts]);
+            const newPost = { ...payload.new, type: 'post' };
+            setPosts(currentPosts => [newPost as any, ...currentPosts]);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workouts',
+          filter: `user_id=eq.${profile.id}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            setPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
+          } else if (payload.eventType === 'INSERT' && payload.new.is_completed) {
+            // Only add completed workouts to the posts feed
+            const newWorkout = {
+              ...payload.new,
+              type: 'workout',
+              image_url: null, // Will be populated if sharing info exists
+              caption: `Completed ${payload.new.exercises?.length || 0} exercises`
+            };
+            setPosts(currentPosts => [newWorkout as any, ...currentPosts]);
           }
         }
       )
@@ -743,8 +870,8 @@ export default function ProfileScreen() {
       const originalPosts = [...posts];
 
       // Optimistically update UI
-      setPosts(arr => arr.map(post => post.id === postId && !post.likes.some(l => l.user_id === user.id)
-        ? { ...post, likes: [...post.likes, tempLike] }
+      setPosts(arr => arr.map(post => post.id === postId && !(post.likes || []).some(l => l.user_id === user.id)
+        ? { ...post, likes: [...(post.likes || []), tempLike] }
         : post
       ));
 
@@ -761,7 +888,7 @@ export default function ProfileScreen() {
         const newLike = insertedRows?.[0] || tempLike;
         // Replace temporary like with real one
         setPosts(arr => arr.map(post => post.id === postId
-          ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id).concat(newLike) }
+          ? { ...post, likes: (post.likes || []).filter(l => l.user_id !== user.id).concat(newLike) }
           : post
         ));
       }
@@ -783,7 +910,7 @@ export default function ProfileScreen() {
 
       // Optimistically update UI
       setPosts(arr => arr.map(post => post.id === postId
-        ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id) }
+        ? { ...post, likes: (post.likes || []).filter(l => l.user_id !== user.id) }
         : post
       ));
 
@@ -914,16 +1041,15 @@ export default function ProfileScreen() {
               !hasProducts && styles.singleButtonContainer
             ]}>
               <TouchableOpacity 
-                style={styles.button}
+                style={[styles.button, styles.editButtonContainer]}
                 onPress={() => router.push('/profile/edit')}
                 activeOpacity={0.8}>
                 <LinearGradient
-                  colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+                  colors={['#00D4FF', '#A855F7']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={styles.primaryButton}
-                >
-                  <Text style={styles.buttonText}>Edit Profile</Text>
+                  style={styles.editButton}>
+                  <Text style={[styles.buttonText, styles.editButtonText]}>Edit Profile</Text>
                 </LinearGradient>
               </TouchableOpacity>
               
@@ -1004,42 +1130,108 @@ export default function ProfileScreen() {
 
         {/* Content based on active tab */}
         {activeTab === 'posts' && (
-          <FlatList
-            data={[{ id: 'drafts' as const, isDraft: true }, ...posts]}
-            renderItem={({ item }: { item: (Post & { isDraft?: false }) | { id: 'drafts', isDraft: true } }) => {
-              if (item.isDraft) {
-                if (drafts.length === 0) return null;
-                return (
-                  <TouchableOpacity 
-                    style={styles.postItem} 
-                    onPress={() => router.push('/(tabs)/profile/drafts')}
-                  >
-                    <View style={[styles.draftsFolder, { backgroundColor: colors.card }]}>
-                      <Folder size={48} color={colors.textSecondary} />
-                      <Text style={[styles.draftsText, { color: colors.textSecondary }]}>
-                        Drafts ({drafts.length})
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              }
-              return (
-                <TouchableOpacity style={styles.postItem} onPress={() => handleViewPost(item.id)}>
-                  <Image source={{ uri: item.image_url }} style={styles.postImage} />
-                </TouchableOpacity>
-              );
-            }}
-            keyExtractor={item => item.id}
-            numColumns={3}
-            contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: Layout.horizontalPadding }}
-            ListEmptyComponent={
-              drafts.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No posts yet.</Text>
+          <ScrollView 
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Drafts section */}
+            {drafts.length > 0 && (
+              <TouchableOpacity 
+                style={[styles.draftsSection, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => router.push('/(tabs)/profile/drafts')}
+              >
+                <View style={styles.draftsContent}>
+                  <Folder size={24} color={colors.textSecondary} />
+                  <Text style={[styles.draftsText, { color: colors.textSecondary }]}>
+                    Drafts ({drafts.length})
+                  </Text>
                 </View>
-              ) : null
-            }
-          />
+              </TouchableOpacity>
+            )}
+            
+            {/* Posts and workouts in feed style */}
+            {posts.length === 0 && drafts.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No posts yet.</Text>
+              </View>
+            ) : (
+              posts.map((item) => {
+                if (item.type === 'workout') {
+                  // Render workout in feed style using WorkoutPost component
+                  const workoutItem = item as WorkoutPost;
+                  return (
+                    <EnhancedWorkoutPost
+                      key={`workout-${workoutItem.id}`}
+                      workout={workoutItem}
+                      colors={colors}
+                      currentUserId={profile?.id || null}
+                      isAuthenticated={isAuthenticated}
+                      showAuthModal={showAuthModal}
+                      navigateToProfile={(userId, username) => {
+                        if (userId === profile?.id) {
+                          // Already on own profile, do nothing
+                          return;
+                        } else {
+                          router.push(`/${username}`);
+                        }
+                      }}
+                      handleLike={handleLike}
+                      handleUnlike={handleUnlike}
+                      handleDeletePost={handleDeletePost}
+                      onCommentCountChange={(postId, count) => {
+                        // Update the post's comment count in state
+                        setPosts(prevPosts => 
+                          prevPosts.map(p => 
+                            p.id === postId ? { ...p, comments_count: count } : p
+                          )
+                        );
+                      }}
+                    />
+                  );
+                } else {
+                  // Render regular post in feed style using FeedPost component
+                  const postItem = item as Post;
+                  return (
+                    <FeedPost
+                      key={`post-${postItem.id}`}
+                      post={postItem}
+                      colors={colors}
+                      playingVideo={null}
+                      currentUserId={profile?.id || null}
+                      flaggedPosts={{}}
+                      flagging={{}}
+                      setFlagging={() => {}}
+                      setFlaggedPosts={() => {}}
+                      isAuthenticated={isAuthenticated}
+                      showAuthModal={showAuthModal}
+                      toggleVideoPlayback={() => {}}
+                      navigateToProfile={(userId, username) => {
+                        if (userId === profile?.id) {
+                          // Already on own profile, do nothing
+                          return;
+                        } else {
+                          router.push(`/${username}`);
+                        }
+                      }}
+                      handleLike={handleLike}
+                      handleUnlike={handleUnlike}
+                      handleDeletePost={handleDeletePost}
+                      videoRefs={{ current: {} }}
+                      onCommentCountChange={(postId, count) => {
+                        // Update the post's comment count in state
+                        setPosts(prevPosts => 
+                          prevPosts.map(p => 
+                            p.id === postId ? { ...p, comments_count: count } : p
+                          )
+                        );
+                      }}
+                      isMyGymTab={false}
+                    />
+                  );
+                }
+              })
+            )}
+          </ScrollView>
         )}
 
         {activeTab === 'lifts' && (
@@ -1933,5 +2125,73 @@ const styles = StyleSheet.create({
     width: '33.333%',
     aspectRatio: 1,
     padding: 1,
+  },
+  // New styles for edit button (matching follow button)
+  editButtonContainer: {
+    borderRadius: 25,
+    minWidth: 140,
+    minHeight: 48,
+    shadowColor: '#00D4FF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    overflow: 'hidden',
+  },
+  editButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+    borderRadius: 25,
+    minWidth: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    flex: 1,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  // New styles for workout placeholders in posts grid
+  workoutPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  workoutPlaceholderText: {
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  workoutBadgeOverlay: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(108, 92, 231, 0.9)',
+    borderRadius: 10,
+    padding: 3,
+  },
+  // New styles for drafts section in feed style
+  draftsSection: {
+    marginHorizontal: Layout.horizontalPadding,
+    marginBottom: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  draftsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 12,
   },
 });

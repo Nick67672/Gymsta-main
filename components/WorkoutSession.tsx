@@ -8,7 +8,12 @@ import {
   TextInput,
   Alert,
   Modal,
+  Animated,
+  Dimensions,
+  Platform,
 } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
@@ -21,13 +26,281 @@ import {
   Clock, 
   Plus,
   Minus,
-  RotateCcw
+  RotateCcw,
+  Trash2
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { router } from 'expo-router';
 import { LiveWorkoutTimer } from './LiveWorkoutTimer';
 import { SmartRestTimer } from './SmartRestTimer';
 import { WorkoutContext } from '@/hooks/useSmartRestTimer';
+
+const { width: screenWidth } = Dimensions.get('window');
+const SWIPE_THRESHOLD = screenWidth * 0.2;
+
+// SwipeableSetRow component for swipe-to-complete functionality
+interface SwipeableSetRowProps {
+  set: WorkoutSet;
+  setIndex: number;
+  exerciseIndex: number;
+  colors: any;
+  onCompleteSet: (exerciseIndex: number, setIndex: number) => void;
+  onDeleteSet: (exerciseIndex: number, setIndex: number) => void;
+  onUpdateSetValue: (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight', value: number) => void;
+}
+
+const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
+  set,
+  setIndex,
+  exerciseIndex,
+  colors,
+  onCompleteSet,
+  onDeleteSet,
+  onUpdateSetValue,
+}) => {
+  const [isEditingWeight, setIsEditingWeight] = useState(false);
+  const [weightInput, setWeightInput] = useState(set.weight.toString());
+
+  // Update weight input when set.weight changes
+  useEffect(() => {
+    setWeightInput(set.weight.toString());
+  }, [set.weight]);
+
+  const handleWeightSubmit = () => {
+    const newWeight = parseFloat(weightInput);
+    if (!isNaN(newWeight) && newWeight >= 0) {
+      onUpdateSetValue(exerciseIndex, setIndex, 'weight', newWeight);
+    } else {
+      setWeightInput(set.weight.toString()); // Reset to original value
+    }
+    setIsEditingWeight(false);
+  };
+  const translateX = React.useRef(new Animated.Value(0)).current;
+  const [gestureState, setGestureState] = React.useState<'idle' | 'swiping' | 'completed'>('idle');
+
+  const handlePanGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: translateX } }],
+    { useNativeDriver: false }
+  );
+
+  const handlePanStateChange = (event: any) => {
+    const { state, translationX: translation } = event.nativeEvent;
+
+    if (state === State.END) {
+      if (translation > SWIPE_THRESHOLD && !set.completed) {
+        // Swipe right - complete set
+        completeSet();
+      } else if (translation < -SWIPE_THRESHOLD) {
+        // Swipe left - delete set
+        deleteSet();
+      } else {
+        // Return to center
+        resetPosition();
+      }
+    }
+  };
+
+  const completeSet = () => {
+    setGestureState('completed');
+    
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    // Animate completion
+    Animated.timing(translateX, {
+      toValue: screenWidth,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      onCompleteSet(exerciseIndex, setIndex);
+      resetPosition();
+      setGestureState('idle');
+    });
+  };
+
+  const deleteSet = () => {
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+
+    // Animate deletion
+    Animated.timing(translateX, {
+      toValue: -screenWidth,
+      duration: 300,
+      useNativeDriver: false,
+    }).start(() => {
+      onDeleteSet(exerciseIndex, setIndex);
+      resetPosition();
+      setGestureState('idle');
+    });
+  };
+
+  const resetPosition = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      friction: 6,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const getCompleteIndicatorOpacity = () => {
+    return translateX.interpolate({
+      inputRange: [0, SWIPE_THRESHOLD],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+  };
+
+  const getDeleteIndicatorOpacity = () => {
+    return translateX.interpolate({
+      inputRange: [-SWIPE_THRESHOLD, 0],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    });
+  };
+
+  const getBackgroundColor = () => {
+    return translateX.interpolate({
+      inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
+      outputRange: ['#EF4444', colors.background, '#4CAF50'],
+      extrapolate: 'clamp',
+    });
+  };
+
+  return (
+    <View style={styles.swipeableContainer}>
+      {/* Delete indicator (left side) */}
+      <Animated.View
+        style={[
+          styles.swipeIndicator,
+          styles.deleteIndicator,
+          {
+            backgroundColor: '#EF4444',
+            opacity: getDeleteIndicatorOpacity(),
+          },
+        ]}
+      >
+        <Trash2 size={24} color="white" />
+        <Text style={styles.swipeIndicatorText}>Delete Set</Text>
+      </Animated.View>
+
+      {/* Complete indicator (right side) */}
+      <Animated.View
+        style={[
+          styles.swipeIndicator,
+          styles.completeIndicator,
+          {
+            backgroundColor: '#4CAF50',
+            opacity: getCompleteIndicatorOpacity(),
+          },
+        ]}
+      >
+        <CheckCircle size={24} color="white" />
+        <Text style={styles.swipeIndicatorText}>Complete Set</Text>
+      </Animated.View>
+
+      {/* Main set row */}
+      <PanGestureHandler
+        onGestureEvent={handlePanGestureEvent}
+        onHandlerStateChange={handlePanStateChange}
+        enabled={!set.completed}
+      >
+        <Animated.View
+          style={[
+            styles.setRow,
+            {
+              backgroundColor: getBackgroundColor(),
+              transform: [{ translateX }],
+            },
+          ]}
+        >
+          <Text style={[styles.setNumber, { color: colors.text }]}>
+            {setIndex + 1}
+          </Text>
+          
+          <View style={styles.setInputs}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Reps</Text>
+              <View style={styles.inputWithButtons}>
+                <TouchableOpacity
+                  style={[styles.inputButton, { backgroundColor: colors.tint }]}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'reps', Math.max(1, set.reps - 1))}
+                >
+                  <Minus size={16} color="white" />
+                </TouchableOpacity>
+                <Text style={[styles.inputValue, { color: colors.text }]}>
+                  {set.reps}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.inputButton, { backgroundColor: colors.tint }]}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'reps', set.reps + 1)}
+                >
+                  <Plus size={16} color="white" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Weight</Text>
+              <View style={styles.inputWithButtons}>
+                <TouchableOpacity
+                  style={[styles.inputButton, { backgroundColor: colors.tint }]}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', Math.max(0, set.weight - 5))}
+                >
+                  <Minus size={16} color="white" />
+                </TouchableOpacity>
+                {isEditingWeight ? (
+                  <TextInput
+                    style={[styles.inputValue, styles.weightInput, { 
+                      color: colors.text,
+                      backgroundColor: colors.inputBackground,
+                      borderColor: colors.tint,
+                    }]}
+                    value={weightInput}
+                    onChangeText={(text) => {
+                      // Allow numbers and decimal point
+                      const numericText = text.replace(/[^0-9.]/g, '');
+                      setWeightInput(numericText);
+                    }}
+                    onSubmitEditing={handleWeightSubmit}
+                    onBlur={handleWeightSubmit}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                    autoFocus
+                    maxLength={6}
+                  />
+                ) : (
+                  <TouchableOpacity 
+                    style={[styles.inputValue, styles.weightTouchable]}
+                    onPress={() => setIsEditingWeight(true)}
+                  >
+                    <Text style={[styles.inputValueText, { color: colors.text }]}>
+                      {set.weight}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.inputButton, { backgroundColor: colors.tint }]}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', set.weight + 5)}
+                >
+                  <Plus size={16} color="white" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {/* Completion status indicator - outline instead of dot */}
+          {set.completed && (
+            <View style={[styles.completedOutline, { borderColor: '#4CAF50' }]} />
+          )}
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+};
 
 interface WorkoutSet {
   id: string;
@@ -211,6 +484,21 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
     // Reset and start rest timer with selected time
     setTimerResetKey(prev => prev + 1); // Force timer reset
     setIsResting(true);
+  };
+
+  const deleteSet = (exerciseIndex: number, setIndex: number) => {
+    setCurrentWorkout(prev => ({
+      ...prev,
+      exercises: prev.exercises.map((exercise, eIndex) => {
+        if (eIndex === exerciseIndex) {
+          return {
+            ...exercise,
+            sets: exercise.sets.filter((_, sIndex) => sIndex !== setIndex)
+          };
+        }
+        return exercise;
+      })
+    }));
   };
 
   const updateSetValue = (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight', value: number) => {
@@ -449,7 +737,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
       </View>
 
       {/* Current Exercise */}
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {currentExercise && (
           <View style={[styles.exerciseContainer, { backgroundColor: colors.card }]}>
             <View style={styles.exerciseHeader}>
@@ -473,6 +761,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
                 showInlineControls={true}
                 compactMode={false}
                 initialTime={selectedRestTime}
+                autoStart={true}
               />
             )}
             
@@ -480,66 +769,16 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
 
             <View style={styles.setsContainer}>
               {currentExercise.sets.map((set, setIndex) => (
-                <View key={set.id} style={[styles.setRow, { backgroundColor: colors.background }]}>
-                  <Text style={[styles.setNumber, { color: colors.text }]}>
-                    {setIndex + 1}
-                  </Text>
-                  
-                  <View style={styles.setInputs}>
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.inputLabel, { color: colors.text }]}>Reps</Text>
-                      <View style={styles.inputWithButtons}>
-                        <TouchableOpacity
-                          style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                          onPress={() => updateSetValue(currentExerciseIndex, setIndex, 'reps', Math.max(1, set.reps - 1))}
-                        >
-                          <Minus size={16} color="white" />
-                        </TouchableOpacity>
-                        <Text style={[styles.inputValue, { color: colors.text }]}>
-                          {set.reps}
-                        </Text>
-                        <TouchableOpacity
-                          style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                          onPress={() => updateSetValue(currentExerciseIndex, setIndex, 'reps', set.reps + 1)}
-                        >
-                          <Plus size={16} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={[styles.inputLabel, { color: colors.text }]}>Weight</Text>
-                      <View style={styles.inputWithButtons}>
-                        <TouchableOpacity
-                          style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                          onPress={() => updateSetValue(currentExerciseIndex, setIndex, 'weight', Math.max(0, set.weight - 5))}
-                        >
-                          <Minus size={16} color="white" />
-                        </TouchableOpacity>
-                        <Text style={[styles.inputValue, { color: colors.text }]}>
-                          {set.weight}
-                        </Text>
-                        <TouchableOpacity
-                          style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                          onPress={() => updateSetValue(currentExerciseIndex, setIndex, 'weight', set.weight + 5)}
-                        >
-                          <Plus size={16} color="white" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.completeButton,
-                      { backgroundColor: set.completed ? '#4CAF50' : colors.tint }
-                    ]}
-                    onPress={() => completeSet(currentExerciseIndex, setIndex)}
-                    disabled={set.completed}
-                  >
-                    <CheckCircle size={20} color="white" />
-                  </TouchableOpacity>
-                </View>
+                <SwipeableSetRow
+                  key={set.id}
+                  set={set}
+                  setIndex={setIndex}
+                  exerciseIndex={currentExerciseIndex}
+                  colors={colors}
+                  onCompleteSet={completeSet}
+                  onDeleteSet={deleteSet}
+                  onUpdateSetValue={updateSetValue}
+                />
               ))}
             </View>
 
@@ -812,48 +1051,84 @@ const styles = StyleSheet.create({
   },
   setRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingRight: 32,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    paddingLeft: 12,
+    paddingRight: 16,
     borderRadius: 12,
     marginBottom: 8,
+    minHeight: 80,
   },
   setNumber: {
     fontSize: 16,
     fontWeight: 'bold',
-    width: 28,
+    width: 24,
+    textAlign: 'center',
+    marginRight: 8,
+    marginTop: 24,
   },
   setInputs: {
     flex: 1,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginHorizontal: 8,
-    marginRight: 60,
+    alignItems: 'flex-start',
+    marginLeft: 8,
+    marginRight: 16,
+    gap: 12,
+    justifyContent: 'flex-start',
+    marginTop: 4,
   },
   inputGroup: {
     alignItems: 'center',
+    flex: 0,
+    minWidth: 100,
+    maxWidth: 120,
   },
   inputLabel: {
     fontSize: 12,
+    fontWeight: '600',
     marginBottom: 8,
+    textAlign: 'center',
   },
   inputWithButtons: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minWidth: 90,
   },
   inputButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   inputValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginHorizontal: 16,
-    minWidth: 35,
+    minWidth: 40,
     textAlign: 'center',
+    paddingHorizontal: 4,
+    flexShrink: 0,
+    lineHeight: 20,
+  },
+  inputValueText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  weightInput: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    minHeight: 28,
+  },
+  weightTouchable: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 28,
+    paddingVertical: 4,
   },
   completeButton: {
     width: 44,
@@ -1123,5 +1398,47 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  // Swipeable set row styles
+  swipeableContainer: {
+    position: 'relative',
+    marginBottom: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  swipeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 0,
+  },
+  swipeIndicatorText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  completedOutline: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 12,
+    borderWidth: 2,
+    pointerEvents: 'none',
+  },
+  deleteIndicator: {
+    justifyContent: 'flex-start',
+    paddingLeft: 20,
+  },
+  completeIndicator: {
+    justifyContent: 'flex-end',
+    paddingRight: 20,
   },
 }); 

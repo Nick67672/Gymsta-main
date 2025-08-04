@@ -36,6 +36,7 @@ interface SmartRestTimerProps {
   showInlineControls?: boolean;
   compactMode?: boolean;
   initialTime?: number;
+  autoStart?: boolean;
 }
 
 const getIconComponent = (iconName: string, size: number = 16, color: string = '#fff') => {
@@ -58,6 +59,7 @@ export const SmartRestTimer: React.FC<SmartRestTimerProps> = ({
   showInlineControls = true,
   compactMode = false,
   initialTime = 90,
+  autoStart = false,
 }) => {
 
   const { theme } = useTheme();
@@ -137,7 +139,17 @@ export const SmartRestTimer: React.FC<SmartRestTimerProps> = ({
     }).start();
   }, [progress]);
 
-  // Timer is ready but doesn't auto-start - user must press play
+  // Auto-start timer when component mounts if autoStart is true
+  useEffect(() => {
+    if (autoStart && !timerState.isRunning && !timerState.isCompleted) {
+      const timer = setTimeout(() => {
+        startTimer();
+        onTimerStart?.();
+      }, 500); // Small delay to allow component to fully mount
+      
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, timerState.isRunning, timerState.isCompleted]);
 
   // Completion celebration
   useEffect(() => {
@@ -257,11 +269,11 @@ export const SmartRestTimer: React.FC<SmartRestTimerProps> = ({
 
   return (
       <View style={styles.container}>
-        <BlurView intensity={30} tint={theme} style={styles.timerCard}>
+        <View style={[styles.timerCard, { backgroundColor: colors.card }]}>
           <LinearGradient
             colors={[
-              theme === 'dark' ? 'rgba(17, 24, 39, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-              theme === 'dark' ? 'rgba(31, 41, 55, 0.6)' : 'rgba(248, 250, 252, 0.6)',
+              theme === 'dark' ? 'rgba(17, 24, 39, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+              theme === 'dark' ? 'rgba(31, 41, 55, 0.1)' : 'rgba(248, 250, 252, 0.1)',
             ]}
             style={styles.gradientOverlay}
           >
@@ -384,7 +396,7 @@ export const SmartRestTimer: React.FC<SmartRestTimerProps> = ({
               </Text>
             </View>
           </LinearGradient>
-        </BlurView>
+        </View>
       </View>
   );
 };
@@ -392,24 +404,25 @@ export const SmartRestTimer: React.FC<SmartRestTimerProps> = ({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 12,
   },
   timerCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    minWidth: 320,
-    maxWidth: 400,
-    shadowColor: '#000',
+    borderWidth: 2,
+    borderColor: 'rgba(0, 212, 255, 0.3)',
+    minWidth: 300,
+    maxWidth: 340,
+    shadowColor: '#00D4FF',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 8,
   },
   gradientOverlay: {
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 212, 255, 0.08)',
   },
   
   // Suggestions
@@ -468,35 +481,38 @@ const styles = StyleSheet.create({
   // Timer Display
   timerDisplay: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     position: 'relative',
   },
   progressRing: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     borderWidth: 3,
     position: 'absolute',
   },
   progressFill: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 114,
+    height: 114,
+    borderRadius: 57,
     position: 'absolute',
-    top: -2,
-    left: -2,
+    top: -1.5,
+    left: -1.5,
   },
   timeContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 140,
-    height: 140,
+    width: 120,
+    height: 120,
   },
   timeText: {
-    fontSize: 36,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     fontFamily: Platform.OS === 'ios' ? 'SF Pro Display' : 'sans-serif',
     letterSpacing: 1,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   overtimeText: {
     fontSize: 12,
@@ -518,22 +534,32 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
   controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   playButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#00D4FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
   },
   adjustButtonText: {
     fontSize: 12,

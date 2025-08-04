@@ -6,6 +6,8 @@ export interface Workout {
   name?: string;
   notes?: string;
   tags?: string[];
+  duration_minutes?: number;
+  total_volume?: number;
   created_at: string;
   updated_at: string;
   workout_exercises?: WorkoutExercise[];

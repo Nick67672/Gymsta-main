@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
-import { ArrowLeft, CircleCheck as CheckCircle, X } from 'lucide-react-native';
+import { ArrowLeft, CircleCheck as CheckCircle, X, TrendingUp, Dumbbell, Clock } from 'lucide-react-native';
+import { getExerciseIcon } from '@/lib/exerciseIcons';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
@@ -114,7 +115,7 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose }: Work
               <Text style={[styles.error, { color: colors.error }]}>{error}</Text>
             </View>
           ) : workout ? (
-            <ScrollView style={styles.content}>
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
               <View style={styles.userInfo}>
                 <Image
                   source={{
@@ -132,40 +133,113 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose }: Work
                 {new Date(workout.date).toLocaleDateString()}
               </Text>
 
+              {/* Compact Workout Summary */}
+              <View style={styles.workoutSummary}>
+                {(() => {
+                  const totalVolume = workout.exercises.reduce((total, ex) => 
+                    total + (ex.sets?.reduce((sum, set) => sum + (set.reps * set.weight), 0) || 0), 0);
+                  const maxWeight = workout.exercises.reduce((max, ex) => 
+                    Math.max(max, ex.sets?.reduce((setMax, set) => Math.max(setMax, set.weight), 0) || 0), 0);
+                  // Estimate workout duration based on sets
+                  const totalSets = workout.exercises.reduce((total, ex) => total + (ex.sets?.length || 0), 0);
+                  const estimatedMinutes = Math.round(totalSets * 2.5);
+                  
+                  return (
+                    <>
+                      <View style={styles.summaryItem}>
+                        <Text style={[styles.summaryValue, { color: colors.text }]}>
+                          {totalVolume.toFixed(0)}kg
+                        </Text>
+                        <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
+                          Volume
+                        </Text>
+                      </View>
+                      <View style={styles.summaryItem}>
+                        <Text style={[styles.summaryValue, { color: colors.text }]}>
+                          {maxWeight}kg
+                        </Text>
+                        <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
+                          Max Weight
+                        </Text>
+                      </View>
+                      <View style={styles.summaryItem}>
+                        <Text style={[styles.summaryValue, { color: colors.text }]}>
+                          {workout.duration_minutes || estimatedMinutes}min
+                        </Text>
+                        <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>
+                          Duration
+                        </Text>
+                      </View>
+                    </>
+                  );
+                })()}
+              </View>
 
 
               <View style={styles.exercises}>
-                {workout.exercises.map((exercise, index) => (
-                  <View 
-                    key={index} 
-                    style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
-                    <View style={styles.exerciseHeader}>
-                      <Text style={[styles.exerciseName, { color: colors.text }]}>
-                        {exercise.name}
-                      </Text>
-                      {exercise.isPR && (
-                        <View style={[styles.prBadge, { backgroundColor: colors.tint + '20' }]}>
-                          <CheckCircle size={16} color={colors.tint} fill={colors.tint} />
-                          <Text style={[styles.prText, { color: colors.tint }]}>PR</Text>
+                {workout.exercises.map((exercise, index) => {
+                  const totalVolume = exercise.sets?.reduce((sum, set) => 
+                    sum + (set.reps * set.weight), 0) || 0;
+                  const maxWeight = exercise.sets?.reduce((max, set) => 
+                    Math.max(max, set.weight), 0) || 0;
+                  
+                  return (
+                    <View 
+                      key={index} 
+                      style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
+                      <View style={styles.exerciseHeader}>
+                        <View style={styles.exerciseNameWithIcon}>
+                          {(() => {
+                            const iconData = getExerciseIcon(exercise.name);
+                            const IconComponent = iconData.icon;
+                            return (
+                              <View style={[styles.exerciseIconContainer, { backgroundColor: iconData.color + '15' }]}>
+                                <IconComponent size={16} color={iconData.color} />
+                              </View>
+                            );
+                          })()}
+                          <View style={styles.exerciseInfo}>
+                            <Text style={[styles.exerciseName, { color: colors.text }]}>
+                              {exercise.name}
+                            </Text>
+                            <Text style={[styles.volumeText, { color: colors.textSecondary }]}>
+                              {exercise.sets?.length || 0} sets • {totalVolume.toFixed(0)}kg volume
+                            </Text>
+                          </View>
                         </View>
-                      )}
-                    </View>
-
-                    <View style={styles.setsHeader}>
-                      <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Set</Text>
-                      <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Reps</Text>
-                      <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Weight</Text>
-                    </View>
-
-                    {exercise.sets.map((set, setIndex) => (
-                      <View key={setIndex} style={styles.setRow}>
-                        <Text style={[styles.setText, { color: colors.text }]}>{setIndex + 1}</Text>
-                        <Text style={[styles.setText, { color: colors.text }]}>{set.reps}</Text>
-                        <Text style={[styles.setText, { color: colors.text }]}>{set.weight} kg</Text>
+                        {exercise.isPR && (
+                          <View style={[styles.prBadge, { backgroundColor: colors.tint + '20' }]}>
+                            <CheckCircle size={16} color={colors.tint} fill={colors.tint} />
+                            <Text style={[styles.prText, { color: colors.tint }]}>PR</Text>
+                          </View>
+                        )}
                       </View>
-                    ))}
-                  </View>
-                ))}
+
+                      <View style={styles.setsTable}>
+                        <View style={styles.setsHeader}>
+                          <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Set</Text>
+                          <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Reps</Text>
+                          <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Weight</Text>
+                          <Text style={[styles.setLabel, { color: colors.textSecondary }]}>Volume</Text>
+                        </View>
+
+                        {exercise.sets.map((set, setIndex) => (
+                          <View key={setIndex} style={[styles.setRow,
+                            set.weight === maxWeight && maxWeight > 0 ? 
+                              { backgroundColor: colors.tint + '10' } : {}
+                          ]}>
+                            <Text style={[styles.setText, { color: colors.text }]}>{setIndex + 1}</Text>
+                            <Text style={[styles.setText, { color: colors.text }]}>{set.reps}</Text>
+                            <Text style={[styles.setText, { color: colors.text }]}>{set.weight}kg</Text>
+                            <Text style={[styles.setText, { color: colors.textSecondary }]}>
+                              {(set.reps * set.weight).toFixed(0)}kg
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             </ScrollView>
           ) : (
@@ -246,6 +320,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 15,
   },
+  workoutSummary: {
+    flexDirection: 'row',
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    borderRadius: 8,
+    gap: 12,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
 
 
   exercises: {
@@ -260,11 +358,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 15,
+    marginBottom: 12,
+  },
+  exerciseNameWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  exerciseIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exerciseInfo: {
+    flex: 1,
   },
   exerciseName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
+    marginBottom: 2,
   },
   prBadge: {
     flexDirection: 'row',
@@ -273,27 +388,47 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
+    marginLeft: 12,
   },
   prText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  volumeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  setsTable: {
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   setsHeader: {
     flexDirection: 'row',
-    marginBottom: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0,0,0,0.03)',
   },
   setLabel: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   setRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   setText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 
 });

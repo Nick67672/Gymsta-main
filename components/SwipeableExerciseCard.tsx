@@ -27,7 +27,7 @@ import {
 } from 'lucide-react-native';
 
 const { width: screenWidth } = Dimensions.get('window');
-const SWIPE_THRESHOLD = screenWidth * 0.25;
+const SWIPE_THRESHOLD = screenWidth * 0.2;
 
 interface WorkoutSet {
   id: string;

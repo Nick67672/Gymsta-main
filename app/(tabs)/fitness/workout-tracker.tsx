@@ -660,7 +660,7 @@ export default function WorkoutTrackerScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Planned Workouts Cards */}
         {workouts.length > 0 ? (
           <>
@@ -737,7 +737,7 @@ export default function WorkoutTrackerScreen() {
         <View style={{width:24}} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <Text style={[styles.cardTitle, { color: colors.text, marginBottom:8 }]}>Workout Details</Text>
           <ThemedInput
@@ -782,9 +782,10 @@ export default function WorkoutTrackerScreen() {
 
             {/* Sets table */}
             <View style={styles.setTableHeader}>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Set</Text>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Reps</Text>
-              <Text style={[styles.setColHeader, { color: colors.text }]}>Weight</Text>
+              <Text style={[styles.setColHeader, { color: colors.text, width: 40 }]}>Set</Text>
+              <Text style={[styles.setColHeader, { color: colors.text, width: 90 }]}>Reps</Text>
+              <Text style={[styles.setColHeader, { color: colors.text, width: 90 }]}>Weight</Text>
+              <View style={{ width: 24 }} />
             </View>
             {exercise.sets.map((s, idx) => (
               <View key={s.id} style={styles.setRowPlan}>
@@ -801,11 +802,13 @@ export default function WorkoutTrackerScreen() {
                   onChangeText={v => updatePlannedSet(exercise.id, idx, 'weight', Number(v))}
                   style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
                 />
-                {exercise.sets.length > 1 && (
-                  <TouchableOpacity onPress={() => removePlannedSet(exercise.id, idx)}>
-                    <Minus size={14} color={colors.tint} />
-                  </TouchableOpacity>
-                )}
+                <View style={{ width: 24, alignItems: 'center' }}>
+                  {exercise.sets.length > 1 && (
+                    <TouchableOpacity onPress={() => removePlannedSet(exercise.id, idx)}>
+                      <Minus size={16} color={colors.tint} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))}
 
@@ -880,7 +883,7 @@ export default function WorkoutTrackerScreen() {
               <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView style={styles.modalScrollContent}>
+            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
               {!showInlineExerciseForm ? (
                 // Exercise List View
                 <>
@@ -970,9 +973,10 @@ export default function WorkoutTrackerScreen() {
 
                   {/* Table Header */}
                   <View style={styles.modalLabelRow}>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Sets</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Reps</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text }]}>Weight (kg)</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight (kg)</Text>
+                    <View style={{ width: 24 }} />
                   </View>
 
                   {setsList.map((s, idx) => (
@@ -990,11 +994,13 @@ export default function WorkoutTrackerScreen() {
                         value={s.weight}
                         onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
                       />
-                      {setsList.length>1 && (
-                        <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                          <Minus size={14} color={colors.tint} />
-                        </TouchableOpacity>
-                      )}
+                      <View style={{ width: 24, alignItems: 'center' }}>
+                        {setsList.length > 1 && (
+                          <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
+                            <Minus size={16} color={colors.tint} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   ))}
 
@@ -1077,9 +1083,10 @@ export default function WorkoutTrackerScreen() {
 
             {/* Table Header */}
             <View style={styles.modalLabelRow}>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Sets</Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Reps</Text>
-              <Text style={[styles.modalLabel, { color: colors.text }]}>Weight (kg)</Text>
+              <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
+              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
+              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight (kg)</Text>
+              <View style={{ width: 24 }} />
             </View>
 
             {setsList.map((s, idx) => (
@@ -1097,11 +1104,13 @@ export default function WorkoutTrackerScreen() {
                   value={s.weight}
                   onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
                 />
-                {setsList.length>1 && (
-                  <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                    <Minus size={14} color={colors.tint} />
-                  </TouchableOpacity>
-                )}
+                <View style={{ width: 24, alignItems: 'center' }}>
+                  {setsList.length > 1 && (
+                    <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
+                      <Minus size={16} color={colors.tint} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))}
 
@@ -1553,49 +1562,63 @@ const styles = StyleSheet.create({
   },
   modalLabelRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+    gap: 8,
   },
   modalLabel: {
-    flex: 1,
-    textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
+    minWidth: 40,
   },
   /* --- Plan view table styles --- */
   setTableHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 8,
+    paddingHorizontal: 4,
   },
   setColHeader: {
-    flex: 1,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+    minWidth: 40,
   },
   setRowPlan: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
     alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    gap: 12,
+    justifyContent: 'flex-start',
   },
   setCellIndex: {
-    width: 28,
+    width: 40,
     textAlign: 'center',
     fontSize: 13,
+    fontWeight: '500',
   },
   setInputBox: {
-    flex: 1,
+    width: 90,
+    height: 40,
     borderRadius: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     textAlign: 'center',
-    marginHorizontal: 4,
+    fontSize: 16,
+    fontWeight: '500',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    minWidth: 90,
+    maxWidth: 100,
   },
   modalSetRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
+    paddingVertical: 6,
+    gap: 8,
   },
   datePickerField: {
     paddingVertical: 12,

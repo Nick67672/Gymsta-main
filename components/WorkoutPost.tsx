@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, Animated, Platform, Modal, ActivityIndicator, Pressable, Dimensions, ScrollView } from 'react-native';
 import { Heart, MessageCircle, MoreHorizontal, CircleCheck as CheckCircle2, Trash2, X, Dumbbell, Clock, TrendingUp, ChevronLeft } from 'lucide-react-native';
+import { getExerciseIcon } from '@/lib/exerciseIcons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
@@ -93,9 +94,9 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
 
   // Swipe gesture configuration
   const swipeConfig = {
-    velocityThreshold: 0.1,        // Very low threshold for easier detection
-    directionalOffsetThreshold: 150, // Higher threshold to allow more vertical movement
-    gestureIsClickThreshold: 15     // Higher threshold to distinguish from taps
+    velocityThreshold: 0.3,        // Lower threshold for more sensitivity
+    directionalOffsetThreshold: 100, // Higher threshold to allow more vertical movement
+    gestureIsClickThreshold: 15     // Lower threshold for easier swipe detection
   };
 
   // Swipe gesture handlers
@@ -481,25 +482,126 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
               </View>
             )
           ) : (
-            // Workout Details View
+            // Enhanced Workout Details View
             <View style={styles.workoutDetailsContainer}>
+              <View style={[styles.workoutHeader, { backgroundColor: colors.card }]}>
+                <View style={styles.workoutHeaderContent}>
+                  <Text style={[styles.workoutHeaderTitle, { color: colors.text }]}>
+                    Workout Details
+                  </Text>
+                  <Text style={[styles.workoutHeaderSubtitle, { color: colors.textSecondary }]}>
+                    {workout.exercises.length} exercise{workout.exercises.length !== 1 ? 's' : ''} • 
+                    {workout.exercises.reduce((total, ex) => total + (ex.sets?.length || 0), 0)} sets
+                  </Text>
+                </View>
+                
+                {/* Compact Workout Summary */}
+                <View style={styles.compactSummary}>
+                  {(() => {
+                    const totalVolume = workout.exercises.reduce((total, ex) => 
+                      total + (ex.sets?.reduce((sum: number, set: any) => sum + (set.reps * set.weight), 0) || 0), 0);
+                    const maxWeight = workout.exercises.reduce((max, ex) => 
+                      Math.max(max, ex.sets?.reduce((setMax: number, set: any) => Math.max(setMax, set.weight), 0) || 0), 0);
+                    // Estimate workout duration based on sets (assuming 2-3 minutes per set)
+                    const totalSets = workout.exercises.reduce((total, ex) => total + (ex.sets?.length || 0), 0);
+                    const estimatedMinutes = Math.round(totalSets * 2.5);
+                    
+                    return (
+                      <>
+                        <View style={styles.compactSummaryItem}>
+                          <Text style={[styles.compactSummaryValue, { color: colors.text }]}>
+                            {totalVolume.toFixed(0)}kg
+                          </Text>
+                          <Text style={[styles.compactSummaryLabel, { color: colors.textSecondary }]}>
+                            Volume
+                          </Text>
+                        </View>
+                        <View style={styles.compactSummaryItem}>
+                          <Text style={[styles.compactSummaryValue, { color: colors.text }]}>
+                            {maxWeight}kg
+                          </Text>
+                          <Text style={[styles.compactSummaryLabel, { color: colors.textSecondary }]}>
+                            Max
+                          </Text>
+                        </View>
+                        <View style={styles.compactSummaryItem}>
+                          <Text style={[styles.compactSummaryValue, { color: colors.text }]}>
+                            {workout.duration_minutes || estimatedMinutes}min
+                          </Text>
+                          <Text style={[styles.compactSummaryLabel, { color: colors.textSecondary }]}>
+                            Duration
+                          </Text>
+                        </View>
+                      </>
+                    );
+                  })()}
+                </View>
+              </View>
+              
               <ScrollView style={styles.exercisesList} showsVerticalScrollIndicator={false}>
-                {workout.exercises.map((exercise, index) => (
-                  <View key={index} style={[styles.exerciseItem, { backgroundColor: colors.background }]}>
-                    <Text style={[styles.exerciseName, { color: colors.text }]}>{exercise.name}</Text>
-                    {exercise.sets && exercise.sets.length > 0 && (
-                      <View style={styles.setsContainer}>
-                        {exercise.sets.map((set: any, setIndex: number) => (
-                          <View key={setIndex} style={styles.setRow}>
-                            <Text style={[styles.setText, { color: colors.textSecondary }]}>
-                              Set {setIndex + 1}: {set.reps} reps × {set.weight}kg
+                {workout.exercises.map((exercise, index) => {
+                  const totalVolume = exercise.sets?.reduce((sum: number, set: any) => 
+                    sum + (set.reps * set.weight), 0) || 0;
+                  const maxWeight = exercise.sets?.reduce((max: number, set: any) => 
+                    Math.max(max, set.weight), 0) || 0;
+                  const iconData = getExerciseIcon(exercise.name);
+                  const IconComponent = iconData.icon;
+                  
+                  return (
+                    <View key={index} style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
+                      <View style={styles.exerciseCardHeader}>
+                        <View style={styles.exerciseNameWithIcon}>
+                          <View style={[styles.exerciseIconContainer, { backgroundColor: iconData.color + '15' }]}>
+                            <IconComponent size={16} color={iconData.color} />
+                          </View>
+                          <View style={styles.exerciseInfo}>
+                            <Text style={[styles.exerciseName, { color: colors.text }]}>
+                              {exercise.name}
+                            </Text>
+                            <Text style={[styles.exerciseStatText, { color: colors.textSecondary }]}>
+                              {exercise.sets?.length || 0} sets • {totalVolume.toFixed(0)}kg volume
                             </Text>
                           </View>
-                        ))}
+                        </View>
+                        {exercise.isPR && (
+                          <View style={[styles.prBadge, { backgroundColor: colors.tint + '20' }]}>
+                            <Text style={[styles.prText, { color: colors.tint }]}>PR</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                ))}
+
+                      {exercise.sets && exercise.sets.length > 0 && (
+                        <View style={styles.setsTable}>
+                          <View style={styles.setsTableHeader}>
+                            <Text style={[styles.setsTableHeaderText, { color: colors.textSecondary }]}>Set</Text>
+                            <Text style={[styles.setsTableHeaderText, { color: colors.textSecondary }]}>Reps</Text>
+                            <Text style={[styles.setsTableHeaderText, { color: colors.textSecondary }]}>Weight</Text>
+                            <Text style={[styles.setsTableHeaderText, { color: colors.textSecondary }]}>Volume</Text>
+                          </View>
+                          {exercise.sets.map((set: any, setIndex: number) => (
+                            <View key={setIndex} style={[styles.setsTableRow, 
+                              set.weight === maxWeight && maxWeight > 0 ? 
+                                { backgroundColor: colors.tint + '10' } : {}
+                            ]}>
+                              <Text style={[styles.setsTableText, { color: colors.text }]}>
+                                {setIndex + 1}
+                              </Text>
+                              <Text style={[styles.setsTableText, { color: colors.text }]}>
+                                {set.reps}
+                              </Text>
+                              <Text style={[styles.setsTableText, { color: colors.text }]}>
+                                {set.weight}kg
+                              </Text>
+                              <Text style={[styles.setsTableText, { color: colors.textSecondary }]}>
+                                {(set.reps * set.weight).toFixed(0)}kg
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </ScrollView>
 
               {/* Carousel dots for workout view */}
@@ -587,12 +689,43 @@ const WorkoutPost: React.FC<WorkoutPostProps> = ({
             </Text>
           )}
           
-          {/* Exercise preview */}
+          {/* Enhanced Exercise preview */}
           {workout.exercises.length > 0 && (
-            <Text style={[styles.exercisePreview, { color: colors.textSecondary }]}>
-              {workout.exercises.slice(0, 3).map(ex => ex.name).join(' • ')}
-              {workout.exercises.length > 3 && ` +${workout.exercises.length - 3} more`}
-            </Text>
+            <View style={styles.exercisePreviewContainer}>
+              <View style={styles.exercisePreviewHeader}>
+                <Dumbbell size={16} color={colors.tint} />
+                <Text style={[styles.exercisePreviewTitle, { color: colors.tint }]}>
+                  {workout.exercises.length} Exercise{workout.exercises.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              <View style={styles.exerciseChips}>
+                {workout.exercises.slice(0, 3).map((exercise, index) => {
+                  const iconData = getExerciseIcon(exercise.name);
+                  const IconComponent = iconData.icon;
+                  
+                  return (
+                    <View key={index} style={[styles.exerciseChip, { backgroundColor: iconData.color + '15' }]}>
+                      <IconComponent size={14} color={iconData.color} />
+                      <Text style={[styles.exerciseChipText, { color: iconData.color }]} numberOfLines={1}>
+                        {exercise.name}
+                      </Text>
+                      {exercise.sets && exercise.sets.length > 0 && (
+                        <Text style={[styles.exerciseChipSets, { color: colors.textSecondary }]}>
+                          {exercise.sets.length} sets
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+                {workout.exercises.length > 3 && (
+                  <View style={[styles.exerciseChip, styles.moreExercisesChip, { backgroundColor: colors.backgroundSecondary }]}>
+                    <Text style={[styles.moreExercisesText, { color: colors.textSecondary }]}>
+                      +{workout.exercises.length - 3} more
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
           )}
         </View>
 
@@ -822,33 +955,131 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     backgroundColor: 'rgba(0,0,0,0.02)',
   },
+  // Enhanced Workout Details Styles
+  workoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  workoutHeaderContent: {
+    flex: 1,
+  },
+  workoutHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  workoutHeaderSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  compactSummary: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  compactSummaryItem: {
+    alignItems: 'center',
+    minWidth: 50,
+  },
+  compactSummaryValue: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  compactSummaryLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   exercisesList: {
     flex: 1,
     padding: Spacing.lg,
   },
-  exerciseItem: {
-    padding: Spacing.md,
+  exerciseCard: {
     borderRadius: 12,
     marginBottom: Spacing.md,
+    padding: Spacing.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     elevation: 1,
+  },
+  exerciseCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  exerciseNameWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: Spacing.sm,
+  },
+  exerciseIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exerciseInfo: {
+    flex: 1,
   },
   exerciseName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: Spacing.sm,
+    marginBottom: 2,
   },
-  setsContainer: {
-    gap: 4,
+  prBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: Spacing.sm,
   },
-  setRow: {
-    paddingLeft: Spacing.md,
+  prText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
-  setText: {
-    fontSize: 14,
+  exerciseStatText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  setsTable: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  setsTableHeader: {
+    flexDirection: 'row',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  setsTableHeaderText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  setsTableRow: {
+    flexDirection: 'row',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  setsTableText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   
   // Interaction Section
@@ -892,10 +1123,49 @@ const styles = StyleSheet.create({
   captionAuthor: {
     fontWeight: '600',
   },
-  exercisePreview: {
+  // Enhanced Exercise Preview Styles
+  exercisePreviewContainer: {
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  exercisePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  exercisePreviewTitle: {
     fontSize: 14,
-    lineHeight: 18,
-    marginTop: 4,
+    fontWeight: '600',
+  },
+  exerciseChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+  },
+  exerciseChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    maxWidth: '48%', // Ensure chips don't get too wide
+  },
+  exerciseChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  exerciseChipSets: {
+    fontSize: 11,
+    fontWeight: '400',
+  },
+  moreExercisesChip: {
+    justifyContent: 'center',
+  },
+  moreExercisesText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   
   // Modals

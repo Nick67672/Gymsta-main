@@ -231,16 +231,18 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <TouchableWithoutFeedback onPress={() => {
-      Keyboard.dismiss();
-      setShowGymSuggestions(false);
-    }}>
-      <ThemedView style={styles.container}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
+    <ThemedView style={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {
+          Keyboard.dismiss();
+          setShowGymSuggestions(false);
+        }}
+      >
           {/* Header */}
           <View style={styles.header}>
             <ThemedH2 style={styles.title}>Edit Profile</ThemedH2>
@@ -306,97 +308,100 @@ export default function EditProfileScreen() {
           </ThemedCardView>
 
           {/* Profile Information */}
-          <ThemedCardView style={styles.formSection}>
-            <ThemedH3 style={styles.sectionTitle}>Profile Information</ThemedH3>
-            
-            <View style={styles.inputGroup}>
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.inputLabel}>Username</ThemedText>
-                <ThemedInput
-                  value={username}
-                  onChangeText={setUsername}
-                  leftIcon={<User size={20} color={colors.textSecondary} />}
-                  variant="filled"
-                  size="medium"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  error={error && error.includes('username') ? 'Username is required' : undefined}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <ThemedText style={styles.inputLabel}>Bio</ThemedText>
-                <ThemedInput
-                  value={bio}
-                  onChangeText={setBio}
-                  leftIcon={<FileText size={20} color={colors.textSecondary} />}
-                  variant="filled"
-                  size="medium"
-                />
-              </View>
-
-              <View style={styles.gymInputContainer}>
-                <View style={styles.inputContainer}>
-                  <ThemedText style={styles.inputLabel}>Gym (Optional)</ThemedText>
-                  <ThemedInput
-                    value={gym}
-                    onChangeText={(text) => {
-                      setGym(text);
-                      setShowGymSuggestions(true);
-                    }}
-                    onFocus={() => setShowGymSuggestions(true)}
-                    leftIcon={<MapPin size={20} color={colors.textSecondary} />}
-                    variant="filled"
-                    size="medium"
-                  />
-                </View>
+          <TouchableWithoutFeedback onPress={() => setShowGymSuggestions(false)}>
+            <View>
+              <ThemedCardView style={styles.formSection}>
+                <ThemedH3 style={styles.sectionTitle}>Profile Information</ThemedH3>
                 
-                {showGymSuggestions && filteredGyms.length > 0 && (
-                  <ThemedSurfaceView style={[styles.suggestionsContainer, {
-                    borderColor: colors.border
-                  }]}>
-                    <ScrollView 
-                      style={styles.suggestionsList}
-                      keyboardShouldPersistTaps="handled"
-                      nestedScrollEnabled
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {filteredGyms.map((suggestion: string, index: number) => (
-                        <TouchableOpacity
-                          key={index}
-                          style={[styles.suggestionItem, { 
-                            borderBottomColor: colors.border,
-                            borderBottomWidth: index < filteredGyms.length - 1 ? 1 : 0
-                          }]}
-                          onPress={() => {
-                            setGym(suggestion);
-                            setShowGymSuggestions(false);
-                          }}
-                          activeOpacity={0.7}
+                <View style={styles.inputGroup}>
+                  <View style={styles.inputContainer}>
+                    <ThemedText style={styles.inputLabel}>Username</ThemedText>
+                    <ThemedInput
+                      value={username}
+                      onChangeText={setUsername}
+                      leftIcon={<User size={20} color={colors.textSecondary} />}
+                      variant="filled"
+                      size="medium"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      error={error && error.includes('username') ? 'Username is required' : undefined}
+                    />
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <ThemedText style={styles.inputLabel}>Bio (Optional)</ThemedText>
+                    <ThemedInput
+                      value={bio}
+                      onChangeText={setBio}
+                      leftIcon={<FileText size={20} color={colors.textSecondary} />}
+                      variant="filled"
+                      size="medium"
+                    />
+                  </View>
+
+                  <View style={styles.gymInputContainer}>
+                    <View style={styles.inputContainer}>
+                      <ThemedText style={styles.inputLabel}>Gym (Optional)</ThemedText>
+                      <ThemedInput
+                        value={gym}
+                        onChangeText={(text) => {
+                          setGym(text);
+                          setShowGymSuggestions(true);
+                        }}
+                        onFocus={() => setShowGymSuggestions(true)}
+                        leftIcon={<MapPin size={20} color={colors.textSecondary} />}
+                        variant="filled"
+                        size="medium"
+                      />
+                    </View>
+                    
+                    {showGymSuggestions && filteredGyms.length > 0 && (
+                      <ThemedSurfaceView style={[styles.suggestionsContainer, {
+                        borderColor: colors.border
+                      }]}>
+                        <ScrollView 
+                          style={styles.suggestionsList}
+                          keyboardShouldPersistTaps="handled"
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator={false}
                         >
-                          <MapPin size={16} color={colors.textSecondary} style={styles.suggestionIcon} />
-                          <ThemedText style={styles.suggestionText}>
-                            {suggestion}
-                          </ThemedText>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </ThemedSurfaceView>
-                )}
-              </View>
+                          {filteredGyms.map((suggestion: string, index: number) => (
+                            <TouchableOpacity
+                              key={index}
+                              style={[styles.suggestionItem, { 
+                                borderBottomColor: colors.border,
+                                borderBottomWidth: index < filteredGyms.length - 1 ? 1 : 0
+                              }]}
+                              onPress={() => {
+                                setGym(suggestion);
+                                setShowGymSuggestions(false);
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <MapPin size={16} color={colors.textSecondary} style={styles.suggestionIcon} />
+                              <ThemedText style={styles.suggestionText}>
+                                {suggestion}
+                              </ThemedText>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </ThemedSurfaceView>
+                    )}
+                  </View>
+                </View>
+              </ThemedCardView>
             </View>
-          </ThemedCardView>
+          </TouchableWithoutFeedback>
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
              <ThemedButton
                title="Cancel"
                onPress={goBack}
-               variant="outline"
+               variant="secondary"
                size="medium"
                disabled={loading || uploadingAvatar}
                style={styles.cancelButton}
-               fullWidth={false}
              />
 
              <ThemedButton
@@ -406,15 +411,12 @@ export default function EditProfileScreen() {
                size="medium"
                loading={loading}
                disabled={uploadingAvatar}
-               gradient={true}
                style={styles.saveButton}
-               fullWidth={false}
              />
            </View>
         </ScrollView>
       </ThemedView>
-    </TouchableWithoutFeedback>
-  );
+    );
 }
 
 const styles = StyleSheet.create({
@@ -422,8 +424,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.xl * 2,
+    paddingTop: Spacing.sm,
   },
   loadingContainer: {
     flex: 1,
@@ -537,19 +541,19 @@ const styles = StyleSheet.create({
 
   gymInputContainer: {
     position: 'relative',
-    zIndex: 1000,
-    marginBottom: Spacing.xl, // Add extra margin to prevent overlap
+    zIndex: 10,
+    marginBottom: Spacing.xl * 2, // Add more margin to prevent overlap
   },
   suggestionsContainer: {
     position: 'absolute',
     top: '100%',
     left: 0,
     right: 0,
-    maxHeight: 150, // Reduce height to prevent overlap
+    maxHeight: 120, // Reduce height to prevent scroll interference
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    marginTop: -Spacing.md,
-    zIndex: 1001,
+    marginTop: Spacing.xs,
+    zIndex: 11,
     ...Shadows.medium,
   },
   suggestionsList: {

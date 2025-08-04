@@ -3,7 +3,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
-import { LogIn, MessageSquare, Bell } from 'lucide-react-native';
+import { LogIn, MessageSquare, Bell, Search } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
@@ -20,7 +20,7 @@ import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import FeedPost from '../../components/Post';
 import StoriesRail from '../../components/StoriesRail';
-import WorkoutPost from '../../components/WorkoutPost';
+import EnhancedWorkoutPost from '../../components/EnhancedWorkoutPost';
 import { Story, Profile, Post, Workout } from '../../types/social';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -49,8 +49,8 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
 }) => {
   const tabs = [
     { key: 'explore', label: 'Explore' },
-    { key: 'following', label: 'Following' },
-    { key: 'my-gym', label: 'My Gym' }
+    { key: 'my-gym', label: 'My Gym' },
+    { key: 'following', label: 'Following' }
   ];
 
   const onGestureEvent = Animated.event(
@@ -716,25 +716,48 @@ export default function HomeScreen() {
 
 
   const handleDeletePost = async (postId: string) => {
-    // Keep a copy of the original posts lists in case we need to revert
+    // Keep a copy of the original data in case we need to revert
     const originalPosts = [...posts];
     const originalFollowingPosts = [...followingPosts];
+    const originalGymWorkouts = [...gymWorkouts];
 
-    // Optimistically remove the post from the UI for a snappy response
+    // Optimistically remove the post/workout from the UI for a snappy response
     setPosts(prev => prev.filter(p => p.id !== postId));
     setFollowingPosts(prev => prev.filter(p => p.id !== postId));
+    setGymWorkouts(prev => prev.filter(w => w.id !== postId));
 
-    // Attempt to delete from the database
-    const { error } = await supabase
-      .from('posts')
-      .delete()
-      .eq('id', postId);
+    try {
+      // Check if this is a workout or a post by looking at the data we have
+      const isWorkout = gymWorkouts.some(w => w.id === postId) || 
+                       originalGymWorkouts.some(w => w.id === postId);
 
-    if (error) {
+      if (isWorkout) {
+        // Use the secure database function for complete workout deletion
+        const { error: workoutError } = await supabase.rpc('delete_my_workout', { 
+          workout_id: postId 
+        });
+
+        if (workoutError) {
+          throw workoutError;
+        }
+      } else {
+        // Delete from posts table
+        const { error: postError } = await supabase
+          .from('posts')
+          .delete()
+          .eq('id', postId);
+
+        if (postError) {
+          throw postError;
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error);
       // If the delete fails, show an error and revert the UI changes
-      Alert.alert('Error', 'Failed to delete post. Please try again.');
+      Alert.alert('Error', 'Failed to delete item. Please try again.');
       setPosts(originalPosts);
       setFollowingPosts(originalFollowingPosts);
+      setGymWorkouts(originalGymWorkouts);
     }
   };
 
@@ -1184,7 +1207,7 @@ export default function HomeScreen() {
     } else {
       // It's a Workout
       return (
-        <WorkoutPost
+        <EnhancedWorkoutPost
           workout={item}
           colors={colors}
           currentUserId={currentUserId}
@@ -1232,6 +1255,13 @@ export default function HomeScreen() {
           <View style={styles.headerActions}>
             {isAuthenticated ? (
               <>
+                <TouchableOpacity
+                  style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
+                  onPress={() => router.push('/search')}
+                >
+                  <Search size={24} color={colors.text} />
+                </TouchableOpacity>
+                
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
                   onPress={() => router.push('/notifications')}
@@ -1315,6 +1345,7 @@ export default function HomeScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ 
                   paddingTop: headerHeight + 30, // Increased padding for better spacing
                   paddingBottom: 20 
@@ -1362,7 +1393,7 @@ export default function HomeScreen() {
                             isMyGymTab={true}
                           />
                         ) : (
-                          <WorkoutPost
+                          <EnhancedWorkoutPost
                             key={`workout-${item.id}`}
                             workout={item}
                             colors={colors}

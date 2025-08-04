@@ -153,6 +153,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="search"
+        options={{
+          href: null, // This hides the search tab but keeps the route accessible
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           tabBarIcon: ({ color, size, focused }) => (

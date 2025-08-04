@@ -116,19 +116,20 @@ export default function WorkoutCalendar({ visible, onClose, onWorkoutSelect }: W
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('workouts')
-                .delete()
-                .eq('id', workoutId);
+              // Use the secure database function for complete workout deletion
+              const { error } = await supabase.rpc('delete_my_workout', { 
+                workout_id: workoutId 
+              });
               
               if (error) throw error;
               
+              // Update the UI
               setWorkouts(prev => prev.filter(w => w.id !== workoutId));
               setShowWorkoutDetail(false);
               setSelectedWorkout(null);
             } catch (error) {
               console.error('Error deleting workout:', error);
-              Alert.alert('Error', 'Failed to delete workout');
+              Alert.alert('Error', 'Failed to delete workout. Please try again.');
             }
           }
         }
@@ -233,7 +234,7 @@ export default function WorkoutCalendar({ visible, onClose, onWorkoutSelect }: W
               </View>
             </View>
 
-            <ScrollView style={styles.exercisesList}>
+            <ScrollView style={styles.exercisesList} showsVerticalScrollIndicator={false}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 Exercises
               </Text>

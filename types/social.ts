@@ -34,6 +34,8 @@ export interface Workout {
   id: string;
   user_id: string;
   exercises: any[];
+  duration_minutes?: number;
+  total_volume?: number;
   created_at: string;
   profiles: any;
   workout_sharing_information?: {
