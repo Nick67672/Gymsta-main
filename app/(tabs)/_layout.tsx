@@ -1,5 +1,5 @@
 import { Tabs, useRouter, useSegments } from 'expo-router';
-import { Chrome as Home, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
+import { House, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
@@ -98,7 +98,7 @@ export default function TabLayout() {
         options={{
           tabBarIcon: ({ color, size, focused }) => (
             <GradientTabIcon focused={focused} inactiveColor={color}>
-              <Home size={24} />
+              <House size={24} />
             </GradientTabIcon>
           ),
         }}
