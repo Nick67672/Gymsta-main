@@ -1130,18 +1130,15 @@ export default function ProfileScreen() {
 
         {/* Content based on active tab */}
         {activeTab === 'posts' && (
-          <ScrollView 
-            contentContainerStyle={{ paddingBottom: 20 }}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Drafts section */}
+          <View style={styles.postsGrid}>
+            {/* Drafts section as first grid item if there are drafts */}
             {drafts.length > 0 && (
               <TouchableOpacity 
-                style={[styles.draftsSection, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={styles.postContainer}
                 onPress={() => router.push('/(tabs)/profile/drafts')}
               >
-                <View style={styles.draftsContent}>
-                  <Folder size={24} color={colors.textSecondary} />
+                <View style={[styles.draftsFolder, { backgroundColor: colors.card }]}>
+                  <Folder size={48} color={colors.textSecondary} />
                   <Text style={[styles.draftsText, { color: colors.textSecondary }]}>
                     Drafts ({drafts.length})
                   </Text>
@@ -1149,89 +1146,67 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             )}
             
-            {/* Posts and workouts in feed style */}
-            {posts.length === 0 && drafts.length === 0 ? (
+            {/* Posts and workouts in grid style to match other user profiles */}
+            {posts.map((item) => {
+              const handlePress = () => {
+                if (item.type === 'workout') {
+                  // Navigate to workout view or show workout modal
+                  setSelectedWorkoutId(item.id);
+                  setShowWorkoutModal(true);
+                } else {
+                  // Navigate to regular post
+                  handleViewPost(item.id);
+                }
+              };
+              
+              return (
+                <TouchableOpacity 
+                  key={item.id} 
+                  style={styles.postContainer}
+                  onPress={handlePress}
+                >
+                  <View style={styles.postImageContainer}>
+                    {(item.type === 'post' ? (item as Post).image_url : (item as WorkoutPost).workout_sharing_information?.[0]?.photo_url) ? (
+                      <Image 
+                        source={{ 
+                          uri: item.type === 'post' 
+                            ? (item as Post).image_url 
+                            : (item as WorkoutPost).workout_sharing_information?.[0]?.photo_url || '' 
+                        }} 
+                        style={styles.postImage} 
+                      />
+                    ) : (
+                      // Fallback for workouts without images - show workout icon
+                      <View style={[styles.postImage, styles.workoutPlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
+                        <Dumbbell size={24} color={colors.tint} />
+                        <Text style={[styles.workoutPlaceholderText, { color: colors.text }]}>
+                          {item.type === 'workout' ? (item as WorkoutPost).exercises?.length || 0 : 0} exercises
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.postOverlay}>
+                      <View style={styles.likeBadge}>
+                        <Heart size={14} color="#fff" fill="#fff" />
+                        <Text style={styles.likesText}>{formatNumber(item.likes?.length || 0)}</Text>
+                      </View>
+                    </View>
+                    {item.type === 'workout' && (
+                      <View style={styles.workoutBadgeOverlay}>
+                        <Dumbbell size={12} color="white" />
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            
+            {/* Show empty state if no posts and no drafts */}
+            {posts.length === 0 && drafts.length === 0 && (
               <View style={styles.emptyContainer}>
                 <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No posts yet.</Text>
               </View>
-            ) : (
-              posts.map((item) => {
-                if (item.type === 'workout') {
-                  // Render workout in feed style using WorkoutPost component
-                  const workoutItem = item as WorkoutPost;
-                  return (
-                    <EnhancedWorkoutPost
-                      key={`workout-${workoutItem.id}`}
-                      workout={workoutItem}
-                      colors={colors}
-                      currentUserId={profile?.id || null}
-                      isAuthenticated={isAuthenticated}
-                      showAuthModal={showAuthModal}
-                      navigateToProfile={(userId, username) => {
-                        if (userId === profile?.id) {
-                          // Already on own profile, do nothing
-                          return;
-                        } else {
-                          router.push(`/${username}`);
-                        }
-                      }}
-                      handleLike={handleLike}
-                      handleUnlike={handleUnlike}
-                      handleDeletePost={handleDeletePost}
-                      onCommentCountChange={(postId, count) => {
-                        // Update the post's comment count in state
-                        setPosts(prevPosts => 
-                          prevPosts.map(p => 
-                            p.id === postId ? { ...p, comments_count: count } : p
-                          )
-                        );
-                      }}
-                    />
-                  );
-                } else {
-                  // Render regular post in feed style using FeedPost component
-                  const postItem = item as Post;
-                  return (
-                    <FeedPost
-                      key={`post-${postItem.id}`}
-                      post={postItem}
-                      colors={colors}
-                      playingVideo={null}
-                      currentUserId={profile?.id || null}
-                      flaggedPosts={{}}
-                      flagging={{}}
-                      setFlagging={() => {}}
-                      setFlaggedPosts={() => {}}
-                      isAuthenticated={isAuthenticated}
-                      showAuthModal={showAuthModal}
-                      toggleVideoPlayback={() => {}}
-                      navigateToProfile={(userId, username) => {
-                        if (userId === profile?.id) {
-                          // Already on own profile, do nothing
-                          return;
-                        } else {
-                          router.push(`/${username}`);
-                        }
-                      }}
-                      handleLike={handleLike}
-                      handleUnlike={handleUnlike}
-                      handleDeletePost={handleDeletePost}
-                      videoRefs={{ current: {} }}
-                      onCommentCountChange={(postId, count) => {
-                        // Update the post's comment count in state
-                        setPosts(prevPosts => 
-                          prevPosts.map(p => 
-                            p.id === postId ? { ...p, comments_count: count } : p
-                          )
-                        );
-                      }}
-                      isMyGymTab={false}
-                    />
-                  );
-                }
-              })
             )}
-          </ScrollView>
+          </View>
         )}
 
         {activeTab === 'lifts' && (
@@ -1821,8 +1796,8 @@ const styles = StyleSheet.create({
   },
   postImage: {
     width: '100%',
-    height: '100%',
-    borderRadius: 2,
+    aspectRatio: 1,
+    borderRadius: 8,
   },
   postOverlay: {
     position: 'absolute',
@@ -2101,7 +2076,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   draftsFolder: {
-    flex: 1,
+    width: '100%',
+    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
@@ -2109,6 +2085,8 @@ const styles = StyleSheet.create({
   draftsText: {
     marginTop: 8,
     fontWeight: '600',
+    fontSize: 12,
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -2179,19 +2157,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 3,
   },
-  // New styles for drafts section in feed style
-  draftsSection: {
-    marginHorizontal: Layout.horizontalPadding,
-    marginBottom: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  draftsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    gap: 12,
-  },
+
 });
