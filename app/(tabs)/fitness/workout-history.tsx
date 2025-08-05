@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Modal, Dimensions } from 'react-native';
 import { 
   ChevronLeft, 
   Calendar, 
@@ -10,14 +10,28 @@ import {
   Award,
   BarChart3,
   Filter,
-  ChevronDown
+  ChevronDown,
+  X,
+  ChevronRight,
+  ChevronLeft as ChevronLeftIcon
 } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedGestureHandler,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
+
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface WorkoutData {
   id: string;
@@ -26,6 +40,9 @@ interface WorkoutData {
   exercises: any[];
   total_volume: number | null;
   duration_minutes: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  actual_duration_minutes: number | null;
   is_completed: boolean;
   notes: string | null;
   created_at: string;
@@ -50,6 +67,12 @@ export default function WorkoutHistoryScreen() {
   const [filter, setFilter] = useState<'all' | 'completed' | 'planned'>('all');
   const [timeFilter, setTimeFilter] = useState<'week' | 'month' | '3months' | 'year' | 'all'>('all');
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [selectedWorkoutIndex, setSelectedWorkoutIndex] = useState<number | null>(null);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+
+  // Animation values for swipe
+  const translateX = useSharedValue(0);
+  const modalTranslateX = useSharedValue(screenWidth);
 
   useEffect(() => {
     if (user) {
@@ -150,6 +173,249 @@ export default function WorkoutHistoryScreen() {
     });
   };
 
+  const openWorkoutModal = (index: number) => {
+    setSelectedWorkoutIndex(index);
+    setShowWorkoutModal(true);
+    modalTranslateX.value = withSpring(0);
+  };
+
+  const closeWorkoutModal = () => {
+    modalTranslateX.value = withSpring(screenWidth, {}, () => {
+      runOnJS(setShowWorkoutModal)(false);
+      runOnJS(setSelectedWorkoutIndex)(null);
+    });
+  };
+
+  const nextWorkout = () => {
+    if (selectedWorkoutIndex !== null && selectedWorkoutIndex < workouts.length - 1) {
+      setSelectedWorkoutIndex(selectedWorkoutIndex + 1);
+    }
+  };
+
+  const previousWorkout = () => {
+    if (selectedWorkoutIndex !== null && selectedWorkoutIndex > 0) {
+      setSelectedWorkoutIndex(selectedWorkoutIndex - 1);
+    }
+  };
+
+  const gestureHandler = useAnimatedGestureHandler({
+    onStart: (_, context: any) => {
+      context.startX = translateX.value;
+    },
+    onActive: (event, context) => {
+      translateX.value = context.startX + event.translationX;
+    },
+    onEnd: (event) => {
+      if (Math.abs(event.velocityX) > 500 || Math.abs(event.translationX) > screenWidth * 0.3) {
+        if (event.translationX > 0) {
+          // Swipe right - go to previous workout
+          runOnJS(previousWorkout)();
+        } else {
+          // Swipe left - go to next workout
+          runOnJS(nextWorkout)();
+        }
+      }
+      translateX.value = withSpring(0);
+    },
+  });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
+
+  const modalAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: modalTranslateX.value }],
+    };
+  });
+
+  const renderWorkoutDetails = () => {
+    if (selectedWorkoutIndex === null) return null;
+    
+    const workout = workouts[selectedWorkoutIndex];
+    const stats = calculateWorkoutStats(workout.exercises || []);
+    const isCompleted = workout.is_completed;
+
+    return (
+      <Modal
+        visible={showWorkoutModal}
+        animationType="none"
+        transparent={true}
+        onRequestClose={closeWorkoutModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View style={[styles.modalContent, modalAnimatedStyle]}>
+            <PanGestureHandler onGestureEvent={gestureHandler}>
+              <Animated.View style={[styles.modalInner, animatedStyle]}>
+                {/* Modal Header */}
+                <View style={styles.modalHeader}>
+                  <TouchableOpacity
+                    style={[styles.modalCloseButton, { backgroundColor: colors.card }]}
+                    onPress={closeWorkoutModal}
+                  >
+                    <X size={20} color={colors.text} />
+                  </TouchableOpacity>
+                  
+                  <View style={styles.modalHeaderCenter}>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>
+                      {workout.name || 'Untitled Workout'}
+                    </Text>
+                    <Text style={[styles.modalDate, { color: colors.textSecondary }]}>
+                      {formatDate(workout.date)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.modalNavigation}>
+                    <TouchableOpacity
+                      style={[
+                        styles.navButton,
+                        { backgroundColor: colors.card },
+                        selectedWorkoutIndex === 0 && { opacity: 0.5 }
+                      ]}
+                      onPress={previousWorkout}
+                      disabled={selectedWorkoutIndex === 0}
+                    >
+                      <ChevronLeftIcon size={20} color={colors.text} />
+                    </TouchableOpacity>
+                    
+                    <Text style={[styles.workoutCounter, { color: colors.textSecondary }]}>
+                      {selectedWorkoutIndex + 1} / {workouts.length}
+                    </Text>
+                    
+                    <TouchableOpacity
+                      style={[
+                        styles.navButton,
+                        { backgroundColor: colors.card },
+                        selectedWorkoutIndex === workouts.length - 1 && { opacity: 0.5 }
+                      ]}
+                      onPress={nextWorkout}
+                      disabled={selectedWorkoutIndex === workouts.length - 1}
+                    >
+                      <ChevronRight size={20} color={colors.text} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Workout Status */}
+                <View style={[
+                  styles.statusSection,
+                  { backgroundColor: isCompleted ? colors.tint + '15' : colors.border + '30' }
+                ]}>
+                  <View style={styles.statusContent}>
+                    {isCompleted ? (
+                      <Award size={24} color={colors.tint} />
+                    ) : (
+                      <Clock size={24} color={colors.textSecondary} />
+                    )}
+                    <Text style={[
+                      styles.statusText,
+                      { color: isCompleted ? colors.tint : colors.textSecondary }
+                    ]}>
+                      {isCompleted ? 'Workout Completed' : 'Planned Workout'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Workout Stats */}
+                <View style={styles.detailedStats}>
+                  <View style={styles.statCard}>
+                    <BarChart3 size={24} color={colors.tint} />
+                    <Text style={[styles.statValue, { color: colors.text }]}>
+                      {stats.totalVolume.toFixed(0)}kg
+                    </Text>
+                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
+                  </View>
+                  
+                  <View style={styles.statCard}>
+                    <Target size={24} color="#4CAF50" />
+                    <Text style={[styles.statValue, { color: colors.text }]}>
+                      {stats.totalSets}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Sets</Text>
+                  </View>
+                  
+                  <View style={styles.statCard}>
+                    <TrendingUp size={24} color="#FF9800" />
+                    <Text style={[styles.statValue, { color: colors.text }]}>
+                      {stats.totalReps}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Reps</Text>
+                  </View>
+                  
+                  {(workout.actual_duration_minutes || workout.duration_minutes) && (
+                    <View style={styles.statCard}>
+                      <Clock size={24} color="#9C27B0" />
+                      <Text style={[styles.statValue, { color: colors.text }]}>
+                        {workout.actual_duration_minutes || workout.duration_minutes}m
+                      </Text>
+                      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Duration</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Exercise Details */}
+                {workout.exercises && Array.isArray(workout.exercises) && workout.exercises.length > 0 && (
+                  <View style={styles.exercisesSection}>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                      Exercises ({stats.exerciseCount})
+                    </Text>
+                    <ScrollView style={styles.exercisesList} showsVerticalScrollIndicator={false}>
+                      {workout.exercises.map((exercise: ExerciseData, idx: number) => (
+                        <View key={idx} style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
+                          <Text style={[styles.exerciseName, { color: colors.text }]}>
+                            {exercise?.name || 'Unknown Exercise'}
+                          </Text>
+                          <View style={styles.setsContainer}>
+                            {exercise?.sets?.map((set, setIdx) => (
+                              <View key={setIdx} style={styles.setItem}>
+                                <Text style={[styles.setNumber, { color: colors.textSecondary }]}>
+                                  Set {setIdx + 1}
+                                </Text>
+                                <Text style={[styles.setDetails, { color: colors.text }]}>
+                                  {set.reps} reps × {set.weight}kg
+                                </Text>
+                                {set.completed && (
+                                  <View style={[styles.completedBadge, { backgroundColor: colors.tint }]}>
+                                    <Text style={styles.completedText}>✓</Text>
+                                  </View>
+                                )}
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Notes */}
+                {workout.notes && typeof workout.notes === 'string' && (
+                  <View style={styles.notesSection}>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Notes</Text>
+                    <View style={[styles.notesCard, { backgroundColor: colors.card }]}>
+                      <Text style={[styles.notesText, { color: colors.textSecondary }]}>
+                        {workout.notes}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Swipe Hint */}
+                <View style={styles.swipeHint}>
+                  <Text style={[styles.swipeHintText, { color: colors.textSecondary }]}>
+                    Swipe left/right to navigate between workouts
+                  </Text>
+                </View>
+              </Animated.View>
+            </PanGestureHandler>
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  };
+
   const renderWorkoutCard = (workout: WorkoutData, index: number) => {
     const stats = calculateWorkoutStats(workout.exercises || []);
     const isCompleted = workout.is_completed;
@@ -187,6 +453,7 @@ export default function WorkoutHistoryScreen() {
             }
           ]}
           activeOpacity={0.8}
+          onPress={() => openWorkoutModal(index)}
         >
           <View style={styles.workoutHeader}>
             <View style={styles.workoutTitleSection}>
@@ -252,11 +519,11 @@ export default function WorkoutHistoryScreen() {
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Sets</Text>
             </View>
             
-            {workout.duration_minutes && (
+            {(workout.actual_duration_minutes || workout.duration_minutes) && (
               <View style={styles.statItem}>
                 <Clock size={16} color="#FF9800" />
                 <Text style={[styles.statValue, { color: colors.text }]}>
-                  {workout.duration_minutes}m
+                  {workout.actual_duration_minutes || workout.duration_minutes}m
                 </Text>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Duration</Text>
               </View>
@@ -385,6 +652,9 @@ export default function WorkoutHistoryScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Workout Details Modal */}
+      {renderWorkoutDetails()}
     </View>
   );
 }
@@ -609,5 +879,159 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     marginTop: Spacing.md,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  modalContent: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  modalInner: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 60,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  modalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.light,
+  },
+  modalHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: Spacing.md,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  modalDate: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  modalNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  navButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.light,
+  },
+  workoutCounter: {
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 40,
+    textAlign: 'center',
+  },
+  statusSection: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+  },
+  statusContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  detailedStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: '45%',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    gap: Spacing.xs,
+  },
+  exercisesSection: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: Spacing.md,
+  },
+  exercisesList: {
+    flex: 1,
+  },
+  exerciseCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.md,
+    ...Shadows.light,
+  },
+  setsContainer: {
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  setItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.xs,
+  },
+  setNumber: {
+    fontSize: 14,
+    fontWeight: '500',
+    width: 60,
+  },
+  setDetails: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  completedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completedText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  notesCard: {
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    ...Shadows.light,
+  },
+  swipeHint: {
+    alignItems: 'center',
+    paddingBottom: Spacing.xl,
+  },
+  swipeHintText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
 }); 

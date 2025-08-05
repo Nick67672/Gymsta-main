@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView, Modal, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView, Modal, RefreshControl, Alert, Platform, Animated, Dimensions } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Plus, CircleCheck as CheckCircle2, Clock, MessageCircle, Trash2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -408,17 +410,13 @@ export default function ChatScreen() {
   };
 
   const handleDeleteChat = async (chatId: string) => {
-    Alert.alert(
-      'Delete Conversation',
-      'Are you sure you want to delete this conversation? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
             try {
               setDeletingChat(chatId);
+      
+      // Add haptic feedback for delete action
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
               
               // Delete all messages in the chat
               const { error: messagesError } = await supabase
@@ -446,15 +444,136 @@ export default function ChatScreen() {
 
               // Remove from local state
               setChats(prev => prev.filter(chat => chat.id !== chatId));
+      
+      // Success haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
             } catch (error) {
               console.error('Error deleting chat:', error);
               Alert.alert('Error', 'Failed to delete conversation. Please try again.');
+      
+      // Error haptic feedback
+      if (Platform.OS === 'ios') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
             } finally {
               setDeletingChat(null);
             }
-          }
+  };
+
+  // Swipeable Chat Item Component
+  const SwipeableChatItem = ({ chat, index, colors }: { chat: ChatPreview; index: number; colors: any }) => {
+    const translateX = useRef(new Animated.Value(0)).current;
+    const { width: screenWidth } = Dimensions.get('window');
+    const deleteWidth = 80;
+    const threshold = deleteWidth * 0.6;
+
+    const onGestureEvent = Animated.event(
+      [{ nativeEvent: { translationX: translateX } }],
+      { useNativeDriver: true }
+    );
+
+    const onHandlerStateChange = (event: any) => {
+      if (event.nativeEvent.state === State.END) {
+        const { translationX: tx } = event.nativeEvent;
+        
+        if (tx < -threshold) {
+          // Swipe left to delete
+          Animated.timing(translateX, {
+            toValue: -deleteWidth,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            handleDeleteChat(chat.id);
+          });
+        } else {
+          // Reset position
+          Animated.spring(translateX, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 8,
+          }).start();
         }
-      ]
+      }
+    };
+
+    const otherParticipant = chat.participants[0];
+    if (!otherParticipant) return null;
+
+    return (
+      <View style={styles.swipeableContainer}>
+        {/* Delete Background */}
+        <View style={[styles.deleteBackground, { backgroundColor: colors.error }]}>
+          <Trash2 size={24} color="#fff" />
+        </View>
+        
+        {/* Swipeable Content */}
+        <PanGestureHandler onGestureEvent={onGestureEvent} onHandlerStateChange={onHandlerStateChange}>
+          <Animated.View
+            style={[
+              styles.chatPreview,
+              {
+                backgroundColor: colors.card,
+                marginBottom: index === chats.length - 1 ? 0 : 16,
+                transform: [{ translateX }],
+                width: '100%',
+              },
+            ]}>
+            <TouchableOpacity
+              style={styles.chatRow}
+              onPress={() => {
+                if (navigating) return;
+                setNavigating(true);
+                router.push(`/chat/${otherParticipant.username}`);
+              }}
+              activeOpacity={0.95}>
+              
+              <View style={styles.avatarContainer}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleAvatarPress(otherParticipant.username);
+                  }}
+                  activeOpacity={0.8}>
+                  <Image
+                    source={{
+                      uri: otherParticipant.avatar_url ||
+                        `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
+                    }}
+                    style={styles.avatar}
+                  />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.chatInfo}>
+                <View style={styles.topLine}>
+                  <View style={styles.usernameContainer}>
+                    <Text style={[styles.username, { color: colors.text }]}>
+                      {otherParticipant.username}
+                    </Text>
+                    {otherParticipant.is_verified && (
+                      <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
+                    )}
+                  </View>
+                  <View style={styles.timeContainer}>
+                    <Clock size={12} color={colors.textSecondary} />
+                    <Text style={[styles.time, { color: colors.textSecondary }]}>
+                      {formatTime(chat.recent_message?.created_at || chat.created_at)}
+                    </Text>
+                  </View>
+                </View>
+                <Text 
+                  style={[styles.lastMessage, { color: colors.textSecondary }]}
+                  numberOfLines={2}>
+                  {chat.recent_message?.message || chat.last_message || 'No messages yet'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </PanGestureHandler>
+      </View>
     );
   };
 
@@ -505,7 +624,7 @@ export default function ChatScreen() {
       ) : (
         <ScrollView 
           style={[styles.chatList]} 
-          contentContainerStyle={{ paddingBottom: 100 }}
+           contentContainerStyle={{ paddingBottom: 150 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -551,72 +670,14 @@ export default function ChatScreen() {
           {chats.length > 0 ? (
             <View style={styles.chatsSection}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent</Text>
-              {chats.map((chat, index) => {
-                const otherParticipant = chat.participants[0];
-                if (!otherParticipant) return null;
-                
-                return (
-                  <TouchableOpacity
+              {chats.map((chat, index) => (
+                <SwipeableChatItem 
                     key={chat.id}
-                    style={[
-                      styles.chatPreview, 
-                      { 
-                        backgroundColor: colors.card,
-                        marginBottom: index === chats.length - 1 ? 0 : 16
-                      }
-                    ]}
-                    onPress={() => {
-                      if (navigating) return;
-                      setNavigating(true);
-                      router.push(`/chat/${otherParticipant.username}`);
-                    }}
-                    onLongPress={() => handleDeleteChat(chat.id)}
-                    activeOpacity={0.95}>
-                    
-                    <View style={styles.chatRow}>
-                      <View style={styles.avatarContainer}>
-                        <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation(); // Stop the chat row press
-                            handleAvatarPress(otherParticipant.username);
-                          }}
-                          activeOpacity={0.8}>
-                          <Image
-                            source={{
-                              uri: otherParticipant.avatar_url ||
-                                `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
-                            }}
-                            style={styles.avatar}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.chatInfo}>
-                        <View style={styles.topLine}>
-                          <View style={styles.usernameContainer}>
-                            <Text style={[styles.username, { color: colors.text }]}>
-                              {otherParticipant.username}
-                            </Text>
-                            {otherParticipant.is_verified && (
-                              <CheckCircle2 size={16} color="#fff" fill="#3B82F6" />
-                            )}
-                          </View>
-                          <View style={styles.timeContainer}>
-                            <Clock size={12} color={colors.textSecondary} />
-                            <Text style={[styles.time, { color: colors.textSecondary }]}>
-                              {formatTime(chat.recent_message?.created_at || chat.created_at)}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text 
-                          style={[styles.lastMessage, { color: colors.textSecondary }]}
-                          numberOfLines={2}>
-                          {chat.recent_message?.message || chat.last_message || 'No messages yet'}
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                  chat={chat}
+                  index={index}
+                  colors={colors}
+                />
+              ))}
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -850,5 +911,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Swipeable chat item styles
+  swipeableContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: BorderRadius.xl,
+  },
+  deleteBackground: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: BorderRadius.lg,
   },
 });

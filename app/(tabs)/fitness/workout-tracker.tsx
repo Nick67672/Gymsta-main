@@ -46,6 +46,7 @@ import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
 import { ExercisePicker } from '@/components/ExercisePicker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+
 const { width: screenWidth } = Dimensions.get('window');
 
 // Types
@@ -629,6 +630,8 @@ export default function WorkoutTrackerScreen() {
     }
   };
 
+
+
   // Render main tracker screen
   const renderMainScreen = () => (
     <View style={styles.container}>
@@ -651,6 +654,7 @@ export default function WorkoutTrackerScreen() {
           >
             <Calendar size={24} color={colors.tint} />
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.planWorkoutButton, { backgroundColor: colors.tint }]}
             onPress={startNewWorkoutCreation}
@@ -820,14 +824,16 @@ export default function WorkoutTrackerScreen() {
           </View>
         ))}
 
-        <TouchableOpacity
-          style={[styles.primaryButton, { backgroundColor: colors.tint, marginVertical:24, alignSelf:'flex-end', width:'auto', marginRight:20 }]}
-          onPress={saveWorkout}
-          disabled={!currentWorkout?.exercises.length}
-        >
-          <CheckCircle size={20} color="white" />
-          <Text style={styles.primaryButtonText}>Save Workout</Text>
-        </TouchableOpacity>
+        <View style={styles.createWorkoutActions}>
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: colors.tint }]}
+            onPress={saveWorkout}
+            disabled={!currentWorkout?.exercises.length}
+          >
+            <CheckCircle size={20} color="white" />
+            <Text style={styles.primaryButtonText}>Save Workout</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -1222,6 +1228,8 @@ export default function WorkoutTrackerScreen() {
           setParentModalToReopen(null);
         }}
       />
+      
+
     </>
   );
 
@@ -1737,6 +1745,29 @@ const styles = StyleSheet.create({
   exerciseInputText: {
     fontSize: 16,
     flex: 1,
+  },
+  createWorkoutActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    gap: 12,
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    flex: 1,
+  },
+  secondaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 
 });

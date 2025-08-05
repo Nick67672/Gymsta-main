@@ -8,6 +8,9 @@ export interface Workout {
   tags?: string[];
   duration_minutes?: number;
   total_volume?: number;
+  start_time?: string | null;
+  end_time?: string | null;
+  actual_duration_minutes?: number | null;
   created_at: string;
   updated_at: string;
   workout_exercises?: WorkoutExercise[];

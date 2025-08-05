@@ -27,13 +27,15 @@ import {
   Plus,
   Minus,
   RotateCcw,
-  Trash2
+  Trash2,
+  ChevronDown
 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { router } from 'expo-router';
 import { LiveWorkoutTimer } from './LiveWorkoutTimer';
 import { SmartRestTimer } from './SmartRestTimer';
 import { WorkoutContext } from '@/hooks/useSmartRestTimer';
+import { ExercisePicker } from './ExercisePicker';
 
 const { width: screenWidth } = Dimensions.get('window');
 const SWIPE_THRESHOLD = screenWidth * 0.2;
@@ -354,6 +356,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   const [customRestTime, setCustomRestTime] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [timerResetKey, setTimerResetKey] = useState(0); // Key to force timer reset
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [showExerciseDropdown, setShowExerciseDropdown] = useState(false);
   
   // Smart timer context
   const [workoutContext, setWorkoutContext] = useState<WorkoutContext>({
@@ -557,6 +561,58 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
     }));
   };
 
+  const deleteExercise = (exerciseIndex: number) => {
+    Alert.alert(
+      'Delete Exercise',
+      `Are you sure you want to delete "${currentWorkout.exercises[exerciseIndex].name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setCurrentWorkout(prev => ({
+              ...prev,
+              exercises: prev.exercises.filter((_, index) => index !== exerciseIndex)
+            }));
+            
+            // Adjust current exercise index if needed
+            if (exerciseIndex <= currentExerciseIndex && currentExerciseIndex > 0) {
+              setCurrentExerciseIndex(prev => Math.max(0, prev - 1));
+            }
+            
+
+          }
+        }
+      ]
+    );
+  };
+
+  const addNewExercise = (exerciseName: string) => {
+    const newExercise: Exercise = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: exerciseName,
+      sets: [{
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        reps: 10,
+        weight: 0,
+        completed: false,
+      }],
+      targetSets: 1,
+      targetReps: 10,
+      targetWeight: 0,
+    };
+    
+    setCurrentWorkout(prev => ({
+      ...prev,
+      exercises: [...prev.exercises, newExercise]
+    }));
+    
+    // Switch to the new exercise
+    setCurrentExerciseIndex(currentWorkout.exercises.length);
+    setShowExercisePicker(false);
+  };
+
   const skipRest = () => {
     setIsResting(false);
   };
@@ -715,29 +771,103 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
 
       {/* Exercise Navigation */}
       <View style={styles.exerciseNav}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {currentWorkout.exercises.map((exercise, index) => (
-            <TouchableOpacity
-              key={exercise.id}
-              style={[
-                styles.exerciseTab,
-                { backgroundColor: index === currentExerciseIndex ? colors.tint : colors.card }
-              ]}
-              onPress={() => setCurrentExerciseIndex(index)}
-            >
-              <Text style={[
-                styles.exerciseTabText,
-                { color: index === currentExerciseIndex ? 'white' : colors.text }
-              ]}>
-                {exercise.name}
+        {/* Exercise Dropdown */}
+        <View style={styles.exerciseDropdownContainer}>
+          <TouchableOpacity
+            style={[styles.exerciseDropdown, { backgroundColor: colors.card }]}
+            onPress={() => setShowExerciseDropdown(!showExerciseDropdown)}
+          >
+            <View style={styles.exerciseDropdownContent}>
+              <Text style={[styles.exerciseDropdownText, { color: colors.text }]}>
+                {currentExercise?.name || 'Select Exercise'}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+              <Text style={[styles.exerciseDropdownProgress, { color: colors.textSecondary }]}>
+                {currentExerciseIndex + 1} of {currentWorkout.exercises.length}
+              </Text>
+            </View>
+            <ChevronDown 
+              size={20} 
+              color={colors.textSecondary} 
+              style={[
+                styles.dropdownIcon,
+                { transform: [{ rotate: showExerciseDropdown ? '180deg' : '0deg' }] }
+              ]}
+            />
+          </TouchableOpacity>
+          
+          {showExerciseDropdown && (
+            <View style={[styles.exerciseDropdownMenu, { backgroundColor: colors.card }]}>
+              <ScrollView style={styles.dropdownScrollView} showsVerticalScrollIndicator={false}>
+                {currentWorkout.exercises.map((exercise, index) => (
+                  <View key={exercise.id} style={styles.dropdownExerciseItemContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownExerciseItem,
+                        index === currentExerciseIndex && { backgroundColor: colors.tint + '20' }
+                      ]}
+                      onPress={() => {
+                        setCurrentExerciseIndex(index);
+                        setShowExerciseDropdown(false);
+                      }}
+                    >
+                      <View style={styles.dropdownExerciseContent}>
+                        <Text style={[
+                          styles.dropdownExerciseName,
+                          { color: index === currentExerciseIndex ? colors.tint : colors.text }
+                        ]}>
+                          {exercise.name}
+                        </Text>
+                        <Text style={[styles.dropdownExerciseSets, { color: colors.textSecondary }]}>
+                          {exercise.sets.filter(set => set.completed).length}/{exercise.sets.length} sets
+                        </Text>
+                      </View>
+                      {index === currentExerciseIndex && (
+                        <CheckCircle size={16} color={colors.tint} />
+                      )}
+                    </TouchableOpacity>
+                    
+                    {/* Delete Button */}
+                    <TouchableOpacity
+                      style={styles.dropdownDeleteButton}
+                      onPress={() => {
+                        setShowExerciseDropdown(false);
+                        deleteExercise(index);
+                      }}
+                    >
+                      <Trash2 size={14} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                
+                {/* Add Exercise Option */}
+                <TouchableOpacity
+                  style={[styles.dropdownAddExercise, { borderColor: colors.tint }]}
+                  onPress={() => {
+                    setShowExerciseDropdown(false);
+                    setShowExercisePicker(true);
+                  }}
+                >
+                  <Plus size={16} color={colors.tint} />
+                  <Text style={[styles.dropdownAddExerciseText, { color: colors.tint }]}>
+                    Add New Exercise
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
+        </View>
+        
+
       </View>
 
       {/* Current Exercise */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        onTouchStart={() => {
+          setShowExerciseDropdown(false);
+        }}
+      >
         {currentExercise && (
           <View style={[styles.exerciseContainer, { backgroundColor: colors.card }]}>
             <View style={styles.exerciseHeader}>
@@ -951,6 +1081,13 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
         </View>
       </Modal>
 
+      {/* Exercise Picker Modal */}
+      <ExercisePicker
+        visible={showExercisePicker}
+        onClose={() => setShowExercisePicker(false)}
+        onSelectExercise={addNewExercise}
+      />
+
     </View>
   );
 }
@@ -1024,6 +1161,104 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+
+  // Exercise Dropdown Styles
+  exerciseDropdownContainer: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  exerciseDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  exerciseDropdownContent: {
+    flex: 1,
+  },
+  exerciseDropdownText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  exerciseDropdownProgress: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  dropdownIcon: {
+    marginLeft: 8,
+  },
+  exerciseDropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    borderRadius: 12,
+    marginTop: 4,
+    maxHeight: 300,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  dropdownScrollView: {
+    maxHeight: 300,
+  },
+  dropdownExerciseItemContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  dropdownExerciseItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  dropdownDeleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownExerciseContent: {
+    flex: 1,
+  },
+  dropdownExerciseName: {
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  dropdownExerciseSets: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  dropdownAddExercise: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    gap: 8,
+  },
+  dropdownAddExerciseText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+
   content: {
     flex: 1,
     padding: 20,

@@ -493,7 +493,7 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
               disabled={isProcessingLike}
             >
               <Heart
-                size={28}
+                size={24}
                 color={isLiked ? '#FF3B30' : colors.textSecondary}
                 fill={isLiked ? '#FF3B30' : 'none'}
                 strokeWidth={1.5}
@@ -521,7 +521,7 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
             activeOpacity={0.7}
           >
             <MessageCircle
-              size={28}
+              size={24}
               color={colors.textSecondary}
               strokeWidth={1.5}
             />
@@ -895,14 +895,16 @@ const styles = StyleSheet.create({
   interactionSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
+    justifyContent: 'flex-start',
+    paddingLeft: Spacing.sm,
+    paddingRight: Spacing.lg,
     paddingTop: Spacing.md,
-    gap: Spacing.lg,
+    gap: Spacing.sm,
   },
   interactionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   interactionButton: {
     padding: Spacing.sm,

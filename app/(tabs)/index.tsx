@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import React from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated, Platform } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { LogIn, MessageSquare, Bell, Search } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
@@ -82,6 +83,10 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
       }).start();
       
       if (newIndex !== activeTabIndex) {
+        // Add haptic feedback for tab change
+        if (Platform.OS === 'ios') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
         setActiveTabIndex(newIndex);
         setActiveTab(tabs[newIndex].key as 'explore' | 'following' | 'my-gym');
       }
@@ -89,6 +94,10 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
   };
 
   const selectTab = (index: number) => {
+    // Add haptic feedback for tab selection
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setActiveTabIndex(index);
     setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
   };
@@ -1076,6 +1085,10 @@ export default function HomeScreen() {
   }, [headerTranslateY, isHeaderVisible, playingVideo]);
 
   const onRefresh = () => {
+    // Add haptic feedback for refresh action
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setRefreshing(true);
     loadPosts();
     loadFeed();
@@ -1257,14 +1270,24 @@ export default function HomeScreen() {
               <>
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
-                  onPress={() => router.push('/search')}
+                  onPress={() => {
+                    if (Platform.OS === 'ios') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    router.push('/search');
+                  }}
                 >
                   <Search size={24} color={colors.text} />
                 </TouchableOpacity>
                 
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
-                  onPress={() => router.push('/notifications')}
+                  onPress={() => {
+                    if (Platform.OS === 'ios') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    router.push('/notifications');
+                  }}
                 >
                   <Bell size={24} color={colors.text} />
                   {unreadNotifications > 0 && (
@@ -1276,7 +1299,12 @@ export default function HomeScreen() {
                 
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
-                  onPress={() => router.push('/chat')}
+                  onPress={() => {
+                    if (Platform.OS === 'ios') {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                    router.push('/chat');
+                  }}
                 >
                   <MessageSquare size={24} color={colors.text} />
                   {unreadMessages > 0 && (
@@ -1289,7 +1317,12 @@ export default function HomeScreen() {
             ) : (
               <TouchableOpacity
                 style={[styles.loginButton, { backgroundColor: colors.tint }]}
-                onPress={showAuthModal}
+                onPress={() => {
+                  if (Platform.OS === 'ios') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                  showAuthModal();
+                }}
               >
                 <LogIn size={20} color="#fff" />
                 <Text style={styles.loginText}>Sign In</Text>
@@ -1484,9 +1517,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   logoText: {
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.5,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+    textTransform: 'uppercase',
   },
   headerActions: {
     flexDirection: 'row',

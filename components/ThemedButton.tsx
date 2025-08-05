@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, Pressable, StyleSheet, ActivityIndicator, View } from 'react-native';
+import { Text, Pressable, StyleSheet, ActivityIndicator, View, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../constants/Colors';
@@ -30,6 +31,29 @@ export function ThemedButton({
   const { theme } = useTheme();
   const colors = Colors[theme];
 
+  const handlePress = () => {
+    if (disabled || loading) return;
+    
+    // Add haptic feedback based on button variant
+    if (Platform.OS === 'ios') {
+      switch (variant) {
+        case 'primary':
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          break;
+        case 'destructive':
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          break;
+        case 'secondary':
+        case 'ghost':
+        default:
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          break;
+      }
+    }
+    
+    onPress();
+  };
+
   const buttonContent = (
     <>
       {loading ? (
@@ -56,7 +80,7 @@ export function ThemedButton({
   if (variant === 'primary') {
     return (
       <Pressable
-        onPress={onPress}
+        onPress={handlePress}
         disabled={disabled || loading}
         style={[
           styles.button,
@@ -80,7 +104,7 @@ export function ThemedButton({
   if (variant === 'destructive') {
     return (
       <Pressable
-        onPress={onPress}
+        onPress={handlePress}
         disabled={disabled || loading}
         style={[
           styles.button,
@@ -98,7 +122,7 @@ export function ThemedButton({
   // For secondary and ghost variants, use regular Pressable
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled || loading}
       style={[
         styles.button,

@@ -957,7 +957,7 @@ export default function ProfileScreen() {
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { backgroundColor: colors.background }]}>
           <TouchableOpacity onPress={() => router.push('/')}>
-            <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
+            <Text style={[styles.logo, { color: '#fff' }]}>ReRack</Text>
           </TouchableOpacity>
         </View>
         
@@ -992,14 +992,14 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Text style={[styles.logo, { color: colors.tint }]}>Gymsta</Text>
+          <Text style={[styles.logo, { color: '#fff' }]}>ReRack</Text>
         </TouchableOpacity>
         <View style={styles.headerButtons}>
-          <TouchableOpacity 
-            style={styles.settingsButton} 
-            onPress={navigateToSettings}>
-            <Settings size={24} color={colors.tint} />
-          </TouchableOpacity>
+                  <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={navigateToSettings}>
+          <Settings size={24} color="#fff" />
+        </TouchableOpacity>
         </View>
       </View>
 
@@ -1626,13 +1626,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    paddingTop: 50,
+    paddingTop: 55,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.xs,
   },
   logo: {
-    ...Typography.logo,
-    marginBottom: 15,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+    textTransform: 'uppercase',
   },
   headerButtons: {
     position: 'absolute',
@@ -1652,7 +1655,7 @@ const styles = StyleSheet.create({
   },
   profileImageContainer: {
     alignSelf: 'center',
-    marginVertical: 12,
+    marginVertical: 8,
     padding: 3,
     borderRadius: 45,
     boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.2)',
@@ -1667,7 +1670,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    marginTop: 10,
+    marginTop: 6,
   },
   usernameContainer: {
     flexDirection: 'row',
@@ -1699,16 +1702,17 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 15,
+    marginTop: 10,
     paddingHorizontal: Layout.horizontalPadding,
     gap: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
   },
   singleButtonContainer: {
     justifyContent: 'center',
   },
   button: {
-    flex: 1,
     borderRadius: 25,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -1749,9 +1753,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    paddingVertical: 10,
-    marginTop: 10,
-    marginBottom: 5,
+    paddingVertical: 8,
+    marginTop: 8,
+    marginBottom: 4,
   },
   statItem: {
     alignItems: 'center',
@@ -1918,8 +1922,8 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    marginTop: 6,
-    marginBottom: 6,
+    marginTop: 4,
+    marginBottom: 4,
   },
   toggleButton: {
     flex: 1,
@@ -2108,7 +2112,8 @@ const styles = StyleSheet.create({
   editButtonContainer: {
     borderRadius: 25,
     minWidth: 140,
-    minHeight: 48,
+    maxWidth: 160,
+    minHeight: 36,
     shadowColor: '#00D4FF',
     shadowOffset: {
       width: 0,
@@ -2118,15 +2123,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
     overflow: 'hidden',
+    flex: 0,
   },
   editButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 28,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
     borderRadius: 25,
     minWidth: 140,
+    maxWidth: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 36,
     flex: 1,
   },
   editButtonText: {

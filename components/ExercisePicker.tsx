@@ -11,10 +11,14 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
+
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface ExercisePickerProps {
   visible: boolean;
@@ -25,6 +29,8 @@ interface ExercisePickerProps {
 interface ExerciseCategory {
   name: string;
   exercises: string[];
+  icon: string;
+  color: string;
 }
 
 export const ExercisePicker: React.FC<ExercisePickerProps> = ({
@@ -38,36 +44,66 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredCategories, setFilteredCategories] = useState<ExerciseCategory[]>([]);
 
-
-  // Parse exercises into categories based on the structure
+  // Parse exercises into categories
   const parseExerciseCategories = (): ExerciseCategory[] => {
-    const categories: ExerciseCategory[] = [];
-    
-    // Define the category structure based on the actual exercise counts
-    // These are approximate ranges based on the ExerciseOptions.ts structure
-    const categoryRanges = [
-      { name: 'CHEST', start: 0, count: 24 },
-      { name: 'BACK', start: 24, count: 21 },
-      { name: 'SHOULDERS', start: 45, count: 20 },
-      { name: 'ARMS', start: 65, count: 20 },
-      { name: 'LEGS', start: 85, count: 20 },
-      { name: 'CORE', start: 105, count: 20 },
-      { name: 'CARDIO', start: 125, count: 20 },
-      { name: 'FUNCTIONAL', start: 145, count: 20 },
-      { name: 'SPECIALTY', start: 165, count: 31 }
+    const categories: ExerciseCategory[] = [
+      {
+        name: 'CHEST',
+        exercises: EXERCISE_OPTIONS.slice(0, 24),
+        icon: '',
+        color: '#FF6B6B'
+      },
+      {
+        name: 'BACK',
+        exercises: EXERCISE_OPTIONS.slice(24, 45),
+        icon: '',
+        color: '#4ECDC4'
+      },
+      {
+        name: 'SHOULDERS',
+        exercises: EXERCISE_OPTIONS.slice(45, 65),
+        icon: '',
+        color: '#45B7D1'
+      },
+      {
+        name: 'ARMS',
+        exercises: EXERCISE_OPTIONS.slice(65, 85),
+        icon: '',
+        color: '#96CEB4'
+      },
+      {
+        name: 'LEGS',
+        exercises: EXERCISE_OPTIONS.slice(85, 105),
+        icon: '',
+        color: '#FFEAA7'
+      },
+      {
+        name: 'CORE',
+        exercises: EXERCISE_OPTIONS.slice(105, 125),
+        icon: '',
+        color: '#DDA0DD'
+      },
+      {
+        name: 'CARDIO',
+        exercises: EXERCISE_OPTIONS.slice(125, 145),
+        icon: '',
+        color: '#FF8A80'
+      },
+      {
+        name: 'FUNCTIONAL',
+        exercises: EXERCISE_OPTIONS.slice(145, 165),
+        icon: '',
+        color: '#FFD93D'
+      },
+      {
+        name: 'SPECIALTY',
+        exercises: EXERCISE_OPTIONS.slice(165, 196),
+        icon: '',
+        color: '#6C5CE7'
+      }
     ];
 
-    categoryRanges.forEach(category => {
-      const exercises = EXERCISE_OPTIONS.slice(category.start, category.start + category.count);
-      if (exercises.length > 0) {
-        categories.push({
-          name: category.name,
-          exercises: exercises
-        });
-      }
-    });
-
-    return categories;
+    return categories.filter(cat => cat.exercises.length > 0);
   };
 
   // Use useMemo to memoize the categories so they don't change on every render
@@ -81,14 +117,14 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     }
 
     const filtered = allCategories.map(category => ({
-      name: category.name,
+      ...category,
       exercises: category.exercises.filter(exercise =>
         exercise.toLowerCase().includes(searchQuery.toLowerCase())
       )
     })).filter(category => category.exercises.length > 0);
 
     setFilteredCategories(filtered);
-  }, [searchQuery]);
+  }, [searchQuery, allCategories]);
 
   const handleExerciseSelect = useCallback((exercise: string) => {
     onSelectExercise(exercise);
@@ -103,35 +139,29 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     onClose();
   }, [onClose, allCategories]);
 
-  const renderExerciseItem = ({ item }: { item: string }) => (
-    <TouchableOpacity
-      style={[styles.exerciseItem, { backgroundColor: colors.card }]}
-      onPress={() => handleExerciseSelect(item)}
-      activeOpacity={0.7}
-    >
-      <Text style={[styles.exerciseText, { color: colors.text }]}>{item}</Text>
-    </TouchableOpacity>
-  );
+
 
   const renderCategory = useCallback(({ item }: { item: ExerciseCategory }) => {
     return (
       <View style={styles.categoryContainer}>
         <View style={[styles.categoryHeader, { backgroundColor: colors.card }]}>
-          <Text style={[styles.categoryTitle, { color: colors.text }]}>{item.name}</Text>
+          <View style={styles.categoryHeaderLeft}>
+            <Text style={[styles.categoryTitle, { color: colors.text }]}>{item.name}</Text>
+          </View>
           <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
             {item.exercises.length} exercises
           </Text>
         </View>
         
-        <View style={styles.exercisesContainer}>
+        <View style={styles.listContainer}>
           {item.exercises.map((exercise, index) => (
             <TouchableOpacity
               key={`${item.name}-${index}`}
-              style={[styles.exerciseItem, { backgroundColor: colors.background }]}
+              style={[styles.listExerciseItem, { backgroundColor: colors.background }]}
               onPress={() => handleExerciseSelect(exercise)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.exerciseText, { color: colors.text }]}>{exercise}</Text>
+              <Text style={[styles.listExerciseText, { color: colors.text }]}>{exercise}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -230,6 +260,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+
   closeButton: {
     width: 32,
     height: 32,
@@ -288,7 +319,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   categoryContainer: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   categoryHeader: {
     flexDirection: 'row',
@@ -297,6 +328,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
+    marginBottom: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -309,29 +341,45 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  categoryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   categoryTitle: {
     fontSize: 16,
     fontWeight: '600',
-    flex: 1,
   },
   categoryCount: {
     fontSize: 14,
-    marginRight: 8,
   },
-
-  exercisesContainer: {
-    marginTop: 4,
-    marginLeft: 16,
+  listContainer: {
+    gap: 4,
+    paddingHorizontal: 4,
   },
-  exerciseItem: {
+  listExerciseItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    marginBottom: 4,
+    gap: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
-  exerciseText: {
+
+  listExerciseText: {
     fontSize: 15,
     fontWeight: '500',
+    flex: 1,
   },
   emptyState: {
     flex: 1,

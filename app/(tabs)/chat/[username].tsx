@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    paddingTop: 60,
+    paddingTop: 45,
     borderBottomWidth: 1,
   },
   backButton: {
@@ -756,7 +756,7 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     padding: 24,
-    paddingBottom: 20,
+    paddingBottom: 40,
   },
   messageContainer: {
     marginBottom: 16,

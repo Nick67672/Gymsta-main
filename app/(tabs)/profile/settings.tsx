@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
-import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, Scale, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, ChevronRight } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -19,13 +19,10 @@ export default function SettingsScreen() {
   const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
-  const [measurementSystem, setMeasurementSystem] = useState<'imperial' | 'metric'>('imperial');
-  const [savingUnits, setSavingUnits] = useState(false);
   const colors = Colors[theme];
 
   useEffect(() => {
     loadPrivacySettings();
-    loadMeasurementUnits();
   }, []);
 
   const loadPrivacySettings = async () => {
@@ -111,72 +108,6 @@ export default function SettingsScreen() {
       Alert.alert('Error', 'Failed to delete account. Please try again later.');
     } finally {
       setDeletingAccount(false);
-    }
-  };
-
-  const loadMeasurementUnits = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('user_measurement_preferences')
-        .select('measurement_system')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading measurement units:', error);
-        return;
-      }
-
-      if (data) {
-        setMeasurementSystem(data.measurement_system || 'imperial');
-      }
-    } catch (err) {
-      console.error('Error loading measurement units:', err);
-    }
-  };
-
-  const updateMeasurementSystem = async (system: 'imperial' | 'metric') => {
-    setSavingUnits(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Set all units based on the chosen system
-      const systemUnits = system === 'imperial' 
-        ? {
-            measurement_system: 'imperial',
-            weight_unit: 'lbs',
-            distance_unit: 'miles',
-            height_unit: 'ft',
-            temperature_unit: 'f'
-          }
-        : {
-            measurement_system: 'metric',
-            weight_unit: 'kg',
-            distance_unit: 'km',
-            height_unit: 'cm',
-            temperature_unit: 'c'
-          };
-
-      const { error } = await supabase
-        .from('user_measurement_preferences')
-        .upsert({
-          user_id: user.id,
-          ...systemUnits,
-          updated_at: new Date().toISOString()
-        });
-
-      if (error) throw error;
-
-      setMeasurementSystem(system);
-    } catch (err) {
-      console.error('Error updating measurement system:', err);
-      Alert.alert('Error', 'Failed to update measurement system. Please try again.');
-    } finally {
-      setSavingUnits(false);
     }
   };
 
@@ -302,34 +233,6 @@ export default function SettingsScreen() {
             </View>
             <ChevronRight size={20} color={colors.textSecondary} />
           </TouchableOpacity>
-        </View>
-
-        <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Measurement System</Text>
-          <View style={[styles.settingItem, { borderBottomWidth: 0 }]}>
-            <View style={styles.settingLabelContainer}>
-              <Scale size={20} color={colors.text} style={styles.settingIcon} />
-              <View>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>Unit System</Text>
-                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                  {measurementSystem === 'imperial' 
-                    ? 'Imperial (lbs, miles, ft, °F)' 
-                    : 'Metric (kg, km, cm, °C)'}
-                </Text>
-              </View>
-            </View>
-            {savingUnits ? (
-              <ActivityIndicator size="small" color={colors.tint} />
-            ) : (
-              <Switch
-                trackColor={{ false: '#E5E5E5', true: '#a395e9' }}
-                thumbColor={measurementSystem === 'metric' ? '#6C5CE7' : '#f4f3f4'}
-                ios_backgroundColor="#E5E5E5"
-                onValueChange={(value) => updateMeasurementSystem(value ? 'metric' : 'imperial')}
-                value={measurementSystem === 'metric'}
-              />
-            )}
-          </View>
         </View>
         
         <TouchableOpacity

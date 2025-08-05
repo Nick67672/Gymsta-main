@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Check, Image as ImageIcon, ChevronLeft, Camera, Save, Share2, Eye } from 'lucide-react-native';
+import { Check, Image as ImageIcon, ChevronLeft, Camera, Save, Share2, Eye, Star } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { ThemedInput } from '@/components/ThemedInput';
@@ -28,7 +28,7 @@ export default function WorkoutSummaryScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [showPreview, setShowPreview] = useState(false);
-  const [draftSaved, setDraftSaved] = useState(false);
+
 
   // Track saving state & grab params / auth
   const [saving, setSaving] = useState(false);
@@ -44,16 +44,7 @@ export default function WorkoutSummaryScreen() {
     console.log('Image picker utils available:', typeof showImagePickerOptions);
   }, [workoutId, currentUserId]);
 
-  // Auto-save draft functionality
-  React.useEffect(() => {
-    if (title || caption || photoUri) {
-      const timer = setTimeout(() => {
-        setDraftSaved(true);
-        setTimeout(() => setDraftSaved(false), 2000);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [title, caption, photoUri]);
+
 
   // Quick fill options
   const quickFillOptions = [
@@ -66,7 +57,7 @@ export default function WorkoutSummaryScreen() {
   const handleQuickFill = (option: typeof quickFillOptions[0]) => {
     setTitle(option.title);
     setCaption(option.caption);
-    setCurrentStep(2);
+    // Stay on current step (step 3) since we're already on the content step
   };
 
   const handlePickPhoto = async () => {
@@ -114,24 +105,7 @@ export default function WorkoutSummaryScreen() {
     return text.length > limit;
   };
 
-  const handleSaveDraft = async () => {
-    // Save as draft without posting
-    if (!workoutId) {
-      Alert.alert('Error', 'Missing workout reference.');
-      return;
-    }
 
-    setSaving(true);
-    try {
-      // Save draft logic here
-      Alert.alert('Draft Saved', 'Your workout post has been saved as a draft');
-      router.push('/fitness/workout-tracker');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save draft');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleDone = async () => {
     if (saving) return;
@@ -224,6 +198,23 @@ export default function WorkoutSummaryScreen() {
         is_just_for_me: justForMeChecked,
       });
 
+      // If posting to My Gym, create a post with the actual workout data
+      if (myGymChecked) {
+        // Create a post with the workout data (no time tracking required)
+        const { error: postError } = await supabase.from('posts').insert({
+          user_id: currentUserId,
+          content: caption || title || 'Check out my workout! 💪',
+          image_url: photoUrl,
+          workout_id: workoutId,
+          post_type: 'workout',
+          is_public: true,
+        });
+
+        if (postError) {
+          console.error('Error creating workout post:', postError);
+        }
+      }
+
       if (error) {
         console.error('Insert error:', error);
         throw error;
@@ -298,20 +289,96 @@ export default function WorkoutSummaryScreen() {
             </Text>
           </View>
         </View>
-        {draftSaved && (
-          <View style={[styles.draftIndicator, { backgroundColor: colors.success }]}>
-            <Text style={styles.draftText}>✓ Saved</Text>
-          </View>
-        )}
+        
+
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Step 1: Photo */}
+      <ScrollView 
+        contentContainerStyle={styles.content}
+      >
+        {/* Step 1: Posting Visibility */}
         {currentStep === 1 && (
           <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>📸 Step 1: Add Your Progress Photo</Text>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>🔒 Step 1: Choose Posting Visibility</Text>
             
-            {/* Enhanced Photo Picker */}
+            <View style={styles.visibilitySection}>
+              <Text style={[styles.sectionLabel, { color: colors.text }]}>How would you like to share this workout?</Text>
+              
+              <TouchableOpacity
+                style={[
+                  styles.visibilityOption,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  myGymChecked && { borderColor: colors.tint, backgroundColor: colors.tint + '10' }
+                ]}
+                onPress={() => {
+                  setMyGymChecked(true);
+                  setJustForMeChecked(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.visibilityOptionContent}>
+                  <View style={[
+                    styles.visibilityCheckbox,
+                    { borderColor: colors.tint },
+                    myGymChecked && { backgroundColor: colors.tint },
+                  ]}>
+                    {myGymChecked && <Check size={16} color="#fff" />}
+                  </View>
+                  <View style={styles.visibilityTextContainer}>
+                    <Text style={[styles.visibilityTitle, { color: colors.text }]}>Share with My Gym</Text>
+                    <Text style={[styles.visibilityDescription, { color: colors.textSecondary }]}>
+                      Post this workout to your gym's feed for others to see and get inspired
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.visibilityOption,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  justForMeChecked && { borderColor: colors.tint, backgroundColor: colors.tint + '10' }
+                ]}
+                onPress={() => {
+                  setJustForMeChecked(true);
+                  setMyGymChecked(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.visibilityOptionContent}>
+                  <View style={[
+                    styles.visibilityCheckbox,
+                    { borderColor: colors.tint },
+                    justForMeChecked && { backgroundColor: colors.tint },
+                  ]}>
+                    {justForMeChecked && <Check size={16} color="#fff" />}
+                  </View>
+                  <View style={styles.visibilityTextContainer}>
+                    <Text style={[styles.visibilityTitle, { color: colors.text }]}>Keep Private (Just For Me)</Text>
+                    <Text style={[styles.visibilityDescription, { color: colors.textSecondary }]}>
+                      Save this workout privately for your own records and tracking
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+              
+              {(myGymChecked || justForMeChecked) && (
+                <TouchableOpacity
+                  style={[styles.continueButton, { backgroundColor: colors.tint }]}
+                  onPress={() => setCurrentStep(2)}
+                >
+                  <Text style={styles.continueButtonText}>Continue to Photo →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Step 2: Photo (Optional) */}
+        {currentStep === 2 && (
+          <>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>📸 Step 2: Add Photo (Optional)</Text>
+            
             <View style={styles.photoSection}>
               <TouchableOpacity
                 style={[styles.enhancedPhotoPicker, { backgroundColor: colors.inputBackground, height: photoPickerHeight }]}
@@ -324,10 +391,7 @@ export default function WorkoutSummaryScreen() {
                   <View style={styles.photoPlaceholder}>
                     <ImageIcon size={48} color={colors.textSecondary} />
                     <Text style={[styles.photoPlaceholderText, { color: colors.text }]}>
-                      Select Your Best Shot
-                    </Text>
-                    <Text style={[styles.photoHint, { color: colors.textSecondary }]}>
-                      Show off that post-workout glow! 💪
+                      Add Photo
                     </Text>
                   </View>
                 )}
@@ -339,7 +403,7 @@ export default function WorkoutSummaryScreen() {
                   onPress={handleTakePhoto}
                 >
                   <Camera size={20} color="#fff" />
-                  <Text style={styles.photoActionText}>Take Selfie</Text>
+                  <Text style={styles.photoActionText}>Take Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.photoActionButton, { backgroundColor: colors.backgroundSecondary }]}
@@ -350,22 +414,20 @@ export default function WorkoutSummaryScreen() {
                 </TouchableOpacity>
               </View>
               
-              {photoUri && (
-                <TouchableOpacity
-                  style={[styles.continueButton, { backgroundColor: colors.tint }]}
-                  onPress={() => setCurrentStep(2)}
-                >
-                  <Text style={styles.continueButtonText}>Continue to Details →</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[styles.continueButton, { backgroundColor: colors.tint }]}
+                onPress={() => setCurrentStep(3)}
+              >
+                <Text style={styles.continueButtonText}>Continue →</Text>
+              </TouchableOpacity>
             </View>
           </>
         )}
 
-        {/* Step 2: Content */}
-        {currentStep === 2 && (
+        {/* Step 3: Content */}
+        {currentStep === 3 && (
           <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>✍️ Step 2: Tell Your Story</Text>
+            <Text style={[styles.stepTitle, { color: colors.text }]}>✍️ Step 3: Tell Your Story</Text>
             
             {/* Quick Fill Options */}
             <Text style={[styles.sectionLabel, { color: colors.text }]}>Quick Fill Options</Text>
@@ -408,81 +470,8 @@ export default function WorkoutSummaryScreen() {
               </Text>
             </View>
 
-            <TouchableOpacity
-              style={[styles.continueButton, { backgroundColor: colors.tint }]}
-              onPress={() => setCurrentStep(3)}
-            >
-              <Text style={styles.continueButtonText}>Continue to Sharing →</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {/* Step 3: Sharing Options */}
-        {currentStep === 3 && (
-          <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>🚀 Step 3: Choose Sharing Options</Text>
-            
-            {/* Preview Card */}
-            <TouchableOpacity
-              style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => setShowPreview(!showPreview)}
-            >
-              <View style={styles.previewHeader}>
-                <Eye size={20} color={colors.tint} />
-                <Text style={[styles.previewTitle, { color: colors.tint }]}>Preview Your Post</Text>
-              </View>
-              {showPreview && (
-                <View style={styles.previewContent}>
-                  {photoUri && <Image source={{ uri: photoUri }} style={styles.previewImage} />}
-                  <Text style={[styles.previewText, { color: colors.text }]}>{title}</Text>
-                  <Text style={[styles.previewCaption, { color: colors.textSecondary }]}>{caption}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            {/* Sharing Options */}
-            <Text style={[styles.sectionLabel, { color: colors.text }]}>Sharing Options</Text>
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() => {
-                setMyGymChecked(true);
-                setJustForMeChecked(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  { borderColor: colors.tint },
-                  myGymChecked && { backgroundColor: colors.tint },
-                ]}
-              >
-                {myGymChecked && <Check size={16} color="#fff" />}
-              </View>
-              <Text style={[styles.checkboxLabel, { color: colors.text }]}>Share with My Gym</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.checkboxRow}
-              onPress={() => {
-                setJustForMeChecked(true);
-                setMyGymChecked(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.checkbox,
-                  { borderColor: colors.tint },
-                  justForMeChecked && { backgroundColor: colors.tint },
-                ]}
-              >
-                {justForMeChecked && <Check size={16} color="#fff" />}
-              </View>
-              <Text style={[styles.checkboxLabel, { color: colors.text }]}>Keep Private (Just For Me)</Text>
-            </TouchableOpacity>
-
             <ThemedInput
-              label="Private Notes"
+              label="Private Notes (Optional)"
               value={privateNotes}
               onChangeText={setPrivateNotes}
               placeholder="Add any private notes for yourself..."
@@ -490,17 +479,8 @@ export default function WorkoutSummaryScreen() {
               style={{ minHeight: 80, textAlignVertical: 'top' }}
             />
 
-            {/* Final Action Buttons */}
+            {/* Final Action Button */}
             <View style={styles.finalActions}>
-              <TouchableOpacity
-                style={[styles.draftButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
-                onPress={handleSaveDraft}
-                disabled={saving}
-              >
-                <Save size={18} color={colors.text} />
-                <Text style={[styles.draftButtonText, { color: colors.text }]}>Save Draft</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.postButton, { backgroundColor: colors.tint }]}
                 onPress={handleDone}
@@ -508,7 +488,7 @@ export default function WorkoutSummaryScreen() {
               >
                 <Share2 size={18} color="#fff" />
                 <Text style={styles.postButtonText}>
-                  {saving ? 'Posting...' : 'Post to Feed'}
+                  {saving ? 'Posting...' : 'Post Workout'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -587,6 +567,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+
+
   progressContainer: {
     marginTop: 8,
     alignItems: 'center',
@@ -604,16 +586,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  draftIndicator: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  draftText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+
   
   // Step styles
   stepTitle: {
@@ -733,6 +706,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   previewCaption: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  
+  // Visibility section styles
+  visibilitySection: {
+    marginBottom: 30,
+  },
+  visibilityOption: {
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  visibilityOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  visibilityCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  visibilityTextContainer: {
+    flex: 1,
+  },
+  visibilityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  visibilityDescription: {
     fontSize: 14,
     lineHeight: 20,
   },

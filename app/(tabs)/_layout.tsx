@@ -1,12 +1,13 @@
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import { House, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
-import { Image, View } from 'react-native';
+import { Image, View, Platform } from 'react-native';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import GradientTabIcon, { GradientUploadButton } from '@/components/GradientTabIcon';
@@ -34,10 +35,21 @@ export default function TabLayout() {
     loadProfile();
   }, [session]);
 
+  const handleTabPress = () => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
   const handleUploadPress = async () => {
     if (!isAuthenticated) {
       showAuthModal();
       return;
+    }
+
+    // Add haptic feedback for upload action
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     
     try {
@@ -102,6 +114,9 @@ export default function TabLayout() {
             </GradientTabIcon>
           ),
         }}
+        listeners={{
+          tabPress: handleTabPress,
+        }}
       />
       <Tabs.Screen
         name="fitness"
@@ -111,6 +126,9 @@ export default function TabLayout() {
               <Zap size={24} />
             </GradientTabIcon>
           ),
+        }}
+        listeners={{
+          tabPress: handleTabPress,
         }}
       />
       <Tabs.Screen
@@ -138,6 +156,9 @@ export default function TabLayout() {
             </GradientTabIcon>
           ),
           href: '/marketplace',
+        }}
+        listeners={{
+          tabPress: handleTabPress,
         }}
       />
       <Tabs.Screen
@@ -181,6 +202,11 @@ export default function TabLayout() {
         listeners={{
           tabPress: (e) => {
             e.preventDefault();
+
+            // Add haptic feedback
+            if (Platform.OS === 'ios') {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }
 
             if (!isAuthenticated) {
               showAuthModal();

@@ -473,7 +473,7 @@ const PostComponent: React.FC<PostProps> = ({
               disabled={isProcessingLike}
             >
               <Heart
-                size={28}
+                size={24}
                 color={isLiked ? '#FF3B30' : colors.textSecondary}
                 fill={isLiked ? '#FF3B30' : 'none'}
                 strokeWidth={1.5}
@@ -495,13 +495,17 @@ const PostComponent: React.FC<PostProps> = ({
                 showAuthModal();
                 return;
               }
+              // Add haptic feedback for comment interaction
+              if (Platform.OS === 'ios') {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
               setShowComments(true);
             }}
             style={styles.interactionButton}
             activeOpacity={0.7}
           >
             <MessageCircle
-              size={28}
+              size={24}
               color={colors.textSecondary}
               strokeWidth={1.5}
             />
@@ -756,14 +760,16 @@ const styles = StyleSheet.create({
   interactionSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
+    justifyContent: 'flex-start',
+    paddingLeft: Spacing.sm,
+    paddingRight: Spacing.lg,
     paddingTop: Spacing.md,
-    gap: Spacing.lg,
+    gap: Spacing.sm,
   },
   interactionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   interactionButton: {
     padding: Spacing.sm,
