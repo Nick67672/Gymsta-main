@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
+import { useUnits } from '@/context/UnitContext';
 import Colors from '@/constants/Colors';
 import { ThemedButton } from '@/components/ThemedButton';
 import { ThemedInput } from '@/components/ThemedInput';
@@ -89,6 +90,7 @@ type TimeScale = '7d' | '30d' | '3m' | '1y';
 
 export default function WorkoutTrackerScreen() {
   const { theme } = useTheme();
+  const { formatWeight, convertWeight } = useUnits();
   const colors = Colors[theme];
   const { user } = useAuth();
 
@@ -776,7 +778,7 @@ export default function WorkoutTrackerScreen() {
           <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
             {/* Header with delete */}
             <View style={styles.exerciseHeader}>
-              <Text style={[styles.exerciseName, { color: colors.text }]}>{exercise.name}</Text>
+              <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">{exercise.name}</Text>
               <TouchableOpacity onPress={() => {
                 setCurrentWorkout(prev => prev ? { ...prev, exercises: prev.exercises.filter(e => e.id !== exercise.id) } : null);
               }}>
@@ -897,15 +899,15 @@ export default function WorkoutTrackerScreen() {
                   {editingWorkout?.exercises.map((exercise) => (
                     <View key={exercise.id} style={[styles.editExerciseCard, { backgroundColor: colors.background }]}>
                       <View style={styles.exerciseHeader}>
-                        <Text style={[styles.exerciseName, { color: colors.text }]}>
+                        <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">
                           {exercise.name}
                         </Text>
                         <TouchableOpacity onPress={() => removeExerciseFromEditingWorkout(exercise.id)}>
                           <Trash2 size={18} color={colors.text} />
                         </TouchableOpacity>
                       </View>
-                      <Text style={[styles.exerciseDetails, { color: colors.text }]}>
-                        {exercise.sets.length} sets • {exercise.targetReps} reps • {exercise.targetWeight}kg
+                      <Text style={[styles.exerciseDetails, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                        {exercise.sets.length} sets • {exercise.targetReps} reps • {formatWeight(exercise.targetWeight, 'kg')}
                       </Text>
                     </View>
                   ))}
@@ -981,7 +983,7 @@ export default function WorkoutTrackerScreen() {
                   <View style={styles.modalLabelRow}>
                     <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
                     <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight (kg)</Text>
+                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight</Text>
                     <View style={{ width: 24 }} />
                   </View>
 
@@ -1091,7 +1093,7 @@ export default function WorkoutTrackerScreen() {
             <View style={styles.modalLabelRow}>
               <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
               <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
-              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight (kg)</Text>
+                              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight</Text>
               <View style={{ width: 24 }} />
             </View>
 
@@ -1476,10 +1478,14 @@ const styles = StyleSheet.create({
   exerciseName: {
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+    flexShrink: 1,
   },
   exerciseDetails: {
     fontSize: 14,
     opacity: 0.7,
+    flex: 1,
+    flexShrink: 1,
   },
   saveText: {
     fontSize: 16,

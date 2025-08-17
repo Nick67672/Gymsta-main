@@ -12,6 +12,7 @@ import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import StoryViewer from '@/components/StoryViewer';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 import { useFocusEffect } from '@react-navigation/native';
 
 interface Story {
@@ -539,8 +540,7 @@ export default function ChatScreen() {
                   activeOpacity={0.8}>
                   <Image
                     source={{
-                      uri: otherParticipant.avatar_url ||
-                        `https://source.unsplash.com/random/100x100/?person&${otherParticipant.id}`
+                      uri: getAvatarUrl(otherParticipant.avatar_url ?? null, otherParticipant.username ?? '')
                     }}
                     style={styles.avatar}
                   />
@@ -651,8 +651,7 @@ export default function ChatScreen() {
                     <View style={[styles.storyRing, { borderColor: colors.tint }]}>
                       <Image
                         source={{
-                          uri: profile.avatar_url ||
-                            `https://source.unsplash.com/random/100x100/?portrait&${profile.id}`
+                          uri: getAvatarUrl(profile.avatar_url, profile.username)
                         }}
                         style={styles.storyAvatar}
                       />
@@ -711,7 +710,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 45,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.lg,
   },

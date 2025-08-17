@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated, Modal } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert, Animated, Modal, Dimensions, Keyboard } from 'react-native';
 import { ArrowLeft, Send, CircleCheck as CheckCircle2, MoreVertical, Trash2, MessageSquareX } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -9,6 +9,11 @@ import { useBlocking } from '@/context/BlockingContext';
 import Colors from '@/constants/Colors';
 import { goBack } from '@/lib/goBack';
 import { Spacing } from '@/constants/Spacing';
+import { getAvatarUrl } from '@/lib/avatarUtils';
+import { SharedPost } from '@/components/SharedPost';
+import { SharedWorkout } from '@/components/SharedWorkout';
+
+const { height: screenHeight } = Dimensions.get('window');
 
 interface Message {
   id: string;
@@ -16,6 +21,9 @@ interface Message {
   created_at: string;
   user_id: string;
   chat_id: string;
+  message_type?: 'text' | 'post' | 'workout_share';
+  post_id?: string;
+  workout_id?: string;
 }
 
 interface Profile {
@@ -50,6 +58,8 @@ export default function UserProfileScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -74,6 +84,28 @@ export default function UserProfileScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start();
+  }, []);
+
+  // Keyboard event listeners for better positioning
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      setIsKeyboardVisible(true);
+      // Scroll to bottom when keyboard appears
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    });
+
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
   }, []);
 
   const formatTime = (dateString: string) => {
@@ -441,7 +473,7 @@ export default function UserProfileScreen() {
       <KeyboardAvoidingView 
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         enabled
       >
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
@@ -456,7 +488,7 @@ export default function UserProfileScreen() {
               onPress={() => router.push(`/${recipientProfile.username}`)}
             >
                 <Image
-                source={{ uri: recipientProfile.avatar_url || `https://source.unsplash.com/random/40x40/?portrait&${recipientId}` }}
+                source={{ uri: getAvatarUrl(recipientProfile.avatar_url, recipientProfile.username) }}
                   style={styles.avatar}
                 />
               <View style={styles.usernameWrapper}>
@@ -508,52 +540,68 @@ export default function UserProfileScreen() {
                   {showAvatar && !isCurrentUser && (
                     <Image
                       source={{
-                        uri: avatarUrl as string ||
-                          `https://source.unsplash.com/random/100x100/?portrait&${username}`
+                        uri: getAvatarUrl(avatarUrl as string || null, username as string)
                       }}
                       style={styles.messageAvatar}
                     />
                   )}
                   
                   {/* Message Bubble */}
-                  <TouchableOpacity
-                    style={[
-                      styles.messageBubble,
-                      isCurrentUser ? 
-                        [styles.sentMessage, { backgroundColor: colors.tint }] : 
-                        [styles.receivedMessage, { backgroundColor: colors.card }],
-                      !showAvatar && !isCurrentUser && styles.messageWithoutAvatar
-                    ]}
-                    onLongPress={() => handleLongPressMessage(msg)}
-                    activeOpacity={0.8}
-                    disabled={!isCurrentUser}>
-                    <Text style={[
-                      styles.messageText,
-                      isCurrentUser ? 
-                        { color: '#fff' } : 
-                        { color: colors.text }
-                    ]}>
-                      {msg.message}
-                    </Text>
-                    
-                    <View style={styles.messageFooter}>
-                      <Text style={[
-                        styles.messageTime,
+                  {(msg.message || (msg.message_type === 'post' && msg.post_id) || (msg.message_type === 'workout_share' && msg.workout_id)) && (
+                    <TouchableOpacity
+                      style={[
+                        styles.messageBubble,
                         isCurrentUser ? 
-                          { color: 'rgba(255, 255, 255, 0.8)' } : 
-                          { color: colors.textSecondary }
-                      ]}>
-                        {formatTime(msg.created_at)}
-                      </Text>
+                          [styles.sentMessage, { backgroundColor: colors.tint }] : 
+                          [styles.receivedMessage, { backgroundColor: colors.card }],
+                        !showAvatar && !isCurrentUser && styles.messageWithoutAvatar
+                      ]}
+                      onLongPress={() => handleLongPressMessage(msg)}
+                      activeOpacity={0.8}
+                      disabled={!isCurrentUser}>
                       
-                      {/* Message Status for sent messages */}
-                      {isCurrentUser && (
-                        <View style={styles.messageStatus}>
-                          <Text style={styles.messageStatusText}>✓</Text>
-                        </View>
+                      {msg.message_type === 'post' && msg.post_id ? (
+                        <SharedPost 
+                          postId={msg.post_id} 
+                          message={msg.message} 
+                          colors={isCurrentUser ? {...colors, text: '#FFFFFF', textSecondary: 'rgba(255, 255, 255, 0.8)', card: colors.tint} : colors} 
+                        />
+                      ) : msg.message_type === 'workout_share' && msg.workout_id ? (
+                        <SharedWorkout 
+                          workoutId={msg.workout_id} 
+                          message={msg.message} 
+                          colors={isCurrentUser ? {...colors, text: '#FFFFFF', textSecondary: 'rgba(255, 255, 255, 0.8)', card: colors.tint} : colors} 
+                        />
+                      ) : (
+                        <Text style={[
+                          styles.messageText,
+                          isCurrentUser ? 
+                            { color: '#fff' } : 
+                            { color: colors.text }
+                        ]}>
+                          {msg.message}
+                        </Text>
                       )}
-                    </View>
-                  </TouchableOpacity>
+                      
+                      <View style={styles.messageFooter}>
+                        <Text style={[
+                          styles.messageTime,
+                          isCurrentUser ? 
+                            { color: 'rgba(255, 255, 255, 0.8)' } : 
+                            { color: colors.textSecondary }
+                        ]}>
+                          {formatTime(msg.created_at)}
+                        </Text>
+                        
+                        {/* Message Status for sent messages */}
+                        {isCurrentUser && (
+                          <View style={styles.messageStatus}>
+                            <Text style={styles.messageStatusText}>✓</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })
@@ -566,10 +614,14 @@ export default function UserProfileScreen() {
           )}
         </ScrollView>
 
-        <View style={[styles.inputContainer, { 
-          borderTopColor: colors.border,
-          backgroundColor: colors.background
-        }]}>
+        <View style={[
+          styles.inputContainer, 
+          { 
+            borderTopColor: colors.border,
+            backgroundColor: colors.background,
+            paddingBottom: isKeyboardVisible ? 0 : 16
+          }
+        ]}>
           <View style={[styles.inputWrapper, { backgroundColor: colors.card }]}>
             <TextInput
               ref={inputRef}
@@ -578,9 +630,15 @@ export default function UserProfileScreen() {
               placeholderTextColor={colors.textSecondary}
               value={message}
               onChangeText={handleInputChange}
+              onFocus={() => {
+                // Scroll to bottom when input is focused
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                }, 100);
+              }}
               multiline
               maxLength={2000}
-              textAlignVertical="center"
+              textAlignVertical="top"
             />
             
             <TouchableOpacity
@@ -697,6 +755,7 @@ const styles = StyleSheet.create({
   },
   keyboardContainer: {
     flex: 1,
+    justifyContent: 'space-between',
   },
   header: {
     flexDirection: 'row',
@@ -756,7 +815,8 @@ const styles = StyleSheet.create({
   },
   messagesContent: {
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 60,
+    flexGrow: 1,
   },
   messageContainer: {
     marginBottom: 16,
@@ -836,16 +896,19 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     paddingHorizontal: 24,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderTopWidth: 1,
+    minHeight: 80,
   },
   inputWrapper: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 8,
     minHeight: 48,
+    maxHeight: 120,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -856,8 +919,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     maxHeight: 100,
+    minHeight: 32,
     paddingVertical: 8,
     paddingHorizontal: 4,
+    textAlignVertical: 'top',
   },
   sendButton: {
     width: 40,

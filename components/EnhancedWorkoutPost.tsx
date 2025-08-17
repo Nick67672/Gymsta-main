@@ -9,6 +9,8 @@ import { BorderRadius, Spacing } from '@/constants/Spacing';
 import { ConfirmModal } from './ConfirmModal';
 import { ThemedButton } from './ThemedButton';
 import { CommentSystem } from './CommentSystem';
+import { getAvatarUrl } from '@/lib/avatarUtils';
+import ImageZoomViewer from './ImageZoomViewer';
 import { LinearGradient } from 'expo-linear-gradient';
 import GestureRecognizer from 'react-native-swipe-gestures';
 
@@ -90,6 +92,7 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
   const [showComments, setShowComments] = useState(false);
   const [localCommentsCount, setLocalCommentsCount] = useState(workout.comments_count || 0);
   const [activeVisualization, setActiveVisualization] = useState<'heatmap' | 'timeline' | 'radar' | 'achievements'>('heatmap');
+  const [showImageZoom, setShowImageZoom] = useState(false);
   
   // Animation and gesture handling
   const { width: screenWidth } = Dimensions.get('window');
@@ -378,6 +381,13 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
     return `${(count / 1000000).toFixed(1)}M`;
   };
 
+  // Image tap handler for zoom
+  const handleImageTap = () => {
+    if (hasPhoto && photoUrl) {
+      setShowImageZoom(true);
+    }
+  };
+
   return (
     <View style={styles.postContainer}>
       {/* Floating Header */}
@@ -390,9 +400,7 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
           <View style={styles.avatarWrapper}>
             <Image
               source={{
-                uri:
-                  workout.profiles.avatar_url ||
-                  `https://source.unsplash.com/random/50x50/?portrait&${workout.profiles.id}`,
+                uri: getAvatarUrl(workout.profiles.avatar_url, workout.profiles.username),
               }}
               style={styles.profileAvatar}
             />
@@ -426,13 +434,19 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
       <View style={styles.mediaWrapper}>
         {hasPhoto && photoUrl ? (
           <View style={styles.imageWrapper}>
-            <Image 
-              source={{ uri: photoUrl }} 
-              style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
-              resizeMode="cover"
-              onLoad={() => setImageLoaded(true)}
-            />
-            {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+            <TouchableOpacity
+              onPress={handleImageTap}
+              activeOpacity={0.95}
+              style={styles.imageTouchable}
+            >
+              <Image 
+                source={{ uri: photoUrl }} 
+                style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
+                resizeMode="cover"
+                onLoad={() => setImageLoaded(true)}
+              />
+              {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+            </TouchableOpacity>
             
             {/* Workout badge */}
             <View style={styles.workoutBadge}>
@@ -507,7 +521,7 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
           )}
         </View>
   
-        {/* Comment Button & Count */}
+        {/* Comment Button */}
         <View style={styles.interactionGroup}>
           <TouchableOpacity
             onPress={() => {
@@ -526,11 +540,6 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
               strokeWidth={1.5}
             />
           </TouchableOpacity>
-          {localCommentsCount > 0 && (
-            <Text style={[styles.countText, { color: colors.text }]}>
-              {localCommentsCount}
-            </Text>
-          )}
         </View>
       </View>
 
@@ -603,6 +612,14 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
         onClose={() => setShowComments(false)}
         postOwnerId={workout.user_id}
         onCommentCountChange={handleCommentCountUpdate}
+      />
+
+      {/* Image Zoom Viewer */}
+      <ImageZoomViewer
+        visible={showImageZoom}
+        imageUri={photoUrl || ''}
+        onClose={() => setShowImageZoom(false)}
+        colors={colors}
       />
     </View>
   );
@@ -678,6 +695,10 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     position: 'relative',
+  },
+  imageTouchable: {
+    width: '100%',
+    height: '100%',
   },
   postMedia: {
     width: '100%',
@@ -899,12 +920,12 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.sm,
     paddingRight: Spacing.lg,
     paddingTop: Spacing.md,
-    gap: Spacing.sm,
+    gap: Spacing.xs,
   },
   interactionGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: 2,
   },
   interactionButton: {
     padding: Spacing.sm,

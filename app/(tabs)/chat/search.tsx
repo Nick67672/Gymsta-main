@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface User {
   id: string;
@@ -79,8 +80,7 @@ export default function SearchScreen() {
       <View style={styles.userContent}>
         <Image
           source={{
-            uri: item.avatar_url ||
-              `https://source.unsplash.com/random/100x100/?portrait&${item.id}`
+            uri: getAvatarUrl(item.avatar_url, item.username)
           }}
           style={styles.avatar}
         />

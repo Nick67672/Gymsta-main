@@ -5,6 +5,7 @@ import { getExerciseIcon } from '@/lib/exerciseIcons';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface Workout {
   id: string;
@@ -119,8 +120,7 @@ export default function WorkoutDetailModal({ workoutId, visible, onClose }: Work
               <View style={styles.userInfo}>
                 <Image
                   source={{
-                    uri: workout.profiles.avatar_url ||
-                      `https://source.unsplash.com/random/100x100/?portrait`
+                    uri: getAvatarUrl(workout.profiles.avatar_url, workout.profiles.username)
                   }}
                   style={styles.avatar}
                 />

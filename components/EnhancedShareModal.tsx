@@ -13,7 +13,9 @@ import {
   Animated,
   Dimensions,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   X, 
   Send, 
@@ -51,9 +53,12 @@ import { Profile } from '@/types/social';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import sharingService, { ShareableContent } from '@/lib/sharingService';
-import { componentPadding } from '@/constants/Layout';
+import { Spacing, BorderRadius } from '@/constants/Spacing';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const isSmallScreen = screenHeight < 700;
+const isMediumScreen = screenHeight >= 700 && screenHeight < 800;
 
 interface EnhancedShareModalProps {
   content: ShareableContent;
@@ -84,42 +89,40 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
   onClose, 
   colors 
 }) => {
-  const { profile: currentUserProfile, user: currentUser } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'friends' | 'social' | 'external'>('friends');
   const [following, setFollowing] = useState<Profile[]>([]);
-  const [searchText, setSearchText] = useState('');
-  const [loading, setLoading] = useState(true);
   const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
-  const [isSending, setIsSending] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState('');
-  const [shareStats, setShareStats] = useState<any>(null);
-  const [recentShares, setRecentShares] = useState<RecentShare[]>([]);
-  const [showShareStats, setShowShareStats] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  
+  const [shareStats, setShareStats] = useState<any>(null);
+  const [showShareStats, setShowShareStats] = useState(false);
+  const [recentShares, setRecentShares] = useState<RecentShare[]>([]);
+
   // Animation values
-  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const searchInputRef = useRef<TextInput>(null);
+  const slideAnim = useRef(new Animated.Value(screenHeight)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
-    // Animate modal entrance
     Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        tension: 100,
-        friction: 8,
+        tension: 50,
+        friction: 7,
         useNativeDriver: true,
       }),
     ]).start();
@@ -129,50 +132,80 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
 
   const loadData = async () => {
     try {
-      // Load following users
-      if (currentUser) {
-        const { data: followingData, error: followingError } = await supabase
-          .from('follows')
-          .select(`
-            following:profiles!follows_following_id_fkey (
-              id,
-              username,
-              avatar_url,
-              is_verified
-            )
-          `)
-          .eq('follower_id', currentUser.id);
+      // Load following list
+      const { data: followingData, error: followingError } = await supabase
+        .from('follows')
+        .select(`
+          followed_id,
+          profiles!follows_followed_id_fkey (
+            id,
+            username,
+            avatar_url,
+            is_verified
+          )
+        `)
+        .eq('follower_id', currentUser?.id)
+        .eq('status', 'accepted');
 
-        if (!followingError && followingData) {
-          setFollowing(followingData.map(f => f.following));
-        }
-      }
+      if (followingError) throw followingError;
+
+      const followingProfiles = followingData?.map(item => item.profiles).filter(Boolean) as unknown as Profile[];
+      setFollowing(followingProfiles);
 
       // Load share stats
       const stats = await sharingService.getShareStats(content.id, content.type);
       setShareStats(stats);
 
       // Load recent shares
-      if (stats.recentShares) {
-        setRecentShares(stats.recentShares);
+      const { data: recentSharesData, error: recentSharesError } = await supabase
+        .from('post_shares')
+        .select(`
+          id,
+          created_at,
+          share_medium,
+          profiles!post_shares_sharer_id_fkey (
+            username,
+            avatar_url
+          )
+        `)
+        .eq('post_id', content.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!recentSharesError && recentSharesData) {
+        const recent = recentSharesData.map((share: any) => {
+          const rawProfile = (share as any).profiles;
+          const profile = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+          return {
+            id: share.id,
+            username: profile?.username || 'Unknown',
+            avatar_url: profile?.avatar_url || '',
+            shared_at: share.created_at,
+            platform: share.share_medium || 'unknown',
+          };
+        });
+        setRecentShares(recent);
       }
     } catch (error) {
-      console.error('Error loading share data:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error loading share modal data:', error);
     }
   };
 
   const handleClose = () => {
     Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: screenHeight,
-        duration: 300,
-        useNativeDriver: true,
-      }),
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: screenHeight,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 200,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -204,7 +237,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
     }
 
     try {
-      const userIds = selectedUsers.map(user => user.id);
+      const userIds = selectedUsers.map(user => user.id).filter(Boolean) as string[];
       const results = await sharingService.shareToUsers(content, userIds, message);
       
       const successCount = results.filter(r => r.success).length;
@@ -304,22 +337,16 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
         Alert.alert('Link Copied! 📋', 'Content link copied to clipboard');
-        
-        // Reload share stats
-        const stats = await sharingService.getShareStats(content.id, content.type);
-        setShareStats(stats);
       } else {
-        Alert.alert('Error', 'Failed to copy link');
+        Alert.alert('Copy Failed', result.error || 'Failed to copy link');
       }
     } catch (error) {
       console.error('Error copying link:', error);
-      Alert.alert('Error', 'Failed to copy link');
+      Alert.alert('Copy Failed', 'Failed to copy link');
     }
   };
 
   const handleEmailShare = async () => {
-    setIsSharing(true);
-    
     try {
       const result = await sharingService.shareViaEmail(content);
       
@@ -327,26 +354,24 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
         if (Platform.OS === 'ios') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
-        
-        // Reload share stats
-        const stats = await sharingService.getShareStats(content.id, content.type);
-        setShareStats(stats);
       } else {
-        Alert.alert('Sharing Failed', result.error || 'Failed to share via email');
+        Alert.alert('Email Share Failed', result.error || 'Failed to share via email');
       }
     } catch (error) {
       console.error('Error sharing via email:', error);
-      Alert.alert('Sharing Failed', 'Failed to share via email');
-    } finally {
-      setIsSharing(false);
+      Alert.alert('Email Share Failed', 'Failed to share via email');
     }
   };
+
+  const filteredFollowing = following.filter(user =>
+    user.username.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const socialShareOptions: ShareOption[] = [
     {
       id: 'instagram',
       title: 'Instagram',
-      subtitle: 'Share to Stories or Feed',
+      subtitle: 'Share to your story or post',
       icon: <Instagram size={24} color="#FFFFFF" />,
       color: '#E4405F',
       action: () => handleSocialShare('instagram'),
@@ -364,7 +389,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
     {
       id: 'facebook',
       title: 'Facebook',
-      subtitle: 'Share to your profile',
+      subtitle: 'Share to your wall',
       icon: <Facebook size={24} color="#FFFFFF" />,
       color: '#1877F2',
       action: () => handleSocialShare('facebook'),
@@ -373,7 +398,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
     {
       id: 'whatsapp',
       title: 'WhatsApp',
-      subtitle: 'Share to contacts',
+      subtitle: 'Send to contacts',
       icon: <MessageSquare size={24} color="#FFFFFF" />,
       color: '#25D366',
       action: () => handleSocialShare('whatsapp'),
@@ -382,7 +407,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
     {
       id: 'telegram',
       title: 'Telegram',
-      subtitle: 'Share to channels',
+      subtitle: 'Send to channels or chats',
       icon: <Send size={24} color="#FFFFFF" />,
       color: '#0088CC',
       action: () => handleSocialShare('telegram'),
@@ -392,11 +417,11 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
 
   const externalShareOptions: ShareOption[] = [
     {
-      id: 'share',
-      title: 'Share to...',
+      id: 'native',
+      title: 'More Options',
       subtitle: 'Use system share sheet',
       icon: <Share2 size={24} color="#FFFFFF" />,
-      color: '#007AFF',
+      color: '#6366F1',
       action: handleExternalShare,
       type: 'external',
     },
@@ -405,24 +430,20 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
       title: 'Copy Link',
       subtitle: 'Copy to clipboard',
       icon: <Copy size={24} color="#FFFFFF" />,
-      color: '#34C759',
+      color: '#10B981',
       action: handleCopyLink,
       type: 'external',
     },
     {
       id: 'email',
       title: 'Email',
-      subtitle: 'Share via email',
+      subtitle: 'Send via email',
       icon: <Mail size={24} color="#FFFFFF" />,
-      color: '#FF9500',
+      color: '#F59E0B',
       action: handleEmailShare,
       type: 'external',
     },
   ];
-
-  const filteredFollowing = following.filter((user) =>
-    user.username.toLowerCase().includes(searchText.toLowerCase())
-  );
 
   const renderUserItem = ({ item }: { item: Profile }) => {
     const isSelected = selectedUsers.some(user => user.id === item.id);
@@ -431,15 +452,14 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
       <TouchableOpacity
         style={[
           styles.userItem,
-          isSelected && { backgroundColor: colors.tint + '20' }
+          { backgroundColor: isSelected ? colors.tint + '15' : 'transparent' }
         ]}
         onPress={() => handleToggleUser(item)}
         activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <Image
-          source={{
-            uri: item.avatar_url || `https://source.unsplash.com/random/50x50/?portrait&${item.id}`,
-          }}
+          source={{ uri: getAvatarUrl(item.avatar_url, item.username) }}
           style={styles.userAvatar}
         />
         <View style={styles.userInfo}>
@@ -447,14 +467,17 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
             {item.username}
           </Text>
           {item.is_verified && (
-            <CheckCircle size={14} color="#3B82F6" style={styles.verifiedIcon} />
+            <View style={styles.verifiedIcon}>
+              <CheckCircle size={16} color={colors.tint} />
+            </View>
           )}
         </View>
-        {isSelected && (
-          <View style={[styles.checkmark, { backgroundColor: colors.tint }]}>
-            <CheckCircle size={16} color="#FFFFFF" />
-          </View>
-        )}
+        <View style={[
+          styles.checkmark,
+          { backgroundColor: isSelected ? colors.tint : 'transparent' }
+        ]}>
+          {isSelected && <CheckCircle size={16} color="#FFFFFF" />}
+        </View>
       </TouchableOpacity>
     );
   };
@@ -464,7 +487,6 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
       style={[styles.shareOption, { backgroundColor: item.color }]}
       onPress={item.action}
       activeOpacity={0.8}
-      disabled={isSharing}
     >
       <View style={styles.shareOptionIcon}>
         {item.icon}
@@ -475,12 +497,12 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
           <Text style={styles.shareOptionSubtitle}>{item.subtitle}</Text>
         )}
       </View>
-      {isSharing && <ActivityIndicator size="small" color="#FFFFFF" />}
+      <ChevronRight size={20} color="#FFFFFF" />
     </TouchableOpacity>
   );
 
   const renderShareStats = () => {
-    if (!shareStats || shareStats.totalShares === 0) return null;
+    if (!shareStats) return null;
 
     return (
       <View style={[styles.statsContainer, { backgroundColor: colors.card }]}>
@@ -493,7 +515,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
               Share Statistics
             </Text>
             <Text style={[styles.statsSubtitle, { color: colors.textSecondary }]}>
-              {shareStats.totalShares} total shares
+              {shareStats.total_shares || 0} total shares
             </Text>
           </View>
           <ChevronRight 
@@ -501,40 +523,52 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
             color={colors.textSecondary}
             style={[
               styles.statsChevron,
-              showShareStats && { transform: [{ rotate: '90deg' }] }
+              { transform: [{ rotate: showShareStats ? '90deg' : '0deg' }] }
             ]}
           />
         </TouchableOpacity>
-        
+
         {showShareStats && (
           <View style={styles.statsDetails}>
-            {Object.keys(shareStats.byPlatform).length > 0 && (
-              <View style={styles.statsSection}>
-                <Text style={[styles.statsSectionTitle, { color: colors.text }]}>
-                  By Platform
+            <View style={styles.statsSection}>
+              <Text style={[styles.statsSectionTitle, { color: colors.text }]}>
+                Share Breakdown
+              </Text>
+              <View style={styles.statsRow}>
+                <Text style={[styles.statsLabel, { color: colors.textSecondary }]}>
+                  External shares
                 </Text>
-                {Object.entries(shareStats.byPlatform).map(([platform, count]) => (
-                  <View key={platform} style={styles.statsRow}>
-                    <Text style={[styles.statsLabel, { color: colors.textSecondary }]}>
-                      {platform}
-                    </Text>
-                    <Text style={[styles.statsValue, { color: colors.text }]}>
-                      {count}
-                    </Text>
-                  </View>
-                ))}
+                <Text style={[styles.statsValue, { color: colors.text }]}>
+                  {shareStats.external_shares || 0}
+                </Text>
               </View>
-            )}
-            
+              <View style={styles.statsRow}>
+                <Text style={[styles.statsLabel, { color: colors.textSecondary }]}>
+                  Direct messages
+                </Text>
+                <Text style={[styles.statsValue, { color: colors.text }]}>
+                  {shareStats.direct_shares || 0}
+                </Text>
+              </View>
+              <View style={styles.statsRow}>
+                <Text style={[styles.statsLabel, { color: colors.textSecondary }]}>
+                  Copy links
+                </Text>
+                <Text style={[styles.statsValue, { color: colors.text }]}>
+                  {shareStats.copy_shares || 0}
+                </Text>
+              </View>
+            </View>
+
             {recentShares.length > 0 && (
               <View style={styles.statsSection}>
                 <Text style={[styles.statsSectionTitle, { color: colors.text }]}>
                   Recent Shares
                 </Text>
-                {recentShares.slice(0, 3).map((share) => (
+                {recentShares.map((share) => (
                   <View key={share.id} style={styles.recentShare}>
                     <Image
-                      source={{ uri: share.avatar_url || 'https://placehold.co/32x32' }}
+                      source={{ uri: getAvatarUrl(share.avatar_url, share.username) }}
                       style={styles.recentShareAvatar}
                     />
                     <View style={styles.recentShareInfo}>
@@ -581,9 +615,29 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
           ]}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-            {/* Header */}
+                        <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} 
+              style={{ flex: 1 }}
+            >
+              {/* Drag Handle */}
+              <View style={styles.dragHandle}>
+                <View style={[styles.dragIndicator, { backgroundColor: colors.border }]} />
+              </View>
+              
+              {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerLeft}>
+                <TouchableOpacity 
+                  onPress={handleClose} 
+                  style={styles.closeButton} 
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <X size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.headerCenter}>
                 <Text style={[styles.headerTitle, { color: colors.text }]}>
                   Share {content.type === 'workout' ? 'Workout' : 'Post'}
                 </Text>
@@ -660,75 +714,89 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
               </TouchableOpacity>
             </View>
 
-            {/* Content */}
-            {activeTab === 'friends' && (
-              <View style={styles.tabContent}>
-                {/* Message Input */}
-                <View style={[styles.messageInputContainer, { backgroundColor: colors.inputBackground }]}>
-                  <TextInput
+            {/* Tab Content */}
+            <View style={[styles.tabContent, { paddingBottom: insets.bottom }]}>
+              {activeTab === 'friends' && (
+                <View style={styles.tabContent}>
+                  {/* Message Input */}
+                  <View style={[styles.messageInputContainer, { backgroundColor: colors.card }]}>
+                                      <TextInput
                     style={[styles.messageInput, { color: colors.text }]}
-                    placeholder="Add a message (optional)"
+                    placeholder="Add a message (optional)..."
                     placeholderTextColor={colors.textSecondary}
                     value={message}
                     onChangeText={setMessage}
                     multiline
                     maxLength={500}
+                    textAlignVertical="top"
+                    returnKeyType="default"
+                    blurOnSubmit={false}
                   />
-                </View>
-
-                {/* Search */}
-                <View style={[styles.searchContainer, { backgroundColor: colors.inputBackground }]}>
-                  <Search size={20} color={colors.textSecondary} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={[styles.searchInput, { color: colors.text }]}
-                    placeholder="Search friends..."
-                    placeholderTextColor={colors.textSecondary}
-                    value={searchText}
-                    onChangeText={setSearchText}
-                  />
-                </View>
-
-                {/* Users List */}
-                {loading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.tint} />
                   </View>
-                ) : (
+
+                  {/* Search */}
+                  <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
+                    <Search size={20} color={colors.textSecondary} />
+                    <TextInput
+                      style={[styles.searchInput, { color: colors.text }]}
+                      placeholder="Search friends..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      returnKeyType="search"
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                    />
+                  </View>
+
+                  {/* Users List */}
+                  {following.length === 0 ? (
+                    <View style={styles.loadingContainer}>
+                      <Users size={48} color={colors.textSecondary} style={{ opacity: 0.5 }} />
+                      <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                        No friends found. Follow some people to share with them!
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={filteredFollowing}
+                      renderItem={renderUserItem}
+                      keyExtractor={(item) => item.id || item.username}
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={[styles.usersList, { paddingBottom: 24 + insets.bottom }]}
+                      keyboardShouldPersistTaps="always"
+                    />
+                  )}
+                </View>
+              )}
+
+              {activeTab === 'social' && (
+                <View style={styles.tabContent}>
                   <FlatList
-                    data={filteredFollowing}
-                    renderItem={renderUserItem}
+                    data={socialShareOptions}
+                    renderItem={renderShareOption}
                     keyExtractor={(item) => item.id}
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.usersList}
+                    contentContainerStyle={[styles.shareOptionsList, { paddingBottom: 24 + insets.bottom }]}
+                    keyboardShouldPersistTaps="always"
                   />
-                )}
-              </View>
-            )}
+                </View>
+              )}
 
-            {activeTab === 'social' && (
-              <View style={styles.tabContent}>
-                <FlatList
-                  data={socialShareOptions}
-                  renderItem={renderShareOption}
-                  keyExtractor={(item) => item.id}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.shareOptionsList}
-                />
-              </View>
-            )}
-
-            {activeTab === 'external' && (
-              <View style={styles.tabContent}>
-                <FlatList
-                  data={externalShareOptions}
-                  renderItem={renderShareOption}
-                  keyExtractor={(item) => item.id}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.shareOptionsList}
-                />
-              </View>
-            )}
+              {activeTab === 'external' && (
+                <View style={styles.tabContent}>
+                  <FlatList
+                    data={externalShareOptions}
+                    renderItem={renderShareOption}
+                    keyExtractor={(item) => item.id}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={[styles.shareOptionsList, { paddingBottom: 24 + insets.bottom }]}
+                    keyboardShouldPersistTaps="always"
+                  />
+                </View>
+              )}
+            </View>
+            </KeyboardAvoidingView>
           </View>
         </Animated.View>
       </Animated.View>
@@ -750,24 +818,43 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContainer: {
-    maxHeight: screenHeight * 0.9,
+    maxHeight: isSmallScreen ? screenHeight * 0.9 : screenHeight * 0.85, // Responsive height for different screen sizes
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
   },
   modalContent: {
     flex: 1,
+    paddingBottom: 0, // Remove padding bottom as it's handled in content
+  },
+  dragHandle: {
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  dragIndicator: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.6,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: componentPadding.large,
-    paddingTop: componentPadding.large,
-    paddingBottom: componentPadding.medium,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
   headerLeft: {
+    width: 60,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  headerCenter: {
     flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 18,
@@ -778,7 +865,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerRight: {
-    marginLeft: componentPadding.medium,
+    width: 60,
+    alignItems: 'flex-end',
   },
   sendButton: {
     width: 40,
@@ -788,8 +876,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statsContainer: {
-    marginHorizontal: componentPadding.large,
-    marginBottom: componentPadding.medium,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -797,7 +885,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: componentPadding.medium,
+    padding: Spacing.md,
   },
   statsInfo: {
     flex: 1,
@@ -811,19 +899,19 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   statsChevron: {
-    marginLeft: componentPadding.small,
+    marginLeft: Spacing.sm,
   },
   statsDetails: {
-    paddingHorizontal: componentPadding.medium,
-    paddingBottom: componentPadding.medium,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
   },
   statsSection: {
-    marginTop: componentPadding.medium,
+    marginTop: Spacing.md,
   },
   statsSectionTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: componentPadding.small,
+    marginBottom: Spacing.sm,
   },
   statsRow: {
     flexDirection: 'row',
@@ -848,7 +936,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginRight: componentPadding.small,
+    marginRight: Spacing.sm,
   },
   recentShareInfo: {
     flex: 1,
@@ -863,12 +951,12 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    marginHorizontal: componentPadding.large,
+    marginHorizontal: Spacing.lg,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: componentPadding.medium,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
@@ -879,13 +967,14 @@ const styles = StyleSheet.create({
   },
   tabContent: {
     flex: 1,
-    paddingHorizontal: componentPadding.large,
-    paddingTop: componentPadding.medium,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: 20,
   },
   messageInputContainer: {
     borderRadius: 12,
-    padding: componentPadding.medium,
-    marginBottom: componentPadding.medium,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
   messageInput: {
     fontSize: 16,
@@ -896,36 +985,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 12,
-    paddingHorizontal: componentPadding.medium,
-    marginBottom: componentPadding.medium,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
     height: 44,
   },
   searchInput: {
     flex: 1,
-    marginLeft: componentPadding.small,
+    marginLeft: Spacing.sm,
     fontSize: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: Spacing.xl,
+  },
+  loadingText: {
+    fontSize: 16,
+    textAlign: 'center',
+    opacity: 0.7,
   },
   usersList: {
-    paddingBottom: componentPadding.large,
+    paddingBottom: 40, // Increased padding for better mobile spacing
   },
   userItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: componentPadding.medium,
-    paddingHorizontal: componentPadding.small,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
     borderRadius: 12,
-    marginBottom: 4,
+    marginBottom: 6,
+    minHeight: 56,
   },
   userAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    marginRight: componentPadding.medium,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: Spacing.lg,
   },
   userInfo: {
     flex: 1,
@@ -947,12 +1043,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   shareOptionsList: {
-    paddingBottom: componentPadding.large,
+    paddingBottom: 40, // Increased padding for better mobile spacing
   },
   shareOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: componentPadding.medium,
+    padding: Spacing.md,
     borderRadius: 12,
     marginBottom: 8,
   },
@@ -962,7 +1058,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: componentPadding.medium,
+    marginRight: Spacing.md,
   },
   shareOptionText: {
     flex: 1,

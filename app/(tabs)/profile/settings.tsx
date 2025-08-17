@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
-import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, ChevronRight, Bookmark } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { useBlocking } from '@/context/BlockingContext';
+import { useUnits } from '@/context/UnitContext';
 import { goBack } from '@/lib/goBack';
 
 export default function SettingsScreen() {
   const { theme, isDarkMode, toggleTheme } = useTheme();
   const { blockedUserIds, unblockUser, refreshBlockedUsers } = useBlocking();
+  const { units, updateUnits } = useUnits();
   const [loading, setLoading] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
@@ -219,6 +221,56 @@ export default function SettingsScreen() {
               />
             )}
           </View>
+
+          <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
+            <View style={styles.settingLabelContainer}>
+              <View style={[styles.settingIcon, { backgroundColor: colors.tint + '20', borderRadius: 8, padding: 4 }]}>
+                <Text style={[styles.unitIcon, { color: colors.tint }]}>
+                  {units.weight_unit === 'kg' ? 'KG' : 'LB'}
+                </Text>
+              </View>
+              <View>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Weight Units</Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                  Display weights in {units.weight_unit === 'kg' ? 'kilograms' : 'pounds'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.unitToggleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.unitOption,
+                  units.weight_unit === 'kg' && styles.unitOptionActive,
+                  { borderColor: colors.border }
+                ]}
+                onPress={() => updateUnits({ weight_unit: 'kg' })}
+              >
+                <Text style={[
+                  styles.unitOptionText,
+                  units.weight_unit === 'kg' && styles.unitOptionTextActive,
+                  { color: units.weight_unit === 'kg' ? colors.tint : colors.textSecondary }
+                ]}>
+                  KG
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.unitOption,
+                  units.weight_unit === 'lbs' && styles.unitOptionActive,
+                  { borderColor: colors.border }
+                ]}
+                onPress={() => updateUnits({ weight_unit: 'lbs' })}
+              >
+                <Text style={[
+                  styles.unitOptionText,
+                  units.weight_unit === 'lbs' && styles.unitOptionTextActive,
+                  { color: units.weight_unit === 'lbs' ? colors.tint : colors.textSecondary }
+                ]}>
+                  LBS
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomWidth: 0 }]}
             onPress={openBlockedUsers}>
@@ -228,6 +280,21 @@ export default function SettingsScreen() {
                 <Text style={[styles.settingLabel, { color: colors.text }]}>Blocked Users</Text>
                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
                   Manage users you've blocked ({blockedUserIds.length})
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomWidth: 0 }]}
+            onPress={() => router.push('/profile/saved-posts')}>
+            <View style={styles.settingLabelContainer}>
+              <Bookmark size={20} color={colors.text} style={styles.settingIcon} />
+              <View>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Saved Posts</Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                  View posts you've saved
                 </Text>
               </View>
             </View>
@@ -544,6 +611,33 @@ const styles = StyleSheet.create({
   },
   blockedUsersList: {
     maxHeight: 400,
+  },
+  // Unit Toggle Styles
+  unitToggleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  unitOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  unitOptionActive: {
+    backgroundColor: 'rgba(108, 92, 231, 0.1)',
+  },
+  unitOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  unitOptionTextActive: {
+    fontWeight: '700',
+  },
+  unitIcon: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   blockedUserItem: {
     flexDirection: 'row',

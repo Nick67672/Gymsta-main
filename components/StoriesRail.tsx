@@ -2,6 +2,7 @@ import React from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image, Text } from 'react-native';
 import { Profile } from '../types/social';
 import Colors from '@/constants/Colors';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface StoriesRailProps {
   following: Profile[];
@@ -45,9 +46,7 @@ const StoriesRail: React.FC<StoriesRailProps> = ({
               >
                 <Image
                   source={{
-                    uri:
-                      profile.avatar_url ||
-                      `https://source.unsplash.com/random/100x100/?portrait&${profile.id ?? profile.username}`,
+                    uri: getAvatarUrl(profile.avatar_url, profile.username),
                   }}
                   style={styles.storyAvatar}
                 />

@@ -176,7 +176,7 @@ export default function PostDetailScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Floating back button */}
       <TouchableOpacity
         onPress={goBack}
@@ -185,24 +185,27 @@ export default function PostDetailScreen() {
       >
         <ArrowLeft size={22} color="#fff" />
       </TouchableOpacity>
-      <PostComponent
-        post={post}
-        colors={colors}
-        playingVideo={playingVideo}
-        currentUserId={currentUserId}
-        flaggedPosts={flaggedPosts}
-        flagging={flagging}
-        setFlagging={setFlagging}
-        setFlaggedPosts={setFlaggedPosts}
-        isAuthenticated={isAuthenticated}
-        showAuthModal={showAuthModal}
-        toggleVideoPlayback={toggleVideoPlayback}
-        navigateToProfile={navigateToProfile}
-        handleLike={handleLike}
-        handleUnlike={handleUnlike}
-        videoRefs={videoRefs}
-        handleDeletePost={handleDeletePost}
-      />
+      
+      <View style={styles.postContainer}>
+        <PostComponent
+          post={post}
+          colors={colors}
+          playingVideo={playingVideo}
+          currentUserId={currentUserId}
+          flaggedPosts={flaggedPosts}
+          flagging={flagging}
+          setFlagging={setFlagging}
+          setFlaggedPosts={setFlaggedPosts}
+          isAuthenticated={isAuthenticated}
+          showAuthModal={showAuthModal}
+          toggleVideoPlayback={toggleVideoPlayback}
+          navigateToProfile={navigateToProfile}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          videoRefs={videoRefs}
+          handleDeletePost={handleDeletePost}
+        />
+      </View>
     </View>
   );
 }
@@ -210,6 +213,12 @@ export default function PostDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  postContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   backButton: {
     position: 'absolute',

@@ -1663,14 +1663,14 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   profileImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   profileInfo: {
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    marginTop: 6,
+    marginTop: 10,
   },
   usernameContainer: {
     flexDirection: 'row',
@@ -1683,8 +1683,9 @@ const styles = StyleSheet.create({
   },
   bio: {
     fontSize: 16,
-    marginTop: 4,
+    marginTop: 8,
     textAlign: 'center',
+    lineHeight: 22,
   },
   gymContainer: {
     flexDirection: 'row',
@@ -1702,12 +1703,10 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    marginTop: 10,
+    marginTop: 15,
     paddingHorizontal: Layout.horizontalPadding,
-    gap: 12,
+    gap: Layout.gap,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 50,
   },
   singleButtonContainer: {
     justifyContent: 'center',

@@ -6,6 +6,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { goBack } from '@/lib/goBack';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface Product {
   id: string;
@@ -119,8 +120,7 @@ export default function ProductDetailScreen() {
             onPress={() => router.push(`/${product.seller.username}`)}>
             <Image
               source={{
-                uri: product.seller.avatar_url ||
-                  'https://source.unsplash.com/random/100x100/?portrait'
+                uri: getAvatarUrl(product.seller.avatar_url, product.seller.username)
               }}
               style={styles.sellerAvatar}
             />

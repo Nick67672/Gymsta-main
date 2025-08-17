@@ -106,8 +106,8 @@ export default function RegisterScreen() {
         setTheme('dark');
       }
 
-      // Redirect to home screen on success
-      router.replace('/(tabs)');
+      // Redirect to onboarding on success
+      router.replace('/onboarding');
     } catch (err) {
       console.error('Profile creation error:', err);
       setError(
@@ -232,7 +232,7 @@ export default function RegisterScreen() {
           onPress={handleSubmit}
           variant="primary"
           loading={loading}
-          disabled={loading || !username.trim() || !bio.trim()}
+          disabled={loading || !username.trim()}
           style={styles.completeButton}
         />
       </View>

@@ -14,6 +14,7 @@ import StoryViewer from '@/components/StoryViewer';
 import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import { ThemedButton } from '@/components/ThemedButton';
 import { goBack } from '@/lib/goBack';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface ProfileStory {
   id: string;
@@ -58,7 +59,22 @@ interface Post {
     id: string;
     user_id: string;
   }[];
+  type?: string; // Added to distinguish between posts and workouts
 }
+
+type ProfileFeedItem =
+  | (Post & { type: 'post'; comments_count: number })
+  | ({
+      type: 'workout';
+      id: string;
+      created_at: string;
+      exercises: any[];
+      workout_sharing_information?: any[];
+      image_url: string | null;
+      caption: string | null;
+      comments_count: number;
+      likes?: { id: string; user_id: string }[];
+    });
 
 interface Follower {
   id: string;
@@ -91,7 +107,7 @@ export default function UserProfileScreen() {
   const { blockUser, isUserBlocked } = useBlocking();
   
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<ProfileFeedItem[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutSummary[]>([]);
   const [stories, setStories] = useState<ProfileStory[]>([]);
   const [lifts, setLifts] = useState<any[]>([]);
@@ -268,11 +284,45 @@ export default function UserProfileScreen() {
         }, {} as { [postId: string]: number });
       }
 
-      const postsWithCommentCount = (postsData || []).map(post => ({
+      // Load user's workout posts (no likes relationship on workouts)
+      const { data: workoutPostsData, error: workoutPostsError } = await supabase
+        .from('workouts')
+        .select(`
+          id, 
+          created_at, 
+          exercises,
+          workout_sharing_information (*)
+        `)
+        .eq('user_id', profileData.id)
+        .order('created_at', { ascending: false });
+
+      if (workoutPostsError) {
+        console.error('Error loading workout posts:', workoutPostsError);
+      }
+
+      // Combine posts and workouts, marking workouts with type
+      const postsWithCommentCount: ProfileFeedItem[] = (postsData || []).map(post => ({
         ...post,
-        comments_count: commentCounts[post.id] || 0
+        comments_count: commentCounts[post.id] || 0,
+        type: 'post'
       }));
-      setPosts(postsWithCommentCount);
+
+      const workoutPosts: ProfileFeedItem[] = (workoutPostsData || []).map((workout: any) => ({ 
+        type: 'workout',
+        id: workout.id,
+        created_at: workout.created_at,
+        exercises: workout.exercises,
+        workout_sharing_information: workout.workout_sharing_information,
+        image_url: workout.workout_sharing_information?.[0]?.photo_url || null,
+        caption: workout.workout_sharing_information?.[0]?.caption || null,
+        comments_count: 0,
+        likes: []
+      }));
+
+      const combinedPosts: ProfileFeedItem[] = [...postsWithCommentCount, ...workoutPosts]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setPosts(combinedPosts);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profile');
@@ -518,8 +568,8 @@ export default function UserProfileScreen() {
       const originalPosts = [...posts];
 
       // Optimistically update UI
-      setPosts(arr => arr.map(post => post.id === postId && !post.likes.some(l => l.user_id === user.id)
-        ? { ...post, likes: [...post.likes, tempLike] }
+      setPosts(arr => arr.map(post => post.id === postId && (post as any).likes && !(post as any).likes.some((l: any) => l.user_id === user.id)
+        ? { ...post, likes: [ ...(post as any).likes || [], tempLike ] }
         : post
       ));
 
@@ -536,7 +586,7 @@ export default function UserProfileScreen() {
         const newLike = insertedRows?.[0] || tempLike;
         // Replace temporary like with real one
         setPosts(arr => arr.map(post => post.id === postId
-          ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id).concat(newLike) }
+          ? { ...post, likes: ([...(post as any).likes || []].filter((l: any) => l.user_id !== user.id)).concat(newLike) }
           : post
         ));
       }
@@ -558,7 +608,7 @@ export default function UserProfileScreen() {
 
       // Optimistically update UI
       setPosts(arr => arr.map(post => post.id === postId
-        ? { ...post, likes: post.likes.filter(l => l.user_id !== user.id) }
+        ? { ...post, likes: ([...(post as any).likes || []].filter((l: any) => l.user_id !== user.id)) }
         : post
       ));
 
@@ -765,17 +815,17 @@ export default function UserProfileScreen() {
         { event: '*', schema: 'public', table: 'likes' },
         (payload) => {
           setPosts((prev) =>
-            prev.map((post) => {
+            prev.map((post: any) => {
               const affectedPostId = (payload.new as any)?.post_id ?? (payload.old as any)?.post_id;
               if (post.id !== affectedPostId) return post;
 
               if (payload.eventType === 'INSERT') {
                 // Ignore duplicate like already present
-                if (post.likes.some((l) => l.id === payload.new.id)) return post;
+                if ((post.likes || []).some((l: any) => l.id === payload.new.id)) return post;
                 return {
                   ...post,
                   likes: [
-                    ...post.likes,
+                    ...(post.likes || []),
                     { id: payload.new.id as string, user_id: payload.new.user_id as string },
                   ],
                 };
@@ -784,7 +834,7 @@ export default function UserProfileScreen() {
               if (payload.eventType === 'DELETE') {
                 return {
                   ...post,
-                  likes: post.likes.filter((l) => l.id !== payload.old.id),
+                  likes: (post.likes || []).filter((l: any) => l.id !== payload.old.id),
                 };
               }
 
@@ -826,7 +876,7 @@ export default function UserProfileScreen() {
           goBack();
         }}>
           <Text style={[styles.logo, { color: colors.tint }]}>← Back</Text>
-          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
@@ -839,7 +889,7 @@ export default function UserProfileScreen() {
           ]}>
             <Image
               source={{ 
-                uri: profile.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                uri: getAvatarUrl(profile.avatar_url, profile.username)
               }}
               style={styles.profileImage}
             />
@@ -917,6 +967,8 @@ export default function UserProfileScreen() {
         <View style={[
           styles.statsContainer, 
           { 
+            borderTopColor: colors.border, 
+            borderBottomColor: colors.border,
             backgroundColor: colors.background
           }
         ]}>
@@ -987,23 +1039,59 @@ export default function UserProfileScreen() {
             </Text>
           </View>
         ) : activeTab === 'posts' ? (
-        <View style={styles.postsGrid}>
-          {posts.map((post) => (
-            <TouchableOpacity
-              key={post.id}
-              style={styles.postContainer}
-              onPress={() => router.push(`/profile/${post.id}`)}>
-              <View style={styles.postImageContainer}>
-                <Image source={{ uri: post.image_url }} style={styles.postImage} />
-                <View style={styles.postOverlay}>
-                  <View style={styles.likeBadge}>
-                    <Heart size={14} color="#fff" fill="#fff" />
-                    <Text style={styles.likesText}>{formatNumber(post.likes?.length || 0)}</Text>
+        <View style={[styles.postsGrid, { paddingHorizontal: Math.max(0, (Layout.horizontalPadding || 0) - 4) }]}>
+          {posts.map((item) => {
+            const handlePress = () => {
+              if (item.type === 'workout') {
+                // Navigate to workout view or show workout modal
+                setSelectedWorkoutId(item.id);
+                setShowWorkoutModal(true);
+              } else {
+                // Navigate to regular post
+                router.push(`/profile/${item.id}`);
+              }
+            };
+            
+            return (
+              <TouchableOpacity 
+                key={item.id} 
+                style={[styles.postContainer, { width: '50%', padding: 3 }]}
+                onPress={handlePress}
+              >
+                <View style={styles.postImageContainer}>
+                  {(item.type === 'post' ? (item as Post).image_url : (item as any).workout_sharing_information?.[0]?.photo_url) ? (
+                    <Image 
+                      source={{ 
+                        uri: item.type === 'post' 
+                          ? (item as Post).image_url 
+                          : (item as any).workout_sharing_information?.[0]?.photo_url || '' 
+                      }} 
+                      style={styles.postImage} 
+                    />
+                  ) : (
+                    // Fallback for workouts without images - show workout icon
+                    <View style={[styles.postImage, styles.workoutPlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
+                      <Dumbbell size={24} color={colors.tint} />
+                      <Text style={[styles.workoutPlaceholderText, { color: colors.text }]}>
+                        {item.type === 'workout' ? (item as any).exercises?.length || 0 : 0} exercises
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.postOverlay}>
+                    <View style={styles.likeBadge}>
+                      <Heart size={14} color="#fff" fill="#fff" />
+                      <Text style={styles.likesText}>{formatNumber(item.likes?.length || 0)}</Text>
+                    </View>
                   </View>
+                  {item.type === 'workout' && (
+                    <View style={styles.workoutBadgeOverlay}>
+                      <Dumbbell size={12} color="#fff" />
+                    </View>
+                  )}
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
         </View>
         ) : activeTab === 'lifts' ? (
           lifts.length === 0 ? (
@@ -1175,7 +1263,7 @@ export default function UserProfileScreen() {
                     }}>
                     <Image 
                       source={{ 
-                        uri: follower.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                        uri: getAvatarUrl(follower.profiles?.avatar_url ?? null, follower.profiles?.username ?? '')
                       }} 
                       style={styles.followerAvatar} 
                     />
@@ -1236,7 +1324,7 @@ export default function UserProfileScreen() {
                     }}>
                     <Image 
                       source={{ 
-                        uri: followingUser.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                        uri: getAvatarUrl(followingUser.profiles?.avatar_url ?? null, followingUser.profiles?.username ?? '')
                       }} 
                       style={styles.followerAvatar} 
                     />
@@ -1285,7 +1373,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Layout.horizontalPadding,
-    paddingTop: 35,
+    paddingTop: 60,
     paddingBottom: 12,
   },
   logo: {
@@ -1401,6 +1489,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 10,
     marginBottom: 5,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
   },
   statItem: {
     alignItems: 'center',
@@ -1434,7 +1524,7 @@ const styles = StyleSheet.create({
   postsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 5,
+    paddingVertical: 5,
   },
   postContainer: {
     width: '33.33%',
@@ -1740,5 +1830,89 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Additional styles to match my profile
+  editButtonContainer: {
+    borderRadius: 25,
+    minWidth: 140,
+    maxWidth: 160,
+    minHeight: 36,
+    shadowColor: '#00D4FF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    overflow: 'hidden',
+    flex: 0,
+  },
+  editButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    minWidth: 140,
+    maxWidth: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 36,
+    flex: 1,
+  },
+  editButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    letterSpacing: 0.5,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  workoutPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  workoutPlaceholderText: {
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  workoutBadgeOverlay: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(108, 92, 231, 0.9)',
+    borderRadius: 10,
+    padding: 3,
+  },
+  draftsFolder: {
+    width: '100%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  draftsText: {
+    marginTop: 8,
+    fontWeight: '600',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 50,
+  },
+  emptyText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  postItem: {
+    width: '33.333%',
+    aspectRatio: 1,
+    padding: 1,
   },
 });

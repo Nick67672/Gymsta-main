@@ -16,7 +16,9 @@ import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { BlockingProvider } from '@/context/BlockingContext';
 import { TabProvider } from '@/context/TabContext';
+import { UnitProvider } from '@/context/UnitContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+
 
 function LoadingScreen() {
   const { theme } = useTheme();
@@ -44,6 +46,7 @@ function AppContent() {
     <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="register" />
+        <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="+not-found" />
@@ -63,7 +66,9 @@ export default function RootLayout() {
             <AuthProvider>
               <BlockingProvider>
                 <TabProvider>
-                  <AppContent />
+                  <UnitProvider>
+                    <AppContent />
+                  </UnitProvider>
                 </TabProvider>
               </BlockingProvider>
             </AuthProvider>

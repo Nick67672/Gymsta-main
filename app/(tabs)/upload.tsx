@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList } from 'react-native';
-import { Camera, Upload, Search, X, MapPin, AtSign, Save } from 'lucide-react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList, SafeAreaView, PanResponder } from 'react-native';
+import { Camera, Upload, Search, X, MapPin, AtSign, Save, ArrowLeft } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,7 +31,7 @@ interface User {
 
 interface Tag {
   user: User;
-  position: number;
+  position: { x: number; y: number };
 }
 
 interface Location {
@@ -41,6 +41,77 @@ interface Location {
 }
 
 const DRAFTS_KEY_PREFIX = 'post_drafts_';
+
+interface DraggableTagProps {
+  tag: Tag;
+  index: number;
+  colors: any;
+  imageSize: { width: number; height: number };
+  onUpdate: (index: number, position: { x: number; y: number }) => void;
+  onRemove: (index: number) => void;
+}
+
+const DraggableTag: React.FC<DraggableTagProps> = ({
+  tag,
+  index,
+  colors,
+  imageSize,
+  onUpdate,
+  onRemove,
+}) => {
+  const basePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        basePositionRef.current = {
+          x: tag.position.x * (imageSize.width || 1),
+          y: tag.position.y * (imageSize.height || 1),
+        };
+      },
+      onPanResponderMove: (_evt, gestureState) => {
+        if (!imageSize.width || !imageSize.height) return;
+        const nextX = basePositionRef.current.x + gestureState.dx;
+        const nextY = basePositionRef.current.y + gestureState.dy;
+        const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
+        const normalizedX = clamp(nextX / imageSize.width, 0, 1);
+        const normalizedY = clamp(nextY / imageSize.height, 0, 1);
+        onUpdate(index, { x: normalizedX, y: normalizedY });
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (!imageSize.width || !imageSize.height) return;
+        const nextX = basePositionRef.current.x + gestureState.dx;
+        const nextY = basePositionRef.current.y + gestureState.dy;
+        const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
+        const normalizedX = clamp(nextX / imageSize.width, 0, 1);
+        const normalizedY = clamp(nextY / imageSize.height, 0, 1);
+        onUpdate(index, { x: normalizedX, y: normalizedY });
+      },
+    })
+  ).current;
+
+  return (
+    <View
+      style={[
+        styles.tagOverlay,
+        {
+          left: `${tag.position.x * 100}%`,
+          top: `${tag.position.y * 100}%`,
+        },
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <View style={[styles.tagBubble, { backgroundColor: colors.tint }]}> 
+        <Text style={styles.tagUsername}>{tag.user.username}</Text>
+      </View>
+      <TouchableOpacity style={styles.removeTagButton} onPress={() => onRemove(index)}>
+        <X size={12} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 export default function UploadScreen() {
   const { imageUri: initialImageUri, draftId: draftIdToLoad } = useLocalSearchParams();
@@ -64,10 +135,14 @@ export default function UploadScreen() {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [lastSearch, setLastSearch] = useState('');
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [isTaggingMode, setIsTaggingMode] = useState(false);
+  const [selectedUserForTagging, setSelectedUserForTagging] = useState<User | null>(null);
 
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -78,6 +153,29 @@ export default function UploadScreen() {
 
     return () => clearTimeout(delayDebounceFn);
   }, [userSearchQuery]);
+
+  // Load user profile
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('username, avatar_url')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && data) {
+          setUserProfile(data);
+        }
+      } catch (err) {
+        console.error('Error loading user profile:', err);
+      }
+    };
+
+    loadUserProfile();
+  }, [user]);
 
   // Load a specific draft if a draftId is passed
   useEffect(() => {
@@ -202,6 +300,12 @@ export default function UploadScreen() {
       return;
     }
 
+    // Require a non-empty caption before allowing upload
+    if (!caption || !caption.trim()) {
+      setError('Please add a caption to your post.');
+      return;
+    }
+
     setUploading(true);
     setLoading(true);
     setError(null);
@@ -234,7 +338,7 @@ export default function UploadScreen() {
       }
 
       // --- New logic to handle tags and location ---
-      const captionText = caption.trim() || null;
+      const captionText = caption.trim();
       let taggedUserIds: string[] = [];
 
       if (captionText) {
@@ -279,6 +383,8 @@ export default function UploadScreen() {
         const tagsToInsert = taggedUsers.map(t => ({
           post_id: postData.id,
           user_id: t.user.id,
+          position_x: t.position.x,
+          position_y: t.position.y,
         }));
         
         const { error: tagsError } = await supabase
@@ -349,17 +455,44 @@ export default function UploadScreen() {
   };
 
   const handleTagUser = (user: User) => {
-    // Add @mention to caption at current cursor position (simplified)
-    const newCaption = caption ? `${caption} @${user.username} ` : `@${user.username} `;
-    setCaption(newCaption);
-    
-    // Add to tagged users list
-    setTaggedUsers(prev => [...prev, { user, position: caption.length }]);
+    // Set the user for tagging and enter tagging mode
+    setSelectedUserForTagging(user);
+    setIsTaggingMode(true);
     
     // Reset and close modal
     setShowUserSearchModal(false);
     setUserSearchQuery('');
     setUserSearchResults([]);
+  };
+
+  const handleImageTap = (event: any) => {
+    if (!isTaggingMode || !selectedUserForTagging) return;
+
+    const { locationX, locationY } = event.nativeEvent;
+    if (imageSize.width <= 0 || imageSize.height <= 0) return;
+
+    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
+    const relativeX = clamp(locationX / imageSize.width, 0, 1);
+    const relativeY = clamp(locationY / imageSize.height, 0, 1);
+
+    setTaggedUsers(prev => [
+      ...prev,
+      {
+        user: selectedUserForTagging,
+        position: { x: relativeX, y: relativeY },
+      },
+    ]);
+
+    setIsTaggingMode(false);
+    setSelectedUserForTagging(null);
+  };
+
+  const updateTagPosition = (index: number, newPosition: { x: number; y: number }) => {
+    setTaggedUsers(prev => prev.map((t, i) => (i === index ? { ...t, position: newPosition } : t)));
+  };
+
+  const removeTag = (index: number) => {
+    setTaggedUsers(prev => prev.filter((_, i) => i !== index));
   };
 
   const saveDraft = async () => {
@@ -441,102 +574,181 @@ export default function UploadScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.header}>
-        <ThemedH2>Create Post</ThemedH2>
-      </View>
-
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        <View style={{flex: 1}}>
-          {error && (
-            <View style={[styles.errorContainer, { backgroundColor: colors.error + '20' }]}>
-              <Text style={[styles.error, { color: colors.error }]}>{error}</Text>
-            </View>
-          )}
-
-          <View style={styles.imageAndCaption}>
-            <Image source={{ uri: imageUri as string }} style={styles.preview} />
-            <TextInput
-              style={[styles.captionInput, { 
-                borderColor: colors.border,
-                backgroundColor: colors.inputBackground,
-                color: colors.text
-              }]}
-              placeholder="Write a caption..."
-              placeholderTextColor={colors.textSecondary}
-              value={caption}
-              onChangeText={setCaption}
-              multiline
-            />
-          </View>
-          
-          <View style={styles.optionsContainer}>
-            <ThemedButton 
-              title="Tag People"
-              onPress={() => setShowUserSearchModal(true)}
-              variant="secondary"
-              style={styles.optionButton}
-            />
-            <ThemedButton 
-              title="Link Product"
-              onPress={loadProducts}
-              variant="secondary"
-              style={styles.optionButton}
-              loading={loadingProducts}
-            />
-          </View>
-
-          {selectedProductId && (
-            <View style={[styles.selectedProduct, { backgroundColor: colors.tint + '20' }]}>
-              <Image 
-                source={{ uri: products.find(p => p.id === selectedProductId)?.image_url }}
-                style={styles.productImage}
-              />
-              <View style={styles.productInfo}>
-                <ThemedText style={styles.productName}>
-                  {products.find(p => p.id === selectedProductId)?.name}
-                </ThemedText>
-              </View>
-              <TouchableOpacity 
-                onPress={() => setSelectedProductId(null)} 
-                style={styles.removeProductButton}
-              >
-                <X size={18} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {uploading && (
-            <View style={styles.progressContainer}>
-              <ThemedCaptionText style={styles.progressText}>
-                Uploading: {Math.round(uploadProgress * 100)}%
-              </ThemedCaptionText>
-              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                <View style={[styles.progressFill, { 
-                  width: `${uploadProgress * 100}%`,
-                  backgroundColor: colors.tint,
-                }]} />
-              </View>
-            </View>
-          )}
-        </View>
-      </ScrollView>
-      
-      <View style={[styles.actionButtonsContainer, { borderTopColor: colors.border }]}>
-        <ThemedButton 
-          title="Post"
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Create Post</Text>
+        <TouchableOpacity 
+          style={[styles.postButton, { backgroundColor: colors.tint, opacity: (loading || !caption.trim()) ? 0.6 : 1 }]}
           onPress={handleUpload}
-          style={{ marginBottom: Spacing.sm }}
-          loading={loading}
-        />
-        <ThemedButton 
-          title="Save Draft"
-          onPress={saveDraft}
-          variant="secondary"
-          disabled={loading}
-        />
+          disabled={loading || !caption.trim()}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.postButtonText}>Post</Text>
+          )}
+        </TouchableOpacity>
       </View>
-      
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {error && (
+          <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
+            <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          </View>
+        )}
+
+        {/* Image Preview */}
+        <View style={styles.imageContainer}>
+          <TouchableOpacity 
+            style={styles.imageWrapper}
+            onPress={handleImageTap}
+            activeOpacity={1}
+          >
+            <Image
+              source={{ uri: imageUri as string }}
+              style={styles.previewImage}
+              onLayout={(e) => {
+                const { width, height } = e.nativeEvent.layout;
+                setImageSize({ width, height });
+              }}
+            />
+            
+            {/* Display existing tags with drag-to-move */}
+            {taggedUsers.map((tag, index) => (
+              <DraggableTag
+                key={`${tag.user.id}-${index}`}
+                tag={tag}
+                index={index}
+                colors={colors}
+                imageSize={imageSize}
+                onUpdate={updateTagPosition}
+                onRemove={removeTag}
+              />
+            ))}
+            
+            {/* Show tagging hint when in tagging mode */}
+            {isTaggingMode && selectedUserForTagging && (
+              <View style={styles.taggingHint}>
+                <Text style={[styles.taggingHintText, { color: colors.text }]}>
+                  Tap where you want to tag @{selectedUserForTagging.username}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Caption Input */}
+        <View style={styles.captionSection}>
+          <View style={styles.userInfo}>
+            <Image 
+              source={{ uri: user?.user_metadata?.avatar_url || 'https://via.placeholder.com/40' }} 
+              style={styles.userAvatar} 
+            />
+            <Text style={[styles.username, { color: colors.text }]}>
+              {userProfile?.username || user?.user_metadata?.username || 'user'}
+            </Text>
+          </View>
+          <TextInput
+            style={[styles.captionInput, { 
+              color: colors.text,
+              backgroundColor: colors.background
+            }]}
+            placeholder="Write a caption..."
+            placeholderTextColor={colors.textSecondary}
+            value={caption}
+            onChangeText={setCaption}
+            multiline
+            textAlignVertical="top"
+          />
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, { borderBottomColor: colors.border }]}
+            onPress={() => {
+              if (isTaggingMode) {
+                setIsTaggingMode(false);
+                setSelectedUserForTagging(null);
+              } else {
+                setShowUserSearchModal(true);
+              }
+            }}
+          >
+            <AtSign size={20} color={colors.text} />
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>
+              {isTaggingMode ? 'Cancel Tagging' : 'Tag People'}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, { borderBottomColor: colors.border }]}
+            onPress={loadProducts}
+          >
+            <Search size={20} color={colors.text} />
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Link Product</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Selected Product Display */}
+        {selectedProductId && (
+          <View style={[styles.selectedProduct, { backgroundColor: colors.card }]}>
+            <Image 
+              source={{ uri: products.find(p => p.id === selectedProductId)?.image_url }}
+              style={styles.productImage}
+            />
+            <View style={styles.productInfo}>
+              <Text style={[styles.productName, { color: colors.text }]}>
+                {products.find(p => p.id === selectedProductId)?.name}
+              </Text>
+              <Text style={[styles.productPrice, { color: colors.tint }]}>
+                ${products.find(p => p.id === selectedProductId)?.price.toFixed(2)}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => setSelectedProductId(null)} 
+              style={styles.removeProductButton}
+            >
+              <X size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Upload Progress */}
+        {uploading && (
+          <View style={styles.progressContainer}>
+            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
+              Uploading... {Math.round(uploadProgress * 100)}%
+            </Text>
+            <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressFill, { 
+                width: `${uploadProgress * 100}%`,
+                backgroundColor: colors.tint,
+              }]} />
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Bottom Action Bar */}
+      <View style={[styles.bottomBar, { borderTopColor: colors.border }]}>
+        <TouchableOpacity 
+          style={[styles.draftButton, { borderColor: colors.border }]}
+          onPress={saveDraft}
+          disabled={loading}
+        >
+          <Save size={20} color={colors.textSecondary} />
+          <Text style={[styles.draftButtonText, { color: colors.textSecondary }]}>Save Draft</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Product Modal */}
       <Modal
         visible={showProductModal}
@@ -577,7 +789,7 @@ export default function UploadScreen() {
                         <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>
                           {product.name}
                         </Text>
-                        <Text style={[styles.productPrice, { color: colors.tint }]}>
+                        <Text style={[styles.modalProductPrice, { color: colors.tint }]}>
                           ${product.price.toFixed(2)}
                         </Text>
                         <TouchableOpacity 
@@ -632,8 +844,8 @@ export default function UploadScreen() {
                     style={styles.userItem}
                     onPress={() => handleTagUser(item)}
                   >
-                    <Image source={{ uri: item.avatar_url }} style={styles.userAvatar} />
-                    <Text style={[styles.username, { color: colors.text }]}>{item.username}</Text>
+                    <Image source={{ uri: item.avatar_url }} style={styles.modalUserAvatar} />
+                    <Text style={[styles.modalUsername, { color: colors.text }]}>{item.username}</Text>
                   </TouchableOpacity>
                 )}
                 ListEmptyComponent={
@@ -654,7 +866,7 @@ export default function UploadScreen() {
           </View>
         </View>
       </Modal>
-    </ThemedView>
+    </SafeAreaView>
   );
 }
 
@@ -664,110 +876,151 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
-  title: {
-    fontSize: Typography.h2.fontSize,
-    fontWeight: 'bold',
+  backButton: {
+    padding: Spacing.xs,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  postButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+  },
+  postButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   content: {
     flex: 1,
   },
-  contentContainer: {
-    padding: Spacing.md,
-    flexGrow: 1,
+  imageContainer: {
+    padding: Spacing.lg,
   },
-  imageAndCaption: {
-    flexDirection: 'column',
-    marginBottom: Spacing.md,
-  },
-  preview: {
+  previewImage: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
+  },
+  captionSection: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: Spacing.md,
+  },
+  userAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: Spacing.sm,
+  },
+  username: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   captionInput: {
-    width: '100%',
-    height: 120,
+    fontSize: 16,
+    lineHeight: 24,
+    minHeight: 100,
     textAlignVertical: 'top',
-    padding: Spacing.sm,
-    borderWidth: 1,
-    borderRadius: BorderRadius.sm,
-    fontSize: Typography.bodyMedium.fontSize,
   },
-  errorContainer: {
-    padding: Spacing.md,
-    borderRadius: BorderRadius.sm,
-    marginBottom: Spacing.md,
+  actionButtons: {
+    paddingHorizontal: Spacing.lg,
   },
-  error: {
-    fontWeight: 'bold',
-    textAlign: 'center',
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  actionButtonText: {
+    fontSize: 16,
+    marginLeft: Spacing.md,
   },
   selectedProduct: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    marginBottom: Spacing.md,
+    margin: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
   productImage: {
-    width: 40,
-    height: 40,
+    width: 50,
+    height: 50,
     borderRadius: BorderRadius.sm,
-    marginRight: Spacing.sm,
+    marginRight: Spacing.md,
   },
   productInfo: {
     flex: 1,
   },
   productName: {
-    fontSize: Typography.bodySmall.fontSize,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  productPrice: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   removeProductButton: {
     padding: Spacing.xs,
   },
-  optionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: Spacing.md,
-  },
-  optionButton: {
-    flex: 1,
-    marginHorizontal: Spacing.xs,
-  },
-  actionButtonsContainer: {
-    flexDirection: 'column',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
-    borderTopWidth: 1,
-  },
   progressContainer: {
-    marginVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
   progressText: {
     textAlign: 'center',
     marginBottom: Spacing.sm,
+    fontSize: 14,
   },
   progressBar: {
-    height: 8,
-    borderRadius: 4,
+    height: 4,
+    borderRadius: 2,
   },
   progressFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 2,
   },
-  
-  bottomContainer: {
-    padding: Spacing.md,
+  bottomBar: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
     borderTopWidth: 1,
   },
-
+  draftButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderWidth: 1,
+    borderRadius: BorderRadius.md,
+  },
+  draftButtonText: {
+    fontSize: 16,
+    marginLeft: Spacing.sm,
+  },
+  errorContainer: {
+    margin: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+  },
+  errorText: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  
   // Styles for product modal
   productModalContainer: {
     flex: 1,
@@ -824,7 +1077,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
   },
-  productPrice: {
+  modalProductPrice: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
@@ -862,13 +1115,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee', // Will be replaced by theme color
   },
-  userAvatar: {
+  modalUserAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginRight: Spacing.md,
   },
-  username: {
+  modalUsername: {
     fontSize: Typography.bodyMedium.fontSize,
     fontWeight: '600',
   },
@@ -887,5 +1140,50 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.md,
     fontSize: 16,
+  },
+  imageWrapper: {
+    position: 'relative',
+  },
+  tagOverlay: {
+    position: 'absolute',
+    transform: [{ translateX: -20 }, { translateY: -20 }],
+  },
+  tagBubble: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  tagUsername: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  removeTagButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#ff4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  taggingHint: {
+    position: 'absolute',
+    bottom: Spacing.md,
+    left: Spacing.md,
+    right: Spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+  },
+  taggingHintText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

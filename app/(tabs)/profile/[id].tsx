@@ -325,25 +325,31 @@ export default function PostDetailScreen() {
         )}
       </View>
 
-              <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
-        <FeedPost
-          post={post}
-          colors={colors}
-          playingVideo={playingVideo}
-          currentUserId={currentUserId}
-          flaggedPosts={flaggedPosts}
-          flagging={flagging}
-          setFlagging={setFlagging}
-          setFlaggedPosts={setFlaggedPosts}
-          isAuthenticated={isAuthenticated}
-          showAuthModal={showAuthModal}
-          toggleVideoPlayback={toggleVideoPlayback}
-          navigateToProfile={navigateToProfile}
-          handleLike={handleLike}
-          handleUnlike={handleUnlike}
-          videoRefs={videoRefs}
-          handleDeletePost={handleDeletePost}
-        />
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.postContainer}>
+          <FeedPost
+            post={post}
+            colors={colors}
+            playingVideo={playingVideo}
+            currentUserId={currentUserId}
+            flaggedPosts={flaggedPosts}
+            flagging={flagging}
+            setFlagging={setFlagging}
+            setFlaggedPosts={setFlaggedPosts}
+            isAuthenticated={isAuthenticated}
+            showAuthModal={showAuthModal}
+            toggleVideoPlayback={toggleVideoPlayback}
+            navigateToProfile={navigateToProfile}
+            handleLike={handleLike}
+            handleUnlike={handleUnlike}
+            videoRefs={videoRefs}
+            handleDeletePost={handleDeletePost}
+          />
+        </View>
       </ScrollView>
 
       {/* Block User Modal */}
@@ -410,6 +416,20 @@ const styles = StyleSheet.create({
   moreButton: {
     padding: 10,
     marginRight: 10,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 20,
+  },
+  postContainer: {
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
   menuOverlay: {
     flex: 1,

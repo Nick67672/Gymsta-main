@@ -13,21 +13,20 @@ import {
   ChevronDown,
   X,
   ChevronRight,
-  ChevronLeft as ChevronLeftIcon
+  ChevronLeft as ChevronLeftIcon,
+  Scale
 } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedGestureHandler,
-  withSpring,
-  runOnJS,
 } from 'react-native-reanimated';
 
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useUnits } from '@/context/UnitContext';
 import { supabase } from '@/lib/supabase';
+import { goBack } from '@/lib/goBack';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 
@@ -60,6 +59,7 @@ interface ExerciseData {
 export default function WorkoutHistoryScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { formatWeight, units, updateUnits } = useUnits();
   const colors = Colors[theme];
 
   const [workouts, setWorkouts] = useState<WorkoutData[]>([]);
@@ -70,8 +70,7 @@ export default function WorkoutHistoryScreen() {
   const [selectedWorkoutIndex, setSelectedWorkoutIndex] = useState<number | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
 
-  // Animation values for swipe
-  const translateX = useSharedValue(0);
+  // Animation values for modal
   const modalTranslateX = useSharedValue(screenWidth);
 
   useEffect(() => {
@@ -176,14 +175,13 @@ export default function WorkoutHistoryScreen() {
   const openWorkoutModal = (index: number) => {
     setSelectedWorkoutIndex(index);
     setShowWorkoutModal(true);
-    modalTranslateX.value = withSpring(0);
+    modalTranslateX.value = 0;
   };
 
   const closeWorkoutModal = () => {
-    modalTranslateX.value = withSpring(screenWidth, {}, () => {
-      runOnJS(setShowWorkoutModal)(false);
-      runOnJS(setSelectedWorkoutIndex)(null);
-    });
+    modalTranslateX.value = screenWidth;
+    setShowWorkoutModal(false);
+    setSelectedWorkoutIndex(null);
   };
 
   const nextWorkout = () => {
@@ -198,32 +196,15 @@ export default function WorkoutHistoryScreen() {
     }
   };
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startX = translateX.value;
-    },
-    onActive: (event, context) => {
-      translateX.value = context.startX + event.translationX;
-    },
-    onEnd: (event) => {
-      if (Math.abs(event.velocityX) > 500 || Math.abs(event.translationX) > screenWidth * 0.3) {
-        if (event.translationX > 0) {
-          // Swipe right - go to previous workout
-          runOnJS(previousWorkout)();
-        } else {
-          // Swipe left - go to next workout
-          runOnJS(nextWorkout)();
-        }
-      }
-      translateX.value = withSpring(0);
-    },
-  });
+  const toggleWeightUnit = async () => {
+    const newUnit = units.weight_unit === 'lbs' ? 'kg' : 'lbs';
+    try {
+      await updateUnits({ weight_unit: newUnit });
+    } catch (error) {
+      console.error('Error updating weight unit:', error);
+    }
+  };
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-    };
-  });
 
   const modalAnimatedStyle = useAnimatedStyle(() => {
     return {
@@ -247,8 +228,7 @@ export default function WorkoutHistoryScreen() {
       >
         <View style={styles.modalOverlay}>
           <Animated.View style={[styles.modalContent, modalAnimatedStyle]}>
-            <PanGestureHandler onGestureEvent={gestureHandler}>
-              <Animated.View style={[styles.modalInner, animatedStyle]}>
+            <View style={styles.modalInner}>
                 {/* Modal Header */}
                 <View style={styles.modalHeader}>
                   <TouchableOpacity
@@ -323,7 +303,7 @@ export default function WorkoutHistoryScreen() {
                   <View style={styles.statCard}>
                     <BarChart3 size={24} color={colors.tint} />
                     <Text style={[styles.statValue, { color: colors.text }]}>
-                      {stats.totalVolume.toFixed(0)}kg
+                      {formatWeight(stats.totalVolume, 'kg')}
                     </Text>
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
                   </View>
@@ -364,7 +344,7 @@ export default function WorkoutHistoryScreen() {
                     <ScrollView style={styles.exercisesList} showsVerticalScrollIndicator={false}>
                       {workout.exercises.map((exercise: ExerciseData, idx: number) => (
                         <View key={idx} style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
-                          <Text style={[styles.exerciseName, { color: colors.text }]}>
+                          <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">
                             {exercise?.name || 'Unknown Exercise'}
                           </Text>
                           <View style={styles.setsContainer}>
@@ -373,8 +353,8 @@ export default function WorkoutHistoryScreen() {
                                 <Text style={[styles.setNumber, { color: colors.textSecondary }]}>
                                   Set {setIdx + 1}
                                 </Text>
-                                <Text style={[styles.setDetails, { color: colors.text }]}>
-                                  {set.reps} reps × {set.weight}kg
+                                <Text style={[styles.setDetails, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
+                                  {set.reps} reps × {formatWeight(set.weight, 'kg')}
                                 </Text>
                                 {set.completed && (
                                   <View style={[styles.completedBadge, { backgroundColor: colors.tint }]}>
@@ -408,9 +388,8 @@ export default function WorkoutHistoryScreen() {
                     Swipe left/right to navigate between workouts
                   </Text>
                 </View>
-              </Animated.View>
-            </PanGestureHandler>
-          </Animated.View>
+              </View>
+            </Animated.View>
         </View>
       </Modal>
     );
@@ -487,7 +466,7 @@ export default function WorkoutHistoryScreen() {
                 {workout.exercises.slice(0, 3).map((exercise: ExerciseData, idx: number) => (
                   <View key={idx} style={styles.exerciseItem}>
                     <View style={[styles.exerciseDot, { backgroundColor: colors.tint }]} />
-                    <Text style={[styles.exerciseName, { color: colors.textSecondary }]} numberOfLines={1}>
+                    <Text style={[styles.exerciseName, { color: colors.textSecondary }]} numberOfLines={2} ellipsizeMode="tail">
                       {exercise?.name || 'Unknown Exercise'} ({exercise?.sets?.length || 0} sets)
                     </Text>
                   </View>
@@ -506,7 +485,7 @@ export default function WorkoutHistoryScreen() {
             <View style={styles.statItem}>
               <BarChart3 size={16} color={colors.tint} />
               <Text style={[styles.statValue, { color: colors.text }]}>
-                {stats.totalVolume.toFixed(0)}kg
+                {formatWeight(stats.totalVolume, 'kg')}
               </Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Volume</Text>
             </View>
@@ -559,7 +538,7 @@ export default function WorkoutHistoryScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: colors.card }]}
-          onPress={() => router.back()}
+          onPress={goBack}
         >
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>
@@ -571,12 +550,24 @@ export default function WorkoutHistoryScreen() {
           </Text>
         </View>
         
-        <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.card }]}
-          onPress={() => setShowFilterDropdown(!showFilterDropdown)}
-        >
-          <Filter size={20} color={colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.unitToggleButton, { backgroundColor: colors.card }]}
+            onPress={toggleWeightUnit}
+          >
+            <Scale size={16} color={colors.text} />
+            <Text style={[styles.unitToggleText, { color: colors.text }]}>
+              {units.weight_unit.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.filterButton, { backgroundColor: colors.card }]}
+            onPress={() => setShowFilterDropdown(!showFilterDropdown)}
+          >
+            <Filter size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filter Dropdown */}
@@ -815,15 +806,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    minHeight: 20,
   },
   exerciseDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
+    flexShrink: 0,
   },
   exerciseName: {
     fontSize: 14,
     flex: 1,
+    flexShrink: 1,
+    lineHeight: 18,
   },
   moreExercises: {
     fontSize: 12,
@@ -997,16 +992,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: Spacing.xs,
+    minHeight: 24,
   },
   setNumber: {
     fontSize: 14,
     fontWeight: '500',
     width: 60,
+    flexShrink: 0,
   },
   setDetails: {
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
+    flexShrink: 1,
+    marginRight: Spacing.sm,
   },
   completedBadge: {
     width: 20,
@@ -1033,5 +1032,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     opacity: 0.7,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  unitToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    ...Shadows.light,
+  },
+  unitToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

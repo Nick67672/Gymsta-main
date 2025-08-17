@@ -41,16 +41,18 @@ export default function Auth() {
 
       if (error) throw error;
 
-      // Check if user has a profile
+      // Check if user has a profile and has completed onboarding
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('username')
+          .select('username, has_completed_onboarding')
           .eq('id', user.id)
           .single();
 
         if (!profile) {
           router.replace('/register');
+        } else if (!profile.has_completed_onboarding) {
+          router.replace('/onboarding');
         } else {
           router.replace('/(tabs)');
         }

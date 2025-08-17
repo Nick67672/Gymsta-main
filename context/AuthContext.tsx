@@ -10,6 +10,7 @@ import Colors from '@/constants/Colors';
 interface Profile {
   username: string;
   avatar_url: string;
+  has_completed_onboarding?: boolean;
   // Add other profile fields as needed
 }
 
@@ -98,7 +99,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const { data, error, status } = await supabase
         .from('profiles')
-        .select(`username, avatar_url`)
+        .select(`username, avatar_url, has_completed_onboarding`)
         .eq('id', userId)
         .single();
       if (error && status !== 406) {

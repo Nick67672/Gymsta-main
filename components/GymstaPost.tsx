@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView } from 'expo-video';
 import { router } from 'expo-router';
@@ -40,10 +41,12 @@ import {
   Sparkles,
   Trophy,
   Flame,
+  Eye,
   Users,
   TrendingDown,
   Award,
   Crown,
+  Target as TargetIcon,
 } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useUnits } from '@/context/UnitContext';
@@ -61,7 +64,7 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 // Temporary alias for expo-video
 const Video: any = VideoView;
 
-interface PostProps {
+interface GymstaPostProps {
   post: Post & { comments_count?: number };
   colors: any;
   playingVideo: string | null;
@@ -82,7 +85,7 @@ interface PostProps {
   isMyGymTab?: boolean;
 }
 
-const PostComponent: React.FC<PostProps> = ({
+const GymstaPost: React.FC<GymstaPostProps> = ({
   post,
   colors,
   playingVideo,
@@ -102,39 +105,70 @@ const PostComponent: React.FC<PostProps> = ({
   onCommentCountChange,
   isMyGymTab = false,
 }) => {
-  console.log('🔍 [DEBUG] Post component rendered:', {
-    postId: post.id,
-    isMyGymTab,
-    hasImage: !!post.image_url,
-  });
+  // Animation values for the new design
+  const [cardScale] = useState(new Animated.Value(1));
+  const [cardRotation] = useState(new Animated.Value(0));
+  const [cardElevation] = useState(new Animated.Value(0));
+  const [contentOpacity] = useState(new Animated.Value(0));
+  const [likeAnimation] = useState(new Animated.Value(1));
+  const [doubleTapAnimation] = useState(new Animated.Value(0));
+  const [achievementScale] = useState(new Animated.Value(0));
+  const [engagementPulse] = useState(new Animated.Value(0));
+  const [socialProofOpacity] = useState(new Animated.Value(0));
 
+  const [revealAnimation] = useState(new Animated.Value(0));
+  
   // State management
-  const [showMenu, setShowMenu] = useState(false);
-  const [showComments, setShowComments] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [localCommentsCount, setLocalCommentsCount] = useState(post.comments_count || 0);
   const [isProcessingLike, setIsProcessingLike] = useState(false);
+  const [showAchievement, setShowAchievement] = useState(false);
   const [showEngagementPulse, setShowEngagementPulse] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showWorkoutStats, setShowWorkoutStats] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState(false);
 
   // Unit system
   const { formatWeight } = useUnits();
+  
+  // Gesture handling
 
-  // Animation refs
-  const likeAnimation = useRef(new Animated.Value(1)).current;
-  const doubleTapAnimation = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.95)).current;
-  const cardElevation = useRef(new Animated.Value(0)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-
-  const engagementPulse = useRef(new Animated.Value(0)).current;
-  const socialProofOpacity = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
+  const likeActionRef = useRef(false);
+  const lastLikeActionRef = useRef(0);
+  const singleTapTimeout = useRef<number | null>(null);
+
+  // Check if post has workout data
+  const hasWorkoutData = (post as any).workout_id || post.caption?.includes('#workout') || post.caption?.includes('#fitness');
+  
+  // Simulated workout stats for demonstration
+  const workoutStats = {
+    duration: '45 min',
+    calories: '320 cal',
+    exercises: 8,
+    difficulty: 'Intermediate',
+    type: 'Strength'
+  };
+
+  // Format date helper
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInHours < 48) return 'Yesterday';
+    return date.toLocaleDateString();
+  };
 
   // Check if post is saved function
   const checkIfSaved = async () => {
@@ -169,6 +203,7 @@ const PostComponent: React.FC<PostProps> = ({
     }
   };
 
+  // Enhanced entrance animation with progressive reveal
   useEffect(() => {
     // Check if post is saved
     checkIfSaved();
@@ -202,168 +237,6 @@ const PostComponent: React.FC<PostProps> = ({
       }).start();
     }, 1200);
   }, [currentUserId, post.id]);
-
-  // Enhanced like handler with achievement system
-  const performLikeAction = useCallback(async () => {
-    if (!isAuthenticated) {
-      showAuthModal();
-      return;
-    }
-
-    if (isProcessingLike) return;
-    setIsProcessingLike(true);
-
-    const currentIsLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
-
-    try {
-      if (currentIsLiked) {
-        await handleUnlike(post.id);
-      } else {
-        await handleLike(post.id);
-        
-        // Show engagement pulse
-        setShowEngagementPulse(true);
-        Animated.sequence([
-          Animated.timing(engagementPulse, {
-            toValue: 1,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-          Animated.timing(engagementPulse, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-        ]).start(() => setShowEngagementPulse(false));
-      }
-    } catch (error) {
-      console.error('Error in like action:', error);
-    } finally {
-      setIsProcessingLike(false);
-    }
-  }, [isAuthenticated, currentUserId, post.likes, post.id, isProcessingLike, handleLike, handleUnlike, showAuthModal]);
-
-  // Enhanced double tap handler
-  const handleDoubleTap = useCallback(() => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-
-    if (lastTap.current && (now - lastTap.current) < DOUBLE_TAP_DELAY) {
-      // Double tap detected
-      Animated.sequence([
-        Animated.timing(doubleTapAnimation, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(doubleTapAnimation, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      if (Platform.OS === 'ios') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
-      performLikeAction();
-    }
-    lastTap.current = now;
-  }, [doubleTapAnimation, performLikeAction]);
-
-  // Single tap handler for opening image zoom
-  const handleImageTap = useCallback(() => {
-    if (post.image_url && post.media_type !== 'video') {
-      setShowImageZoom(true);
-    }
-  }, [post.image_url, post.media_type]);
-
-  // Enhanced like button press handler
-  const handleLikePress = useCallback(() => {
-    if (isProcessingLike) return;
-
-    // iOS Haptic feedback
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    // Enhanced heart animation
-    Animated.sequence([
-      Animated.timing(likeAnimation, {
-        toValue: 1.3,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.spring(likeAnimation, {
-        toValue: 1,
-        friction: 3,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    performLikeAction();
-  }, [isProcessingLike, performLikeAction, likeAnimation]);
-
-  // Format date with enhanced styling
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
-    
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-    });
-  };
-
-  // Format likes count
-  const formatLikesCount = (count: number) => {
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
-    return count.toString();
-  };
-
-  // Handle comment count update
-  const handleCommentCountUpdate = useCallback((count: number) => {
-    setLocalCommentsCount(count);
-    onCommentCountChange?.(post.id, count);
-  }, [post.id, onCommentCountChange]);
-
-  // Report post handler
-  const onReportPress = useCallback(async () => {
-    if (Platform.OS === 'ios') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
-
-    setShowMenu(false);
-    setFlagging(prev => ({ ...prev, [post.id]: true }));
-    
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .update({ is_flagged: true })
-        .eq('id', post.id);
-      if (!error) {
-        setFlaggedPosts(prev => ({ ...prev, [post.id]: true }));
-        Alert.alert('Post Reported', 'Thank you for reporting this post. We will review it shortly.');
-      } else {
-        Alert.alert('Error', 'Failed to report post.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to report post.');
-    } finally {
-      setFlagging(prev => ({ ...prev, [post.id]: false }));
-    }
-  }, [flaggedPosts, flagging, post.id]);
 
   const handleSavePost = async () => {
     console.log('🔍 [DEBUG] handleSavePost called, isAuthenticated:', isAuthenticated, 'currentUserId:', currentUserId);
@@ -423,24 +296,149 @@ const PostComponent: React.FC<PostProps> = ({
     }
   };
 
+  // Handle card press with haptic feedback
+  const handleCardPress = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    Animated.sequence([
+      Animated.timing(cardScale, {
+        toValue: 0.98,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [cardScale]);
+
+  // Handle like action with enhanced animation
+  const performLikeAction = useCallback(async () => {
+    if (!isAuthenticated) {
+      showAuthModal();
+      return;
+    }
+
+    if (isProcessingLike) return;
+    setIsProcessingLike(true);
+
+    const now = Date.now();
+    if (now - lastLikeActionRef.current < 500) return;
+    lastLikeActionRef.current = now;
+
+    const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
+
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    // Enhanced like animation
+    Animated.sequence([
+      Animated.timing(likeAnimation, {
+        toValue: 1.3,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(likeAnimation, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    if (isLiked) {
+      handleUnlike(post.id);
+    } else {
+      handleLike(post.id);
+    }
+
+    setTimeout(() => setIsProcessingLike(false), 500);
+  }, [isAuthenticated, showAuthModal, isProcessingLike, currentUserId, post.likes, post.id, handleLike, handleUnlike, likeAnimation]);
+
+  // Handle double tap for like
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+
+    if (lastTap.current && (now - lastTap.current) < DOUBLE_TAP_DELAY) {
+      // Double tap detected
+      Animated.sequence([
+        Animated.timing(doubleTapAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(doubleTapAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      if (Platform.OS === 'ios') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      performLikeAction();
+    }
+    lastTap.current = now;
+  }, [doubleTapAnimation, performLikeAction]);
+
+  // Single tap handler for opening image zoom
+  const handleImageTap = useCallback(() => {
+    if (post.image_url && post.media_type !== 'video') {
+      setShowImageZoom(true);
+    }
+  }, [post.image_url, post.media_type]);
+
+  // Format likes count
+  const formatLikesCount = (count: number) => {
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count.toString();
+  };
+
+  // Handle comment count update
+  const handleCommentCountUpdate = useCallback((count: number) => {
+    setLocalCommentsCount(count);
+    onCommentCountChange?.(post.id, count);
+  }, [post.id, onCommentCountChange]);
+
+  // Report post handler
+  const onReportPress = useCallback(async () => {
+    if (Platform.OS === 'ios') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+
+    setShowMenu(false);
+    setFlagging(prev => ({ ...prev, [post.id]: true }));
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({ is_flagged: true })
+        .eq('id', post.id);
+      if (!error) {
+        setFlaggedPosts(prev => ({ ...prev, [post.id]: true }));
+        Alert.alert('Post Reported', 'Thank you for reporting this post. We will review it shortly.');
+      } else {
+        Alert.alert('Error', 'Failed to report post.');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to report post.');
+    } finally {
+      setFlagging(prev => ({ ...prev, [post.id]: false }));
+    }
+  }, [flaggedPosts, flagging, post.id]);
+
   const isLiked = currentUserId ? post.likes.some(like => like.user_id === currentUserId) : false;
   const shouldTruncateCaption = post.caption && post.caption.length > 100;
   const displayCaption = shouldTruncateCaption && !showFullCaption 
     ? post.caption!.substring(0, 100) + '...' 
     : post.caption;
-
-  // Enhanced workout data detection
-  const hasWorkoutData = post.caption?.includes('#workout') || post.caption?.includes('#fitness');
-  const workoutStats = hasWorkoutData ? {
-    difficulty: 'Intermediate',
-    duration: 45,
-    calories: 320,
-    totalVolume: 2500, // Simulated total volume in kg
-  } : null;
-
-  // Engagement metrics for social proof
-  const isTrending = (post.likes.length + localCommentsCount) > 5;
-  const isViral = (post.likes.length + localCommentsCount) > 15;
 
   return (
     <Animated.View
@@ -449,240 +447,194 @@ const PostComponent: React.FC<PostProps> = ({
         {
           transform: [
             { scale: cardScale },
+            { rotate: cardRotation.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: ['-1deg', '0deg', '1deg'],
+            })},
+
           ],
-          elevation: cardElevation.interpolate({
-            inputRange: [0, 1],
-            outputRange: [8, 16],
-          }),
+          elevation: cardElevation,
           shadowOpacity: cardElevation.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.1, 0.25],
+            outputRange: [0.1, 0.3],
           }),
         },
       ]}
     >
-      {/* Enhanced Floating Card */}
+      {/* Main Floating Card */}
       <Animated.View style={[styles.floatingCard, { backgroundColor: colors.card }]}>
-        {/* Enhanced Background Gradient */}
-        <LinearGradient
-          colors={hasWorkoutData 
-            ? ['rgba(16, 185, 129, 0.08)', 'rgba(59, 130, 246, 0.08)', 'rgba(168, 85, 247, 0.04)'] 
-            : ['rgba(99, 102, 241, 0.08)', 'rgba(168, 85, 247, 0.08)', 'rgba(236, 72, 153, 0.04)']
-          }
-          style={styles.backgroundGradient}
-        />
+          {/* Dynamic Background Gradient */}
+          <LinearGradient
+            colors={hasWorkoutData 
+              ? ['rgba(16, 185, 129, 0.1)', 'rgba(59, 130, 246, 0.1)', 'rgba(168, 85, 247, 0.05)'] 
+              : ['rgba(99, 102, 241, 0.1)', 'rgba(168, 85, 247, 0.1)', 'rgba(236, 72, 153, 0.05)']
+            }
+            style={styles.backgroundGradient}
+          />
 
-        {/* Social Proof Banner */}
-        <Animated.View 
-          style={[
-            styles.socialProofBanner,
-            { opacity: socialProofOpacity }
-          ]}
-        >
-          {isViral && (
-            <View style={styles.trendingBadge}>
-              <Crown size={12} color="#FFD700" />
-              <Text style={styles.trendingText}>VIRAL</Text>
-            </View>
-          )}
-          {isTrending && !isViral && (
-            <View style={styles.trendingBadge}>
-              <TrendingUp size={12} color="#FF6B35" />
-              <Text style={styles.trendingText}>TRENDING</Text>
-            </View>
-          )}
-
-        </Animated.View>
-
-        {/* Enhanced Floating Header */}
-        <Animated.View 
-          style={[
-            styles.floatingHeader,
-            { opacity: contentOpacity }
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.profileSection}
-            onPress={() => navigateToProfile(post.profiles.id ?? '', post.profiles.username)}
-            activeOpacity={0.8}
+          {/* Floating Header */}
+          <Animated.View 
+            style={[
+              styles.floatingHeader,
+              { opacity: contentOpacity }
+            ]}
           >
-            <View style={styles.avatarContainer}>
-              <Image
+            <TouchableOpacity
+              style={styles.profileSection}
+              onPress={() => navigateToProfile(post.profiles.id ?? '', post.profiles.username)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.avatarContainer}>
+                              <Image
                 source={{
                   uri: getAvatarUrl(post.profiles.avatar_url, post.profiles.username),
                 }}
                 style={styles.avatar}
               />
-              {post.profiles.is_verified && (
-                <View style={styles.verifiedBadge}>
-                  <CheckCircle2 size={14} color="#fff" fill="#3B82F6" />
-                </View>
-              )}
-              {hasWorkoutData && (
-                <View style={styles.workoutBadge}>
-                  <Dumbbell size={12} color="#fff" />
-                </View>
-              )}
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={[styles.username, { color: colors.text }]}>
-                {post.profiles.username}
-              </Text>
-              <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
-                {formatDate(post.created_at)}
-              </Text>
-            </View>
-          </TouchableOpacity>
+                {post.profiles.is_verified && (
+                  <View style={styles.verifiedBadge}>
+                    <CheckCircle2 size={14} color="#fff" fill="#3B82F6" />
+                  </View>
+                )}
+                {hasWorkoutData && (
+                  <View style={styles.workoutBadge}>
+                    <Dumbbell size={12} color="#fff" />
+                  </View>
+                )}
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={[styles.username, { color: colors.text }]}>
+                  {post.profiles.username}
+                </Text>
+                <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
+                  {formatDate(post.created_at)}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
+            <TouchableOpacity
+              onPress={() => setShowMenu(true)}
+              style={[styles.menuButton, { backgroundColor: colors.backgroundSecondary }]}
+              activeOpacity={0.8}
+            >
+              <MoreHorizontal size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Interactive Media Section */}
           <TouchableOpacity
-            onPress={() => setShowMenu(true)}
-            style={[styles.menuButton, { backgroundColor: colors.backgroundSecondary }]}
-            activeOpacity={0.8}
+            style={styles.mediaContainer}
+            onPress={handleDoubleTap}
+            activeOpacity={0.95}
           >
-            <MoreHorizontal size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Enhanced Interactive Media Section */}
-        <TouchableOpacity
-          style={styles.mediaContainer}
-          onPress={handleDoubleTap}
-          activeOpacity={0.95}
-        >
-          {post.media_type === 'video' ? (
-            <View style={styles.videoContainer}>
-              <Video
-                ref={(ref: any) => {
-                  videoRefs.current[post.id] = ref;
-                }}
-                source={{ uri: post.image_url }}
-                style={styles.video}
-                useNativeControls={false}
-                isLooping
-                shouldPlay={playingVideo === post.id}
-                onPlaybackStatusUpdate={(status: any) => {
-                  if (status.isLoaded && !status.isPlaying && playingVideo === post.id) {
-                    toggleVideoPlayback(post.id);
-                  }
-                }}
-              />
-              {playingVideo !== post.id && (
+            {post.media_type === 'video' ? (
+              <View style={styles.videoContainer}>
+                <Video
+                  ref={(ref: any) => {
+                    videoRefs.current[post.id] = ref;
+                  }}
+                  source={{ uri: post.image_url }}
+                  style={styles.video}
+                  useNativeControls={false}
+                  isLooping
+                  shouldPlay={false}
+                />
                 <View style={styles.videoOverlay}>
                   <TouchableOpacity
                     style={styles.playButton}
                     onPress={() => toggleVideoPlayback(post.id)}
                   >
-                    <Play size={24} color="#fff" fill="#fff" />
+                    {playingVideo === post.id ? 
+                      <Pause size={28} color="#fff" /> : 
+                      <Play size={28} color="#fff" />
+                    }
                   </TouchableOpacity>
                 </View>
-              )}
-            </View>
-          ) : (
-            <View style={styles.imageContainer}>
-              <TouchableOpacity
-                onPress={handleImageTap}
-                activeOpacity={0.95}
-                style={styles.imageTouchable}
-              >
-                <Image
-                  source={{ uri: post.image_url }}
-                  style={styles.image}
-                  resizeMode="cover"
-                />
-                {!post.image_url && (
-                  <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
-                    <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
-                      No image available
-                    </Text>
-                  </View>
+              </View>
+            ) : (
+              <View style={styles.imageContainer}>
+                <TouchableOpacity
+                  onPress={handleImageTap}
+                  activeOpacity={0.95}
+                  style={styles.imageTouchable}
+                >
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={[styles.image, { opacity: imageLoaded ? 1 : 0 }]}
+                    resizeMode="cover"
+                    onLoad={() => setImageLoaded(true)}
+                  />
+                  {!imageLoaded && (
+                    <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]} />
+                  )}
+                </TouchableOpacity>
+                
+                {/* Workout Achievement Overlay */}
+                {hasWorkoutData && (
+                  <TouchableOpacity
+                    style={styles.achievementOverlay}
+                    onPress={() => setShowWorkoutStats(!showWorkoutStats)}
+                    activeOpacity={0.9}
+                  >
+                    <LinearGradient
+                      colors={['rgba(16, 185, 129, 0.9)', 'rgba(59, 130, 246, 0.9)']}
+                      style={styles.achievementGradient}
+                    >
+                      <View style={styles.achievementContent}>
+                        <Trophy size={20} color="#fff" />
+                        <Text style={styles.achievementText}>Workout Complete!</Text>
+                        <View style={styles.achievementStats}>
+                          <View style={styles.achievementStat}>
+                            <Clock size={14} color="#fff" />
+                            <Text style={styles.achievementStatText}>{workoutStats.duration}</Text>
+                          </View>
+                          <View style={styles.achievementStat}>
+                            <Flame size={14} color="#fff" />
+                            <Text style={styles.achievementStatText}>{workoutStats.calories}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
-            </View>
-          )}
+              </View>
+            )}
 
-          {/* Enhanced Achievement Overlay for Workout Posts */}
-          {hasWorkoutData && (
-            <View style={styles.achievementOverlay}>
-              <LinearGradient
-                colors={['rgba(16, 185, 129, 0.9)', 'rgba(59, 130, 246, 0.9)']}
-                style={styles.achievementGradient}
-              >
-                <View style={styles.achievementContent}>
-                  <Trophy size={24} color="#fff" />
-                  <Text style={styles.achievementText}>Workout Complete!</Text>
-                  <View style={styles.achievementStats}>
-                    {workoutStats && workoutStats.duration > 0 && (
-                      <View style={styles.achievementStat}>
-                        <Clock size={12} color="#fff" />
-                        <Text style={styles.achievementStatText}>{workoutStats.duration}m</Text>
-                      </View>
-                    )}
-                    {workoutStats && workoutStats.calories > 0 && (
-                      <View style={styles.achievementStat}>
-                        <Flame size={12} color="#fff" />
-                        <Text style={styles.achievementStatText}>{workoutStats.calories} cal</Text>
-                      </View>
-                    )}
-                    {workoutStats && workoutStats.totalVolume > 0 && (
-                      <View style={styles.achievementStat}>
-                        <Target size={12} color="#fff" />
-                        <Text style={styles.achievementStatText}>{formatWeight(workoutStats.totalVolume, 'kg')}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </LinearGradient>
-            </View>
-          )}
-
-          {/* Enhanced Double Tap Heart Animation */}
-          <Animated.View
-            style={[
-              styles.doubleTapHeart,
-              {
-                opacity: doubleTapAnimation,
-                transform: [
-                  {
+            {/* Double Tap Heart Animation */}
+            <Animated.View
+              style={[
+                styles.doubleTapHeart,
+                {
+                  opacity: doubleTapAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 1],
+                  }),
+                  transform: [{
                     scale: doubleTapAnimation.interpolate({
                       inputRange: [0, 1],
                       outputRange: [0.5, 1.2],
                     }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <Heart size={80} color="#FF3B30" fill="#FF3B30" />
-          </Animated.View>
-
-
-
-          {/* Engagement Pulse Animation */}
-          {showEngagementPulse && (
-            <Animated.View
-              style={[
-                styles.engagementPulse,
-                {
-                  opacity: engagementPulse,
-                  transform: [{ scale: engagementPulse }],
+                  }],
                 },
               ]}
+              pointerEvents="none"
             >
-              <View style={styles.pulseRing} />
+              <Heart size={80} color="rgba(255, 255, 255, 0.9)" fill="rgba(255, 255, 255, 0.9)" />
             </Animated.View>
-          )}
-        </TouchableOpacity>
 
-        {/* Enhanced Content Section */}
-        <Animated.View 
-          style={[
-            styles.contentSection,
-            { opacity: contentOpacity }
-          ]}
-        >
-          {/* Enhanced Quick Stats Row */}
+            {/* Swipe indicators removed per request */}
+          </TouchableOpacity>
+
+          {/* Progressive Content Reveal */}
+          <Animated.View 
+            style={[
+              styles.contentSection,
+              { opacity: contentOpacity }
+            ]}
+          >
+                      {/* Quick Stats Row */}
           <View style={styles.quickStatsRow}>
-            {hasWorkoutData && workoutStats && (
+            {hasWorkoutData && (
               <View style={styles.statItem}>
                 <Sparkles size={14} color="#10B981" />
                 <Text style={[styles.statText, { color: '#10B981' }]}>
@@ -692,96 +644,96 @@ const PostComponent: React.FC<PostProps> = ({
             )}
           </View>
 
-          {/* Enhanced Caption with Progressive Disclosure */}
-          {post.caption && (
-            <TouchableOpacity
-              style={styles.captionContainer}
-              onPress={() => setIsExpanded(!isExpanded)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.captionText, { color: colors.text }]}>
-                <Text style={[styles.captionAuthor, { color: colors.text }]}>
-                  {post.profiles.username}
-                </Text>
-                {' '}
-                {isExpanded ? post.caption : displayCaption}
-                {shouldTruncateCaption && !isExpanded && (
-                  <Text style={[styles.expandText, { color: colors.textSecondary }]}>
-                    {' '}more
-                  </Text>
-                )}
-              </Text>
-              {shouldTruncateCaption && (
-                <Animated.View style={[
-                  styles.expandIcon,
-                  { transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }
-                ]}>
-                  <ArrowDown size={16} color={colors.textSecondary} />
-                </Animated.View>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Enhanced Product CTA */}
-          {post.product_id && (
-            <TouchableOpacity
-              style={styles.productCTA}
-              onPress={() => {
-                if (!isAuthenticated) {
-                  showAuthModal();
-                  return;
-                }
-                router.push(`/marketplace/${post.product_id}`);
-              }}
-              activeOpacity={0.9}
-            >
-              <LinearGradient
-                colors={['rgba(99, 102, 241, 0.1)', 'rgba(168, 85, 247, 0.1)']}
-                style={styles.productGradient}
-              >
-                <View style={styles.productContent}>
-                  <TrendingUp size={20} color={colors.tint} />
-                  <Text style={[styles.productText, { color: colors.tint }]}>
-                    View Product
-                  </Text>
-                  <ArrowUp size={16} color={colors.tint} />
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </Animated.View>
-
-        {/* Enhanced Floating Action Buttons */}
-        <Animated.View 
-          style={[
-            styles.floatingActions,
-            { opacity: contentOpacity }
-          ]}
-        >
-          <View style={styles.likeContainer}>
-            <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+            {/* Caption with Progressive Disclosure */}
+            {post.caption && (
               <TouchableOpacity
-                onPress={handleLikePress}
-                style={[styles.actionButton, isLiked && styles.likedButton]}
-                activeOpacity={0.7}
-                disabled={isProcessingLike}
+                style={styles.captionContainer}
+                onPress={() => setIsExpanded(!isExpanded)}
+                activeOpacity={0.8}
               >
-                <Heart
-                  size={28}
-                  color={isLiked ? '#FF3B30' : colors.textSecondary}
-                  fill={isLiked ? '#FF3B30' : 'none'}
-                  strokeWidth={2}
-                />
+                <Text style={[styles.captionText, { color: colors.text }]}>
+                  <Text style={[styles.captionAuthor, { color: colors.text }]}>
+                    {post.profiles.username}
+                  </Text>
+                  {' '}
+                  {isExpanded ? post.caption : displayCaption}
+                  {shouldTruncateCaption && !isExpanded && (
+                    <Text style={[styles.expandText, { color: colors.textSecondary }]}>
+                      {' '}more
+                    </Text>
+                  )}
+                </Text>
+                {shouldTruncateCaption && (
+                  <Animated.View style={[
+                    styles.expandIcon,
+                    { transform: [{ rotate: isExpanded ? '180deg' : '0deg' }] }
+                  ]}>
+                    <ArrowDown size={16} color={colors.textSecondary} />
+                  </Animated.View>
+                )}
               </TouchableOpacity>
-            </Animated.View>
-            {post.likes.length > 0 && (
-              <Text style={[styles.likeCount, { color: colors.text }]}>
-                {post.likes.length}
-              </Text>
             )}
-          </View>
 
-          <View style={styles.commentContainer}>
+            {/* Product CTA with Enhanced Design */}
+            {post.product_id && (
+              <TouchableOpacity
+                style={styles.productCTA}
+                onPress={() => {
+                  if (!isAuthenticated) {
+                    showAuthModal();
+                    return;
+                  }
+                  router.push(`/marketplace/${post.product_id}`);
+                }}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={['rgba(99, 102, 241, 0.1)', 'rgba(168, 85, 247, 0.1)']}
+                  style={styles.productGradient}
+                >
+                  <View style={styles.productContent}>
+                    <TrendingUp size={20} color={colors.tint} />
+                    <Text style={[styles.productText, { color: colors.tint }]}>
+                      View Product
+                    </Text>
+                    <ArrowUp size={16} color={colors.tint} />
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+
+          {/* Floating Action Buttons */}
+          <Animated.View 
+            style={[
+              styles.floatingActions,
+              { opacity: contentOpacity }
+            ]}
+          >
+            <View style={styles.likeContainer}>
+              <Animated.View style={{ transform: [{ scale: likeAnimation }] }}>
+                <TouchableOpacity
+                  onPress={performLikeAction}
+                  style={[styles.actionButton, isLiked && styles.likedButton]}
+                  activeOpacity={0.7}
+                  disabled={isProcessingLike}
+                >
+                  <Heart
+                    size={28}
+                    color={isLiked ? '#FF3B30' : colors.textSecondary}
+                    fill={isLiked ? '#FF3B30' : 'none'}
+                    strokeWidth={2}
+                  />
+                </TouchableOpacity>
+              </Animated.View>
+              {post.likes.length > 0 && (
+                <Text style={[styles.likeCount, { color: colors.text }]}>
+                  {post.likes.length}
+                </Text>
+              )}
+            </View>
+
+                      <View style={styles.commentContainer}>
             <TouchableOpacity
               onPress={() => {
                 if (!isAuthenticated) {
@@ -805,13 +757,13 @@ const PostComponent: React.FC<PostProps> = ({
             )}
           </View>
 
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            activeOpacity={0.7}
-            onPress={() => setShowShareModal(true)}
-          >
-            <Share2 size={28} color={colors.textSecondary} strokeWidth={2} />
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              activeOpacity={0.7}
+              onPress={() => setShowShareModal(true)}
+            >
+              <Share2 size={28} color={colors.textSecondary} strokeWidth={2} />
+            </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.actionButton} 
@@ -826,8 +778,8 @@ const PostComponent: React.FC<PostProps> = ({
               fill={isSaved ? colors.tint : 'none'}
             />
           </TouchableOpacity>
+          </Animated.View>
         </Animated.View>
-      </Animated.View>
 
       {/* Modals */}
       <Modal
@@ -929,38 +881,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 1,
   },
-  socialProofBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-    zIndex: 3,
-  },
-  trendingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-  },
-  trendingText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  engagementStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  engagementText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
   floatingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1052,12 +972,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    fontSize: 16,
-    fontWeight: '500',
   },
   videoContainer: {
     aspectRatio: 1,
@@ -1132,41 +1046,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10,
   },
-  achievementAnimation: {
+  swipeIndicators: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -50 }, { translateY: -50 }],
-    zIndex: 15,
-  },
-  achievementAnimationGradient: {
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.xs,
+    zIndex: 5,
   },
-  achievementAnimationText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  engagementPulse: {
+  swipeIndicator: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -50 }, { translateY: -50 }],
-    zIndex: 12,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  pulseRing: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 59, 48, 0.3)',
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+  swipeRight: {
+    right: Spacing.lg,
+  },
+  swipeLeft: {
+    left: Spacing.lg,
+  },
+  swipeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   contentSection: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: 0,
     zIndex: 2,
   },
   quickStatsRow: {
@@ -1186,9 +1104,8 @@ const styles = StyleSheet.create({
   },
   captionContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: Spacing.md,
-    paddingHorizontal: Spacing.lg,
   },
   captionText: {
     fontSize: 15,
@@ -1309,4 +1226,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PostComponent; 
+export default GymstaPost; 

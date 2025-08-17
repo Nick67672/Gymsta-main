@@ -11,15 +11,17 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
+import { markAllNotificationsAsRead, getUnreadNotificationCount } from '@/lib/notificationUtils';
 
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBlocking } from '@/context/BlockingContext';
 import { useTab } from '@/context/TabContext';
+import { HomeScreenProvider, useHomeScreen } from '@/context/HomeScreenContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
-import FeedPost from '../../components/Post';
+import GymstaPost from '../../components/GymstaPost';
 import StoriesRail from '../../components/StoriesRail';
 import EnhancedWorkoutPost from '../../components/EnhancedWorkoutPost';
 import { Story, Profile, Post, Workout } from '../../types/social';
@@ -163,21 +165,24 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
               >
                 {tab.label}
               </Animated.Text>
+              {tab.originalIndex === activeTabIndex && (
+                <View style={[tikTokStyles.activeUnderline, { backgroundColor: tintColor }]} />
+              )}
             </TouchableOpacity>
           ))}
         </View>
-        <View style={[tikTokStyles.indicator, { backgroundColor: tintColor }]} />
       </Animated.View>
     </PanGestureHandler>
   );
 };
 
-export default function HomeScreen() {
+function HomeScreenContent() {
   const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
   const { activeTab, setActiveTab, activeTabIndex, setActiveTabIndex } = useTab();
+  const { listRef, setRefreshFunction } = useHomeScreen();
   
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -353,28 +358,13 @@ export default function HomeScreen() {
         setCurrentUserId(null);
       }
 
-      const { data, error } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles (
-            id,
-            username,
-            avatar_url,
-            is_verified,
-            gym
-          ),
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .order('created_at', { ascending: false });
+      // Use the get_feed_posts function which includes privacy logic
+      const { data, error } = await supabase.rpc('get_feed_posts');
 
       if (error) throw error;
 
       // Get comment counts for all posts
-      const postIds = data?.map(post => post.id) || [];
+      const postIds = data?.map((post: any) => post.id) || [];
       let commentCounts: { [postId: string]: number } = {};
       
       if (postIds.length > 0) {
@@ -390,18 +380,13 @@ export default function HomeScreen() {
         }, {} as { [postId: string]: number });
       }
       
-      const postsWithMediaType = (data || []).map(post => ({
+      const postsWithMediaType = (data || []).map((post: any) => ({
         ...post,
         media_type: post.media_type || 'image',
         comments_count: commentCounts[post.id] || 0
       }));
       
-      // Filter out posts from blocked users
-      const filteredPosts = postsWithMediaType.filter(post => 
-        !blockedUserIds.includes((post.profiles as any).id)
-      );
-      
-      setPosts(filteredPosts as Post[]);
+      setPosts(postsWithMediaType as Post[]);
     } catch (err) {
       // Capture Supabase PostgrestError details if available for easier debugging
       if (typeof err === 'object' && err !== null) {
@@ -415,7 +400,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [blockedUserIds]);
+  }, []);
 
   const loadGymWorkouts = async () => {
     try {
@@ -514,35 +499,17 @@ export default function HomeScreen() {
         return;
       }
 
-      // Load posts from followed users
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select(`
-          id,
-          user_id,
-          caption,
-          image_url,
-          media_type,
-          created_at,
-          product_id,
-          profiles (
-            id,
-            username,
-            avatar_url,
-            is_verified,
-            gym
-          ),
-          likes (
-            id,
-            user_id
-          )
-        `)
-        .in('user_id', followingIds)
-        .order('created_at', { ascending: false });
+      // Use get_feed_posts function which includes privacy logic, then filter for followed users
+      const { data: feedPosts, error: feedError } = await supabase.rpc('get_feed_posts');
 
-      if (postsError) throw postsError;
+      if (feedError) throw feedError;
 
-      const postsWithMediaType = (postsData || []).map(post => ({
+      // Filter posts to only include those from followed users
+      const followingPosts = (feedPosts || []).filter((post: any) => 
+        followingIds.includes(post.user_id)
+      );
+
+      const postsWithMediaType = followingPosts.map((post: any) => ({
         ...post,
         media_type: post.media_type || 'image'
       }));
@@ -587,18 +554,9 @@ export default function HomeScreen() {
     }
 
     try {
-      // Load unread notifications count
-      const { count: notificationCount, error: notificationError } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
-
-      if (notificationError) {
-        console.error('Error loading notification count:', notificationError);
-      } else {
-        setUnreadNotifications(notificationCount || 0);
-      }
+      // Load unread notifications count using utility function
+      const notificationCount = await getUnreadNotificationCount();
+      setUnreadNotifications(notificationCount);
 
       // Load unread messages count (you'll need to implement this based on your messages table structure)
       // For now, setting a placeholder - you can implement based on your chat/messages schema
@@ -1098,6 +1056,11 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  // Set the refresh function in the context
+  useEffect(() => {
+    setRefreshFunction(onRefresh);
+  }, [onRefresh, setRefreshFunction]);
+
   // Filter posts based on active tab
   const filteredPosts = activeTab === 'my-gym' && currentUserGym
     ? posts.filter(post => (post.profiles as any).gym === currentUserGym)
@@ -1147,7 +1110,7 @@ export default function HomeScreen() {
   // Individual post renderer for FlashList
   const renderPost = useCallback(
     ({ item }: { item: Post }) => (
-      <FeedPost
+      <GymstaPost
         post={item}
         colors={colors}
         playingVideo={playingVideo}
@@ -1162,8 +1125,8 @@ export default function HomeScreen() {
         navigateToProfile={navigateToProfile}
         handleLike={handleLike}
         handleUnlike={handleUnlike}
-        handleDeletePost={handleDeletePost}
         videoRefs={videoRefs}
+        handleDeletePost={handleDeletePost}
         onCommentCountChange={handleCommentCountChange}
         isMyGymTab={activeTab === 'my-gym'}
       />
@@ -1172,7 +1135,7 @@ export default function HomeScreen() {
   );
 
   const renderExploreItem = ({ item }: { item: Post }) => (
-    <FeedPost
+    <GymstaPost
       post={item}
       colors={colors}
       playingVideo={playingVideo}
@@ -1197,7 +1160,7 @@ export default function HomeScreen() {
   const renderFollowingItem = ({ item }: { item: Post | Workout }) => {
     if ('caption' in item) { // It's a Post
       return (
-        <FeedPost
+        <GymstaPost
           post={item}
           colors={colors}
           playingVideo={playingVideo}
@@ -1212,8 +1175,8 @@ export default function HomeScreen() {
           navigateToProfile={navigateToProfile}
           handleLike={handleLike}
           handleUnlike={handleUnlike}
-          videoRefs={videoRefs}
           handleDeletePost={handleDeletePost}
+          videoRefs={videoRefs}
           isMyGymTab={activeTab === 'my-gym'}
         />
       );
@@ -1282,10 +1245,18 @@ export default function HomeScreen() {
                 
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
-                  onPress={() => {
+                  onPress={async () => {
                     if (Platform.OS === 'ios') {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     }
+                    
+                    // Mark all notifications as read
+                    const success = await markAllNotificationsAsRead();
+                    if (success) {
+                      setUnreadNotifications(0);
+                    }
+                    
+                    // Navigate to notifications screen
                     router.push('/notifications');
                   }}
                 >
@@ -1404,7 +1375,7 @@ export default function HomeScreen() {
                     <>
                       {gymContent.map((item) => (
                         item.type === 'post' ? (
-                          <FeedPost
+                          <GymstaPost
                             key={`post-${item.id}`}
                             post={item}
                             colors={colors}
@@ -1453,6 +1424,7 @@ export default function HomeScreen() {
               </ScrollView>
             ) : (
               <FlashList
+                ref={listRef}
                 data={filteredPosts}
                 renderItem={renderPost}
                 estimatedItemSize={400}
@@ -1892,11 +1864,19 @@ const tikTokStyles = StyleSheet.create({
     ...Typography.bodyLarge,
     textAlign: 'center',
   },
-  indicator: {
+  activeUnderline: {
     height: 2,
-    width: 30,
+    width: '50%',
     alignSelf: 'center',
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
     borderRadius: 1,
   },
 });
+
+export default function HomeScreen() {
+  return (
+    <HomeScreenProvider>
+      <HomeScreenContent />
+    </HomeScreenProvider>
+  );
+}

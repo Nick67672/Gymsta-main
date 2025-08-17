@@ -15,7 +15,9 @@ import {
   Share,
   Clipboard,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   X, 
   Send, 
@@ -46,6 +48,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Profile } from '@/types/social';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -55,6 +58,7 @@ interface ShareModalProps {
   postTitle?: string;
   postImageUrl?: string;
   authorUsername?: string;
+  visible: boolean;
   onClose: () => void;
   colors: any;
 }
@@ -81,9 +85,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   postTitle, 
   postImageUrl, 
   authorUsername,
+  visible,
   onClose, 
   colors 
 }) => {
+  const insets = useSafeAreaInsets();
   const { profile: currentUserProfile, user: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'friends' | 'external'>('friends');
   const [following, setFollowing] = useState<Profile[]>([]);
@@ -508,14 +514,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         style={[styles.userItem, { backgroundColor: colors.card }]}
         onPress={() => handleToggleUser(item)}
         activeOpacity={0.7}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <View style={styles.userInfo}>
-          <Image
-            source={{ 
-              uri: item.avatar_url || `https://api.dicebear.com/8.x/avataaars/svg?seed=${item.username}` 
-            }}
-            style={styles.avatar}
-          />
+                     <Image
+             source={{ 
+               uri: getAvatarUrl(item.avatar_url, item.username)
+             }}
+             style={styles.avatar}
+           />
           <View style={styles.userDetails}>
             <Text style={[styles.username, { color: colors.text }]}>{item.username}</Text>
             {item.is_verified && (
@@ -586,7 +593,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   return (
-    <Modal visible transparent animationType="none" onRequestClose={handleClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
       <Animated.View 
         style={[
           styles.overlay, 
@@ -614,189 +621,198 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             }
           ]}
         >
-          {/* Header */}
-          <View style={[styles.header, { borderBottomColor: colors.border }]}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.headerCenter}>
-              <Text style={[styles.title, { color: colors.text }]}>Share Post</Text>
-              {shareStats && (
-                <TouchableOpacity 
-                  onPress={() => setShowShareStats(!showShareStats)}
-                  style={styles.statsToggle}
-                >
-                  <Text style={[styles.statsText, { color: colors.textSecondary }]}>
-                    {shareStats.total_shares || 0} shares
-                  </Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            style={{ flex: 1 }}
+          >
+            {/* Header */}
+            <View style={[styles.header, { borderBottomColor: colors.border }]}>
+              <View style={styles.headerLeft}>
+                <TouchableOpacity onPress={handleClose} style={styles.closeButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <X size={24} color={colors.text} />
                 </TouchableOpacity>
-              )}
-            </View>
-            
-            <View style={styles.headerRight}>
-              <TouchableOpacity 
-                style={[styles.sendButton, { backgroundColor: colors.tint }]}
-                onPress={activeTab === 'friends' ? handleDirectMessage : handleExternalShare}
-                disabled={activeTab === 'friends' ? selectedUsers.length === 0 || isSending : isSending}
-              >
-                {isSending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Send size={20} color="#FFFFFF" />
+              </View>
+              
+              <View style={styles.headerCenter}>
+                <Text style={[styles.title, { color: colors.text }]}>Share Post</Text>
+                {shareStats && (
+                  <TouchableOpacity 
+                    onPress={() => setShowShareStats(!showShareStats)}
+                    style={styles.statsToggle}
+                  >
+                    <Text style={[styles.statsText, { color: colors.textSecondary }]}>
+                      {shareStats.total_shares || 0} shares
+                    </Text>
+                  </TouchableOpacity>
                 )}
+              </View>
+              
+              <View style={styles.headerRight}>
+                <TouchableOpacity 
+                  style={[styles.sendButton, { backgroundColor: colors.tint }]}
+                  onPress={activeTab === 'friends' ? handleDirectMessage : handleExternalShare}
+                  disabled={activeTab === 'friends' ? selectedUsers.length === 0 || isSending : isSending}
+                >
+                  {isSending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Send size={20} color="#FFFFFF" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {renderShareStats()}
+
+            {/* Tabs */}
+            <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'friends' && { borderBottomColor: colors.tint }
+                ]}
+                onPress={() => setActiveTab('friends')}
+              >
+                <Users size={20} color={activeTab === 'friends' ? colors.tint : colors.textSecondary} />
+                <Text style={[
+                  styles.tabText,
+                  { color: activeTab === 'friends' ? colors.tint : colors.textSecondary }
+                ]}>
+                  Friends
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.tab,
+                  activeTab === 'external' && { borderBottomColor: colors.tint }
+                ]}
+                onPress={() => setActiveTab('external')}
+              >
+                <Globe size={20} color={activeTab === 'external' ? colors.tint : colors.textSecondary} />
+                <Text style={[
+                  styles.tabText,
+                  { color: activeTab === 'external' ? colors.tint : colors.textSecondary }
+                ]}>
+                  Share
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
 
-          {renderShareStats()}
+            {/* Content */}
+            <View style={[styles.content, { paddingBottom: insets.bottom }]}>
+              {activeTab === 'friends' ? (
+                <>
+                  {/* Search */}
+                  <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
+                    <Search size={20} color={colors.textSecondary} />
+                    <TextInput
+                      ref={searchInputRef}
+                      style={[styles.searchInput, { color: colors.text }]}
+                      placeholder="Search friends..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={searchText}
+                      onChangeText={setSearchText}
+                    />
+                  </View>
 
-          {/* Tabs */}
-          <View style={[styles.tabContainer, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity
-              style={[
-                styles.tab,
-                activeTab === 'friends' && { borderBottomColor: colors.tint }
-              ]}
-              onPress={() => setActiveTab('friends')}
-            >
-              <Users size={20} color={activeTab === 'friends' ? colors.tint : colors.textSecondary} />
-              <Text style={[
-                styles.tabText,
-                { color: activeTab === 'friends' ? colors.tint : colors.textSecondary }
-              ]}>
-                Friends
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.tab,
-                activeTab === 'external' && { borderBottomColor: colors.tint }
-              ]}
-              onPress={() => setActiveTab('external')}
-            >
-              <Globe size={20} color={activeTab === 'external' ? colors.tint : colors.textSecondary} />
-              <Text style={[
-                styles.tabText,
-                { color: activeTab === 'external' ? colors.tint : colors.textSecondary }
-              ]}>
-                Share
-              </Text>
-            </TouchableOpacity>
-          </View>
+                  {/* Selected Users */}
+                  {selectedUsers.length > 0 && (
+                    <View style={styles.selectedUsersContainer}>
+                      <Text style={[styles.selectedUsersTitle, { color: colors.text }]}>
+                        Selected ({selectedUsers.length})
+                      </Text>
+                      <FlatList
+                        data={selectedUsers}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={[styles.selectedUserChip, { backgroundColor: colors.tint }]}
+                            onPress={() => handleToggleUser(item)}
+                          >
+                                                       <Image
+                               source={{ 
+                                 uri: getAvatarUrl(item.avatar_url, item.username)
+                               }}
+                               style={styles.selectedUserAvatar}
+                             />
+                            <Text style={styles.selectedUserName}>{item.username}</Text>
+                            <X size={16} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        )}
+                        keyExtractor={(item) => item.id!}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.selectedUsersList}
+                      />
+                    </View>
+                  )}
 
-          {/* Content */}
-          <View style={styles.content}>
-            {activeTab === 'friends' ? (
-              <>
-                {/* Search */}
-                <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
-                  <Search size={20} color={colors.textSecondary} />
-                  <TextInput
-                    ref={searchInputRef}
-                    style={[styles.searchInput, { color: colors.text }]}
-                    placeholder="Search friends..."
-                    placeholderTextColor={colors.textSecondary}
-                    value={searchText}
-                    onChangeText={setSearchText}
+                  {/* Friends List */}
+                  {loading ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="large" color={colors.tint} />
+                      <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                        Loading friends...
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={filteredFollowing}
+                      renderItem={renderUserItem}
+                      keyExtractor={(item) => item.id!}
+                      style={styles.friendsList}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="always"
+                      contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}
+                      ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                          <Users size={48} color={colors.textSecondary} />
+                          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                            {searchText ? 'No friends found' : 'No friends to share with'}
+                          </Text>
+                        </View>
+                      }
+                    />
+                  )}
+
+                  {/* Message Input */}
+                  {selectedUsers.length > 0 && (
+                    <View style={[styles.messageContainer, { borderTopColor: colors.border }]}>
+                      <TextInput
+                        style={[
+                          styles.messageInput,
+                          { 
+                            color: colors.text,
+                            backgroundColor: colors.card,
+                            borderColor: colors.border
+                          }
+                        ]}
+                        placeholder="Add a message..."
+                        placeholderTextColor={colors.textSecondary}
+                        value={message}
+                        onChangeText={setMessage}
+                        multiline
+                        maxLength={200}
+                      />
+                    </View>
+                  )}
+                </>
+              ) : (
+                <View style={styles.externalShareContainer}>
+                  <FlatList
+                    data={externalShareOptions}
+                    renderItem={renderExternalOption}
+                    keyExtractor={(item) => item.id}
+                    numColumns={2}
+                    columnWrapperStyle={styles.externalOptionsRow}
+                    contentContainerStyle={[styles.externalOptionsList, { paddingBottom: 24 + insets.bottom }]}
+                    keyboardShouldPersistTaps="always"
                   />
                 </View>
-
-                {/* Selected Users */}
-                {selectedUsers.length > 0 && (
-                  <View style={styles.selectedUsersContainer}>
-                    <Text style={[styles.selectedUsersTitle, { color: colors.text }]}>
-                      Selected ({selectedUsers.length})
-                    </Text>
-                    <FlatList
-                      data={selectedUsers}
-                      renderItem={({ item }) => (
-                        <TouchableOpacity
-                          style={[styles.selectedUserChip, { backgroundColor: colors.tint }]}
-                          onPress={() => handleToggleUser(item)}
-                        >
-                          <Image
-                            source={{ 
-                              uri: item.avatar_url || `https://api.dicebear.com/8.x/avataaars/svg?seed=${item.username}` 
-                            }}
-                            style={styles.selectedUserAvatar}
-                          />
-                          <Text style={styles.selectedUserName}>{item.username}</Text>
-                          <X size={16} color="#FFFFFF" />
-                        </TouchableOpacity>
-                      )}
-                      keyExtractor={(item) => item.id!}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.selectedUsersList}
-                    />
-                  </View>
-                )}
-
-                {/* Friends List */}
-                {loading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.tint} />
-                    <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-                      Loading friends...
-                    </Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={filteredFollowing}
-                    renderItem={renderUserItem}
-                    keyExtractor={(item) => item.id!}
-                    style={styles.friendsList}
-                    showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={
-                      <View style={styles.emptyContainer}>
-                        <Users size={48} color={colors.textSecondary} />
-                        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                          {searchText ? 'No friends found' : 'No friends to share with'}
-                        </Text>
-                      </View>
-                    }
-                  />
-                )}
-
-                {/* Message Input */}
-                {selectedUsers.length > 0 && (
-                  <View style={[styles.messageContainer, { borderTopColor: colors.border }]}>
-                    <TextInput
-                      style={[
-                        styles.messageInput,
-                        { 
-                          color: colors.text,
-                          backgroundColor: colors.card,
-                          borderColor: colors.border
-                        }
-                      ]}
-                      placeholder="Add a message..."
-                      placeholderTextColor={colors.textSecondary}
-                      value={message}
-                      onChangeText={setMessage}
-                      multiline
-                      maxLength={200}
-                    />
-                  </View>
-                )}
-              </>
-            ) : (
-              <View style={styles.externalShareContainer}>
-                <FlatList
-                  data={externalShareOptions}
-                  renderItem={renderExternalOption}
-                  keyExtractor={(item) => item.id}
-                  numColumns={2}
-                  columnWrapperStyle={styles.externalOptionsRow}
-                  contentContainerStyle={styles.externalOptionsList}
-                />
-              </View>
-            )}
-          </View>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -821,7 +837,6 @@ const styles = StyleSheet.create({
     maxHeight: screenHeight * 0.85,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 20,
   },
   header: {
     flexDirection: 'row',
@@ -907,6 +922,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingBottom: 20,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -961,10 +977,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 16,
     borderRadius: 12,
     marginBottom: 8,
+    minHeight: 56,
   },
   userInfo: {
     flexDirection: 'row',
@@ -972,9 +989,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     marginRight: 12,
   },
   userDetails: {
@@ -1015,6 +1032,7 @@ const styles = StyleSheet.create({
   externalShareContainer: {
     flex: 1,
     padding: 16,
+    paddingBottom: 20,
   },
   externalOptionsList: {
     paddingVertical: 8,

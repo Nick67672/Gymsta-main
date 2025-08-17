@@ -15,6 +15,7 @@ import {
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
+import { useUnits } from '@/context/UnitContext';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -49,6 +50,7 @@ interface SwipeableSetRowProps {
   onCompleteSet: (exerciseIndex: number, setIndex: number) => void;
   onDeleteSet: (exerciseIndex: number, setIndex: number) => void;
   onUpdateSetValue: (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight', value: number) => void;
+  formatWeight: (weight: number, fromUnit?: 'lbs' | 'kg', toUnit?: 'lbs' | 'kg') => string;
 }
 
 const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
@@ -59,6 +61,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
   onCompleteSet,
   onDeleteSet,
   onUpdateSetValue,
+  formatWeight,
 }) => {
   const [isEditingWeight, setIsEditingWeight] = useState(false);
   const [weightInput, setWeightInput] = useState(set.weight.toString());
@@ -280,7 +283,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
                     onPress={() => setIsEditingWeight(true)}
                   >
                     <Text style={[styles.inputValueText, { color: colors.text }]}>
-                      {set.weight}
+                      {formatWeight(set.weight, 'kg')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -344,6 +347,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { units, formatWeight } = useUnits();
 
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(workout);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -908,6 +912,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
                   onCompleteSet={completeSet}
                   onDeleteSet={deleteSet}
                   onUpdateSetValue={updateSetValue}
+                  formatWeight={formatWeight}
                 />
               ))}
             </View>

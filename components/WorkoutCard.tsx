@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, PanResponder, Animated
 import { LinearGradient } from 'expo-linear-gradient';
 import { Dumbbell, Clock, TrendingUp, ChevronLeft } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface WorkoutCardProps {
   workout: {
@@ -122,8 +123,7 @@ const WorkoutCard: React.FC<WorkoutCardProps> = ({
         <View style={styles.userInfo}>
           <Image
             source={{
-              uri: workout.profiles.avatar_url ||
-                `https://source.unsplash.com/random/100x100/?portrait`
+              uri: getAvatarUrl(workout.profiles.avatar_url, workout.profiles.username)
             }}
             style={styles.avatar}
           />

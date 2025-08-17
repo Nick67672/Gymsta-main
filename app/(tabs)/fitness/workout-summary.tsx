@@ -1,111 +1,140 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Check, Image as ImageIcon, ChevronLeft, Camera, Save, Share2, Eye, Star } from 'lucide-react-native';
+import { Image as ImageIcon, ChevronLeft, Camera, Eye, Dumbbell } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
-import { ThemedInput } from '@/components/ThemedInput';
-import { ThemedButton } from '@/components/ThemedButton';
 import { showImagePickerOptions } from '@/lib/imagePickerUtils';
 import { useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { useTab } from '@/context/TabContext';
+import WorkoutSwipeDisplay from '@/components/WorkoutSwipeDisplay';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 
 export default function WorkoutSummaryScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { theme } = useTheme();
   const colors = Colors[theme];
-  const { setActiveTab, setActiveTabIndex } = useTab();
   const insets = useSafeAreaInsets();
 
-  const [myGymChecked, setMyGymChecked] = useState(false);
-  const [justForMeChecked, setJustForMeChecked] = useState(false);
-  const [title, setTitle] = useState('');
-  const [caption, setCaption] = useState('');
-  const [privateNotes, setPrivateNotes] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [showPreview, setShowPreview] = useState(false);
-
+  const [showSwipeDisplay, setShowSwipeDisplay] = useState(false);
+  const [workoutData, setWorkoutData] = useState<any>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [shareToFeed, setShareToFeed] = useState<boolean>(false);
+  const [justForMe, setJustForMe] = useState<boolean>(true);
+  const [hasSavedShareInfo, setHasSavedShareInfo] = useState<boolean>(false);
 
   // Track saving state & grab params / auth
   const [saving, setSaving] = useState(false);
   const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
   const { currentUserId } = useAuth();
 
-  // Add safety check for required dependencies
-  React.useEffect(() => {
-    console.log('Workout Summary Screen loaded');
-    console.log('Workout ID:', workoutId);
-    console.log('User ID:', currentUserId);
-    console.log('Colors available:', !!colors);
-    console.log('Image picker utils available:', typeof showImagePickerOptions);
+  // Load workout data
+  useEffect(() => {
+    if (workoutId && currentUserId) {
+      loadWorkoutData();
+    }
   }, [workoutId, currentUserId]);
 
+  const loadWorkoutData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('workouts')
+        .select('*')
+        .eq('id', workoutId)
+        .single();
 
-
-  // Quick fill options
-  const quickFillOptions = [
-    { emoji: '💪', title: 'Crushed It!', caption: 'Just absolutely crushed this workout! Feeling stronger every day 💪' },
-    { emoji: '🔥', title: 'Tough One', caption: 'That was a grind, but we got through it! 🔥 No pain, no gain' },
-    { emoji: '📈', title: 'New PR!', caption: 'Hit a new personal record today! 📈 Progress never stops' },
-    { emoji: '😤', title: 'Grind Mode', caption: 'Put in the work today 😤 Consistency is everything' }
-  ];
-
-  const handleQuickFill = (option: typeof quickFillOptions[0]) => {
-    setTitle(option.title);
-    setCaption(option.caption);
-    // Stay on current step (step 3) since we're already on the content step
+      if (error) throw error;
+      setWorkoutData(data);
+    } catch (error) {
+      console.error('Error loading workout data:', error);
+      Alert.alert('Error', 'Failed to load workout data');
+    }
   };
 
   const handlePickPhoto = async () => {
     try {
-      console.log('Photo picker button pressed');
-      
-      // Add visual feedback that the button was pressed
-      Alert.alert('Photo Picker', 'Opening image picker...', [], { cancelable: true });
-      
       const uri = await showImagePickerOptions();
-      console.log('Image picker returned:', uri);
       if (uri) {
         setPhotoUri(uri);
-        console.log('Photo URI set:', uri);
-        Alert.alert('Success', 'Photo selected successfully!');
-        setCurrentStep(2);
-      } else {
-        console.log('No image selected or picker cancelled');
-        Alert.alert('Info', 'No photo was selected.');
+        // Upload photo and get URL
+        await uploadPhoto(uri);
       }
     } catch (error) {
-      console.error('Error in handlePickPhoto:', error);
-      Alert.alert('Error', `Failed to open image picker: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error picking photo:', error);
+      Alert.alert('Error', 'Failed to pick photo');
     }
   };
 
-  const handleTakePhoto = async () => {
+  const uploadPhoto = async (uri: string) => {
+    if (!currentUserId) return;
+
     try {
-      // This would use camera directly - for now, use same picker
-      const uri = await showImagePickerOptions();
-      if (uri) {
-        setPhotoUri(uri);
-        setCurrentStep(2);
+      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${currentUserId}/${fileName}`;
+      const WORKOUT_IMAGES_BUCKET = process.env.EXPO_PUBLIC_WORKOUT_IMAGES_BUCKET ?? 'workout_images';
+      
+      let uploadError;
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        
+        ({ error: uploadError } = await supabase.storage
+          .from(WORKOUT_IMAGES_BUCKET)
+          .upload(filePath, blob, { 
+            contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+            cacheControl: '3600',
+            upsert: false
+          }));
+      } else {
+        const formData = new FormData();
+        formData.append('file', {
+          uri: uri,
+          name: fileName,
+          type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+        } as any);
+
+        ({ error: uploadError } = await supabase.storage
+          .from(WORKOUT_IMAGES_BUCKET)
+          .upload(filePath, formData, {
+            contentType: 'multipart/form-data',
+            cacheControl: '3600',
+            upsert: false
+          }));
       }
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicData } = supabase.storage
+        .from(WORKOUT_IMAGES_BUCKET)
+        .getPublicUrl(filePath);
+      
+      setPhotoUrl(publicData?.publicUrl ?? null);
     } catch (error) {
-      Alert.alert('Error', 'Failed to take photo');
+      console.error('Error uploading photo:', error);
+      Alert.alert('Error', 'Failed to upload photo');
     }
   };
 
-  const getCharacterCount = (text: string, limit: number = 280) => {
-    return `${text.length}/${limit}`;
+  const handleShowWorkoutDisplay = () => {
+    if (!workoutData) {
+      Alert.alert('Error', 'No workout data available');
+      return;
+    }
+    setShowSwipeDisplay(true);
   };
 
-  const isOverLimit = (text: string, limit: number = 280) => {
-    return text.length > limit;
+  const handleCloseWorkoutDisplay = () => {
+    setShowSwipeDisplay(false);
+    // Navigate back to workout tracker
+    router.push('/fitness/workout-tracker');
   };
-
-
 
   const handleDone = async () => {
     if (saving) return;
@@ -118,383 +147,204 @@ export default function WorkoutSummaryScreen() {
     setSaving(true);
 
     try {
-      let photoUrl: string | null = null;
-
-      // Upload progress photo if one was picked
-      if (photoUri) {
-        const fileExt = photoUri.split('.').pop() || 'jpg';
-        const fileName = `${Date.now()}.${fileExt}`;
-        const filePath = `${currentUserId}/${fileName}`;
-
-        // Allow bucket name to be configured via env
-        const WORKOUT_IMAGES_BUCKET = process.env.EXPO_PUBLIC_WORKOUT_IMAGES_BUCKET ?? 'workout_images';
-        
-        let uploadError;
-        
-        if (Platform.OS === 'web') {
-          // Web upload using fetch + blob
-          const response = await fetch(photoUri);
-          const blob = await response.blob();
-          
-          ({ error: uploadError } = await supabase.storage
-            .from(WORKOUT_IMAGES_BUCKET)
-            .upload(filePath, blob, { 
-              contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-              cacheControl: '3600',
-              upsert: false
-            }));
-        } else {
-          // Mobile upload using FormData
-          const formData = new FormData();
-          formData.append('file', {
-            uri: photoUri,
-            name: fileName,
-            type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-          } as any);
-
-          ({ error: uploadError } = await supabase.storage
-            .from(WORKOUT_IMAGES_BUCKET)
-            .upload(filePath, formData, {
-              contentType: 'multipart/form-data',
-              cacheControl: '3600',
-              upsert: false
-            }));
-        }
-
-        if (uploadError) {
-          console.error('Photo upload error:', uploadError);
-          Alert.alert('Upload Error', 'Failed to upload photo. Please try again.');
-          return; // Don't save anything if upload fails
-        } else {
-          // Verify the file exists before getting URL
-          const { data: fileData, error: downloadError } = await supabase.storage
-            .from(WORKOUT_IMAGES_BUCKET)
-            .download(filePath);
-            
-          if (downloadError) {
-            console.error('File verification failed:', downloadError);
-            Alert.alert('Upload Error', 'Photo upload verification failed. Please try again.');
-            return;
-          }
-          
-          const { data: publicData } = supabase.storage
-            .from(WORKOUT_IMAGES_BUCKET)
-            .getPublicUrl(filePath);
-          console.log('Public URL data', publicData);
-          photoUrl = publicData?.publicUrl ?? null;
-          console.log('Verified photo URL:', photoUrl);
-        }
+      // Enforce rule: If sharing to feed, photo is required
+      if (shareToFeed && !photoUrl) {
+        Alert.alert('Photo required', 'Please add a workout photo to share to the feed.');
+        return;
       }
 
-      // Insert summary record linked to this workout
-      const { error } = await supabase.from('workout_sharing_information').insert({
-        workout_id: workoutId,
-        user_id: currentUserId,
-        title,
-        caption,
-        private_notes: privateNotes,
-        photo_url: photoUrl,
-        is_my_gym: myGymChecked,
-        is_just_for_me: justForMeChecked,
-      });
+      // Save sharing preferences once
+      if (!hasSavedShareInfo && currentUserId) {
+        const { error } = await supabase
+          .from('workout_sharing_information')
+          .insert({
+            workout_id: workoutId,
+            user_id: currentUserId,
+            title: null,
+            caption: null,
+            private_notes: null,
+            photo_url: photoUrl,
+            is_my_gym: !!shareToFeed,
+            is_just_for_me: !!justForMe,
+          });
 
-      // If posting to My Gym, create a post with the actual workout data
-      if (myGymChecked) {
-        // Create a post with the workout data (no time tracking required)
-        const { error: postError } = await supabase.from('posts').insert({
-          user_id: currentUserId,
-          content: caption || title || 'Check out my workout! 💪',
-          image_url: photoUrl,
-          workout_id: workoutId,
-          post_type: 'workout',
-          is_public: true,
-        });
-
-        if (postError) {
-          console.error('Error creating workout post:', postError);
+        if (error) {
+          console.error('Failed to save workout sharing info:', error);
+          Alert.alert('Error', 'Failed to save workout sharing preferences.');
+          return;
         }
+
+        setHasSavedShareInfo(true);
       }
 
-      if (error) {
-        console.error('Insert error:', error);
-        throw error;
-      }
-
-      // Navigate back to tracker with success message
-      Alert.alert(
-        'Workout Posted! 🎉', 
-        'Your workout has been shared successfully!',
-        [
-          {
-            text: 'View Feed',
-            onPress: () => {
-              setActiveTab('my-gym');
-              setActiveTabIndex(2);
-              router.replace('/(tabs)');
-            },
-          },
-          {
-            text: 'Post Another',
-            onPress: () => {
-              // Reset form for another post
-              setTitle('');
-              setCaption('');
-              setPrivateNotes('');
-              setPhotoUri(null);
-              setCurrentStep(1);
-              setMyGymChecked(false);
-              setJustForMeChecked(false);
-            },
-          },
-          {
-            text: 'Done',
-            onPress: () => router.push('/fitness/workout-tracker'),
-            style: 'default',
-          }
-        ]
-      );
+      // Show the workout display
+      handleShowWorkoutDisplay();
     } catch (err) {
-      console.error('Failed to save workout share info:', err);
-      Alert.alert('Error', 'Failed to save summary, please try again.');
+      console.error('Failed to show workout display:', err);
+      Alert.alert('Error', 'Failed to show workout display, please try again.');
     } finally {
       setSaving(false);
     }
   };
 
-  // Responsive dimensions
-  const progressBarWidth = Math.min(screenWidth * 0.6, 300);
-  const photoPickerHeight = Math.min(screenWidth * 0.9, 400);
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header with Progress */}
-      <View style={[styles.header, { 
-        borderBottomColor: colors.border,
-        paddingTop: insets.top
-      }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/fitness/workout-tracker')}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={[styles.backButton, { backgroundColor: colors.card }]}
+          onPress={() => router.back()}
+        >
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>
+        
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Share Workout</Text>
-          <View style={styles.progressContainer}>
-            <View style={[styles.progressBar, { backgroundColor: colors.backgroundSecondary, width: progressBarWidth }]}>
-              <View style={[styles.progressFill, { 
-                backgroundColor: colors.tint, 
-                width: `${(currentStep / 3) * 100}%` 
-              }]} />
-            </View>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-              Step {currentStep} of 3
-            </Text>
-          </View>
+          <Text style={[styles.title, { color: colors.text }]}>Workout Summary</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Review your completed workout
+          </Text>
         </View>
         
-
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView 
-        contentContainerStyle={styles.content}
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.contentContainer}
       >
-        {/* Step 1: Posting Visibility */}
-        {currentStep === 1 && (
-          <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>🔒 Step 1: Choose Posting Visibility</Text>
-            
-            <View style={styles.visibilitySection}>
-              <Text style={[styles.sectionLabel, { color: colors.text }]}>How would you like to share this workout?</Text>
-              
-              <TouchableOpacity
-                style={[
-                  styles.visibilityOption,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                  myGymChecked && { borderColor: colors.tint, backgroundColor: colors.tint + '10' }
-                ]}
-                onPress={() => {
-                  setMyGymChecked(true);
-                  setJustForMeChecked(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.visibilityOptionContent}>
-                  <View style={[
-                    styles.visibilityCheckbox,
-                    { borderColor: colors.tint },
-                    myGymChecked && { backgroundColor: colors.tint },
-                  ]}>
-                    {myGymChecked && <Check size={16} color="#fff" />}
-                  </View>
-                  <View style={styles.visibilityTextContainer}>
-                    <Text style={[styles.visibilityTitle, { color: colors.text }]}>Share with My Gym</Text>
-                    <Text style={[styles.visibilityDescription, { color: colors.textSecondary }]}>
-                      Post this workout to your gym's feed for others to see and get inspired
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.visibilityOption,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                  justForMeChecked && { borderColor: colors.tint, backgroundColor: colors.tint + '10' }
-                ]}
-                onPress={() => {
-                  setJustForMeChecked(true);
-                  setMyGymChecked(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={styles.visibilityOptionContent}>
-                  <View style={[
-                    styles.visibilityCheckbox,
-                    { borderColor: colors.tint },
-                    justForMeChecked && { backgroundColor: colors.tint },
-                  ]}>
-                    {justForMeChecked && <Check size={16} color="#fff" />}
-                  </View>
-                  <View style={styles.visibilityTextContainer}>
-                    <Text style={[styles.visibilityTitle, { color: colors.text }]}>Keep Private (Just For Me)</Text>
-                    <Text style={[styles.visibilityDescription, { color: colors.textSecondary }]}>
-                      Save this workout privately for your own records and tracking
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-              
-              {(myGymChecked || justForMeChecked) && (
-                <TouchableOpacity
-                  style={[styles.continueButton, { backgroundColor: colors.tint }]}
-                  onPress={() => setCurrentStep(2)}
-                >
-                  <Text style={styles.continueButtonText}>Continue to Photo →</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </>
-        )}
+        {/* Workout Info */}
+        <View style={styles.workoutInfoSection}>
+          <View style={styles.stepHeader}>
+            <Dumbbell size={24} color={colors.tint} />
+            <Text style={[styles.stepTitle, { color: colors.text }]}>
+              Workout Complete! 💪
+            </Text>
+          </View>
+          
+          <Text style={[styles.stepDescription, { color: colors.textSecondary }]}>
+            Great job! Add a photo to remember this workout or view your stats
+          </Text>
+        </View>
 
-        {/* Step 2: Photo (Optional) */}
-        {currentStep === 2 && (
-          <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>📸 Step 2: Add Photo (Optional)</Text>
-            
-            <View style={styles.photoSection}>
-              <TouchableOpacity
-                style={[styles.enhancedPhotoPicker, { backgroundColor: colors.inputBackground, height: photoPickerHeight }]}
-                onPress={handlePickPhoto}
-                activeOpacity={0.8}
-              >
-                {photoUri ? (
-                  <Image source={{ uri: photoUri }} style={styles.photo} />
-                ) : (
-                  <View style={styles.photoPlaceholder}>
-                    <ImageIcon size={48} color={colors.textSecondary} />
-                    <Text style={[styles.photoPlaceholderText, { color: colors.text }]}>
-                      Add Photo
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              
-              <View style={styles.photoActions}>
-                <TouchableOpacity
-                  style={[styles.photoActionButton, { backgroundColor: colors.tint }]}
-                  onPress={handleTakePhoto}
-                >
-                  <Camera size={20} color="#fff" />
-                  <Text style={styles.photoActionText}>Take Photo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.photoActionButton, { backgroundColor: colors.backgroundSecondary }]}
-                  onPress={handlePickPhoto}
-                >
-                  <ImageIcon size={20} color={colors.text} />
-                  <Text style={[styles.photoActionText, { color: colors.text }]}>Choose Photo</Text>
-                </TouchableOpacity>
-              </View>
-              
-              <TouchableOpacity
-                style={[styles.continueButton, { backgroundColor: colors.tint }]}
-                onPress={() => setCurrentStep(3)}
-              >
-                <Text style={styles.continueButtonText}>Continue →</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
-        {/* Step 3: Content */}
-        {currentStep === 3 && (
-          <>
-            <Text style={[styles.stepTitle, { color: colors.text }]}>✍️ Step 3: Tell Your Story</Text>
-            
-            {/* Quick Fill Options */}
-            <Text style={[styles.sectionLabel, { color: colors.text }]}>Quick Fill Options</Text>
-            <View style={styles.quickFillContainer}>
-              {quickFillOptions.map((option, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.quickFillButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => handleQuickFill(option)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.quickFillEmoji}>{option.emoji}</Text>
-                  <Text style={[styles.quickFillText, { color: colors.text }]}>{option.title}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Enhanced Inputs */}
-            <ThemedInput
-              label="Title"
-              value={title}
-              onChangeText={setTitle}
-              placeholder="What was your best lift today?"
-            />
-            
-            <View style={styles.captionContainer}>
-              <ThemedInput
-                label="Caption"
-                value={caption}
-                onChangeText={setCaption}
-                placeholder="Share your workout victory... 💪"
-                multiline
-                style={{ minHeight: 100, textAlignVertical: 'top' }}
-              />
-              <Text style={[
-                styles.characterCount, 
-                { color: isOverLimit(caption) ? colors.error : colors.textSecondary }
-              ]}>
-                {getCharacterCount(caption)}
+        {/* Photo Selection */}
+        <View style={styles.photoSection}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Add a Workout Photo (Optional)
+          </Text>
+          
+          <View style={styles.photoOptions}>
+            <TouchableOpacity
+              style={[styles.photoOption, { backgroundColor: colors.card }]}
+              onPress={handlePickPhoto}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={32} color={colors.tint} />
+              <Text style={[styles.photoOptionText, { color: colors.text }]}>
+                Choose from Gallery
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <ThemedInput
-              label="Private Notes (Optional)"
-              value={privateNotes}
-              onChangeText={setPrivateNotes}
-              placeholder="Add any private notes for yourself..."
-              multiline
-              style={{ minHeight: 80, textAlignVertical: 'top' }}
-            />
+            <TouchableOpacity
+              style={[styles.photoOption, { backgroundColor: colors.card }]}
+              onPress={handlePickPhoto}
+              activeOpacity={0.8}
+            >
+              <Camera size={32} color={colors.tint} />
+              <Text style={[styles.photoOptionText, { color: colors.text }]}>
+                Take Photo
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Final Action Button */}
-            <View style={styles.finalActions}>
-              <TouchableOpacity
-                style={[styles.postButton, { backgroundColor: colors.tint }]}
-                onPress={handleDone}
-                disabled={saving}
-              >
-                <Share2 size={18} color="#fff" />
-                <Text style={styles.postButtonText}>
-                  {saving ? 'Posting...' : 'Post Workout'}
-                </Text>
-              </TouchableOpacity>
+          {/* Photo Preview */}
+          {photoUri && (
+            <View style={[styles.photoPreview, { backgroundColor: colors.card }]}>
+              <Image 
+                source={{ uri: photoUri }} 
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
             </View>
-          </>
-        )}
+          )}
+        </View>
+
+        {/* Visibility Options */}
+        <View style={styles.visibilitySection}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Visibility</Text>
+          <View style={styles.visibilityOptions}>
+            <TouchableOpacity
+              style={[
+                styles.toggleOption,
+                shareToFeed && { borderColor: colors.tint, backgroundColor: colors.tint + '15' },
+                { borderColor: colors.border },
+              ]}
+              onPress={() => {
+                setShareToFeed(true);
+                setJustForMe(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleOptionText, { color: colors.text }]}>Share to Feed</Text>
+              <Text style={[styles.toggleHint, { color: colors.textSecondary }]}>Photo required</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.toggleOption,
+                justForMe && { borderColor: colors.tint, backgroundColor: colors.tint + '15' },
+                { borderColor: colors.border },
+              ]}
+              onPress={() => {
+                setShareToFeed(false);
+                setJustForMe(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleOptionText, { color: colors.text }]}>Just for Me</Text>
+              <Text style={[styles.toggleHint, { color: colors.textSecondary }]}>No photo required</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionSection}>
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: colors.tint }]}
+            onPress={handleDone}
+            disabled={saving}
+          >
+            <Eye size={18} color="#fff" />
+            <Text style={styles.primaryButtonText}>
+              {saving ? 'Loading...' : 'View Workout Summary'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.secondaryButton, { backgroundColor: colors.backgroundSecondary }]}
+            onPress={() => router.push('/fitness/workout-tracker')}
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
+              Back to Tracker
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* Workout Swipe Display Modal */}
+      <Modal
+        visible={showSwipeDisplay}
+        animationType="slide"
+        presentationStyle="fullScreen"
+      >
+        {workoutData && (
+          <WorkoutSwipeDisplay
+            workout={workoutData}
+            photoUrl={photoUrl}
+            onClose={handleCloseWorkoutDisplay}
+          />
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -506,289 +356,142 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
+    justifyContent: 'space-between',
+    paddingTop: 60,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   backButton: {
-    padding: 10,
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: -10,
-  },
-  content: {
-    padding: 20,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    marginRight: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Shadows.light,
   },
-  checkboxLabel: {
-    fontSize: 16,
-  },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  photoPicker: {
-    height: 200,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: 24,
-  },
-  photoPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  // Header styles
   headerCenter: {
     flex: 1,
     alignItems: 'center',
+    marginHorizontal: Spacing.md,
   },
-
-
-  progressContainer: {
-    marginTop: 8,
-    alignItems: 'center',
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
-  progressBar: {
-    height: 4,
-    borderRadius: 2,
-    marginBottom: 4,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 12,
+  subtitle: {
+    fontSize: 14,
     fontWeight: '500',
   },
-
-  
-  // Step styles
+  headerRight: {
+    width: 44,
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.xl,
+  },
+  workoutInfoSection: {
+    marginBottom: Spacing.xl,
+  },
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
   stepTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
   },
-  
-  // Photo section styles
+  stepDescription: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
   photoSection: {
-    marginBottom: 30,
+    marginBottom: Spacing.xl,
   },
-  enhancedPhotoPicker: {
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(0,0,0,0.1)',
-  },
-  photoPlaceholderText: {
+  sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    marginTop: 12,
+    fontWeight: 'bold',
+    marginBottom: Spacing.md,
   },
-  photoHint: {
-    fontSize: 14,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  photoActions: {
+  photoOptions: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
   },
-  photoActionButton: {
+  photoOption: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
+    ...Shadows.light,
   },
-  photoActionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  
-  // Quick fill styles
-  quickFillContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 20,
-  },
-  quickFillButton: {
-    flex: 1,
-    minWidth: '45%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 8,
-  },
-  quickFillEmoji: {
-    fontSize: 20,
-  },
-  quickFillText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
-  // Caption styles
-  captionContainer: {
-    position: 'relative',
-    marginBottom: 20,
-  },
-  characterCount: {
-    position: 'absolute',
-    bottom: 8,
-    right: 12,
-    fontSize: 12,
-  },
-  
-  // Preview styles
-  previewCard: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  previewTitle: {
+  photoOptionText: {
     fontSize: 16,
     fontWeight: '600',
   },
-  previewContent: {
-    gap: 8,
+  photoPreview: {
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...Shadows.light,
   },
   previewImage: {
     width: '100%',
     height: 200,
-    borderRadius: 8,
   },
-  previewText: {
-    fontSize: 16,
-    fontWeight: '600',
+  actionSection: {
+    gap: Spacing.md,
   },
-  previewCaption: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  
-  // Visibility section styles
-  visibilitySection: {
-    marginBottom: 30,
-  },
-  visibilityOption: {
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  visibilityOptionContent: {
+  primaryButton: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  visibilityCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
+    justifyContent: 'center',
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
+    ...Shadows.light,
   },
-  visibilityTextContainer: {
-    flex: 1,
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  visibilityTitle: {
+  secondaryButton: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+  },
+  secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  visibilitySection: {
+    marginBottom: Spacing.xl,
+  },
+  visibilityOptions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  toggleOption: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+  },
+  toggleOptionText: {
+    fontSize: 16,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  visibilityDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  
-  // Action buttons
-  continueButton: {
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  continueButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  finalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  draftButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 8,
-  },
-  draftButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  postButton: {
-    flex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 8,
-    gap: 8,
-  },
-  postButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  toggleHint: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 }); 

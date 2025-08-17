@@ -7,6 +7,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
       <Stack.Screen name="[id]" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="saved-posts" />
     </Stack>
   );
 }

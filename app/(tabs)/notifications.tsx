@@ -15,6 +15,7 @@ import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import GradientButton from '@/components/GradientButton';
 import { useRouter } from 'expo-router';
 import { goBack } from '@/lib/goBack';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface Notification {
   id: string;
@@ -30,6 +31,21 @@ interface Notification {
   post?: {
     id: string;
     image_url: string;
+    user_id: string;
+    caption: string | null;
+    media_type: string;
+    created_at: string;
+    product_id: string | null;
+    profiles: {
+      id: string;
+      username: string;
+      avatar_url: string | null;
+      is_verified: boolean;
+    };
+    likes: {
+      id: string;
+      user_id: string;
+    }[];
   };
   workout?: {
     id: string;
@@ -144,17 +160,11 @@ export default function NotificationsScreen() {
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   const [swipedNotifications, setSwipedNotifications] = useState<Set<string>>(new Set());
 
-  // Mark all notifications as read when screen is focused
+  // Load notifications when screen is focused
   useFocusEffect(
     useCallback(() => {
       if (isAuthenticated) {
         loadNotifications();
-        // Mark all unread notifications as read after a short delay
-        const timer = setTimeout(() => {
-          markAllNotificationsAsRead();
-        }, 1000); // 1 second delay to let user see the notifications first
-
-        return () => clearTimeout(timer);
       }
     }, [isAuthenticated])
   );
@@ -189,7 +199,21 @@ export default function NotificationsScreen() {
           posts!inner (
             id,
             image_url,
-            user_id
+            user_id,
+            caption,
+            media_type,
+            created_at,
+            product_id,
+            profiles (
+              id,
+              username,
+              avatar_url,
+              is_verified
+            ),
+            likes (
+              id,
+              user_id
+            )
           ),
           profiles (
             id,
@@ -239,7 +263,22 @@ export default function NotificationsScreen() {
           ),
           posts (
             id,
-            image_url
+            image_url,
+            user_id,
+            caption,
+            media_type,
+            created_at,
+            product_id,
+            profiles (
+              id,
+              username,
+              avatar_url,
+              is_verified
+            ),
+            likes (
+              id,
+              user_id
+            )
           )
         `)
         .eq('user_id', user.id)
@@ -271,6 +310,11 @@ export default function NotificationsScreen() {
               }
             });
           } else if (notification.type === 'like' && notification.posts) {
+            allNotifications.push({
+              ...baseNotification,
+              post: notification.posts
+            });
+          } else if (notification.type === 'comment' && notification.posts) {
             allNotifications.push({
               ...baseNotification,
               post: notification.posts
@@ -787,8 +831,7 @@ export default function NotificationsScreen() {
               >
                   <Image
                     source={{
-                    uri: item.actor.avatar_url ||
-                      `https://source.unsplash.com/random/100x100/?person&${item.actor.id}`,
+                    uri: getAvatarUrl(item.actor.avatar_url, item.actor.username),
                     }}
                     style={styles.avatar}
                   />
