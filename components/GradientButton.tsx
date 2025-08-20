@@ -35,7 +35,7 @@ export default function GradientButton({
       case 'secondary':
         return [colors.secondaryGradientStart, colors.secondaryGradientEnd] as const;
       case 'logo':
-        return ['#00D4FF', '#A855F7'] as const;
+        return ['#00D4FF', theme === 'dark' ? '#3B82F6' : '#A855F7'] as const;
       default:
         return [colors.primaryGradientStart, colors.primaryGradientEnd] as const;
     }

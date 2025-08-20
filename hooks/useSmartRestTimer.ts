@@ -192,7 +192,7 @@ export const useSmartRestTimer = (context: WorkoutContext, workoutId?: string, i
       time: Math.round(baseTime * 1.25),
       reason: 'Full recovery',
       icon: 'clock',
-      color: '#8B5CF6',
+      color: '#3B82F6',
       confidence: context.exerciseIntensity > 7 ? 0.9 : 0.6
     });
 

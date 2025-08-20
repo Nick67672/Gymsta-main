@@ -1,6 +1,8 @@
 import React from 'react';
 import { View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@/context/ThemeContext';
+import Colors from '@/constants/Colors';
 
 interface GradientTabIconProps {
   children: React.ReactElement;
@@ -15,6 +17,8 @@ export default function GradientTabIcon({
   size = 40, 
   inactiveColor = '#A0A0A0' 
 }: GradientTabIconProps) {
+  const { theme } = useTheme();
+  const themeColors = Colors[theme];
   if (!focused) {
     return (
       <View style={{
@@ -31,7 +35,7 @@ export default function GradientTabIcon({
   // For focused state, create a gradient background with white icon
   return (
     <LinearGradient
-      colors={['#00D4FF', '#A855F7']}
+      colors={[themeColors.primaryGradientStart, themeColors.primaryGradientEnd]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{
@@ -57,9 +61,10 @@ export default function GradientTabIcon({
 
 // For the upload button, we'll create a special gradient version
 export function GradientUploadButton({ children, size = 56 }: { children: React.ReactElement; size?: number }) {
+  const { theme } = useTheme();
   return (
     <LinearGradient
-      colors={['#00D4FF', '#A855F7']}
+      colors={[Colors[theme].primaryGradientStart, Colors[theme].primaryGradientEnd]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{

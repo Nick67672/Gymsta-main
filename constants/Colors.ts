@@ -1,6 +1,6 @@
 // Define theme colors for the app
 const tintColorLight = '#00D4FF'; // Cyan from logo
-const tintColorDark = '#A855F7'; // Purple from logo
+const tintColorDark = '#3B82F6'; // Blue for dark mode accents
 
 export default {
   light: {
@@ -98,11 +98,11 @@ export default {
     shadowLight: 'rgba(255, 255, 255, 0.02)',
     shadowMedium: 'rgba(255, 255, 255, 0.04)',
     shadowHeavy: 'rgba(255, 255, 255, 0.06)',
-    // Gradient colors matching the logo and bottom tab (same in dark mode)
+    // Gradient colors matching the logo and bottom tab (blue replaces purple in dark mode)
     primaryGradientStart: '#00D4FF', // Same cyan as tab for consistency
-    primaryGradientEnd: '#A855F7',   // Same purple as tab
+    primaryGradientEnd: '#3B82F6',   // Blue replaces purple in dark mode
     secondaryGradientStart: '#00D4FF', // Same as primary for consistency
-    secondaryGradientEnd: '#A855F7',   // Same as primary for consistency
+    secondaryGradientEnd: '#3B82F6',   // Blue replaces purple in dark mode
     primary: '#007bff',
     
     // 🎨 NEW: Dark Mode Glassmorphism & Neon Elements
@@ -112,7 +112,7 @@ export default {
     
     // Enhanced neon colors for dark mode
     neonCyan: '#00FFFF',
-    neonPurple: '#B347FF',
+    neonPurple: '#60A5FA',
     neonGreen: '#39FF14',
     neonPink: '#FF10F0',
     

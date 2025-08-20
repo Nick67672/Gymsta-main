@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     ...Typography.bodyLarge,
   },
   error: {
-    color: '#6C5CE7',
+    color: '#3B82F6',
     marginBottom: Spacing.md,
     textAlign: 'center',
     ...Typography.bodyMedium,

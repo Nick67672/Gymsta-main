@@ -757,6 +757,8 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
             )}
           </View>
 
+            <View style={{ flex: 1 }} />
+
             <TouchableOpacity 
               style={styles.actionButton} 
               activeOpacity={0.7}
@@ -860,7 +862,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: Spacing.lg,
+    marginHorizontal: 0,
     marginVertical: Spacing.md,
   },
   floatingCard: {
@@ -1091,7 +1093,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.lg,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   statItem: {
     flexDirection: 'row',
@@ -1105,7 +1107,7 @@ const styles = StyleSheet.create({
   captionContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   captionText: {
     fontSize: 15,
@@ -1125,7 +1127,7 @@ const styles = StyleSheet.create({
   productCTA: {
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
-    marginTop: Spacing.sm,
+    marginTop: Spacing.xs,
   },
   productGradient: {
     paddingVertical: Spacing.md,
@@ -1146,7 +1148,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    paddingTop: 0,
+    paddingBottom: Spacing.xs,
     zIndex: 2,
     gap: Spacing.lg,
   },
@@ -1155,7 +1158,7 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   actionButton: {
-    padding: Spacing.sm,
+    padding: Spacing.xs,
     borderRadius: BorderRadius.lg,
     backgroundColor: 'rgba(0,0,0,0.05)',
   },

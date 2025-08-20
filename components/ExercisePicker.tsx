@@ -99,7 +99,7 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
         name: 'SPECIALTY',
         exercises: EXERCISE_OPTIONS.slice(165, 196),
         icon: '',
-        color: '#6C5CE7'
+        color: '#3B82F6'
       }
     ];
 

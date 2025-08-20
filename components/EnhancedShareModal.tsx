@@ -421,7 +421,7 @@ export const EnhancedShareModal: React.FC<EnhancedShareModalProps> = ({
       title: 'More Options',
       subtitle: 'Use system share sheet',
       icon: <Share2 size={24} color="#FFFFFF" />,
-      color: '#6366F1',
+      color: colors.tint,
       action: handleExternalShare,
       type: 'external',
     },

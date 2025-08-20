@@ -78,7 +78,7 @@ const PostDesignShowcase: React.FC<PostDesignShowcaseProps> = ({ colors }) => {
 
           <View style={[styles.featureCard, { backgroundColor: colors.card }]}>
             <View style={styles.featureIcon}>
-              <Sparkles size={24} color="#8B5CF6" />
+              <Sparkles size={24} color="#3B82F6" />
             </View>
             <Text style={[styles.featureTitle, { color: colors.text }]}>
               Progressive Disclosure
@@ -292,8 +292,8 @@ const PostDesignShowcase: React.FC<PostDesignShowcaseProps> = ({ colors }) => {
           </View>
 
           <View style={styles.benefitItem}>
-            <View style={[styles.benefitIcon, { backgroundColor: '#8B5CF6' + '20' }]}>
-              <Target size={20} color="#8B5CF6" />
+            <View style={[styles.benefitIcon, { backgroundColor: '#3B82F6' + '20' }]}> 
+              <Target size={20} color="#3B82F6" />
             </View>
             <View style={styles.benefitContent}>
               <Text style={[styles.benefitTitle, { color: colors.text }]}>

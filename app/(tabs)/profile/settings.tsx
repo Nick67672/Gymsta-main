@@ -188,8 +188,8 @@ export default function SettingsScreen() {
           <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
             <Text style={[styles.settingLabel, { color: colors.text }]}>Dark Mode</Text>
             <Switch
-              trackColor={{ false: '#E5E5E5', true: '#a395e9' }}
-              thumbColor={isDarkMode ? '#6C5CE7' : '#f4f3f4'}
+              trackColor={{ false: '#E5E5E5', true: '#93C5FD' }}
+              thumbColor={isDarkMode ? '#3B82F6' : '#f4f3f4'}
               ios_backgroundColor="#E5E5E5"
               onValueChange={toggleTheme}
               value={isDarkMode}
@@ -213,8 +213,8 @@ export default function SettingsScreen() {
               <ActivityIndicator size="small" color={colors.tint} />
             ) : (
               <Switch
-                trackColor={{ false: '#E5E5E5', true: '#a395e9' }}
-                thumbColor={isPrivate ? '#6C5CE7' : '#f4f3f4'}
+                trackColor={{ false: '#E5E5E5', true: '#93C5FD' }}
+                thumbColor={isPrivate ? '#3B82F6' : '#f4f3f4'}
                 ios_backgroundColor="#E5E5E5"
                 onValueChange={handlePrivacyToggle}
                 value={isPrivate}

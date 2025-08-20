@@ -50,7 +50,7 @@ export const GradientPresets = {
     Colors[theme].secondaryGradientEnd
   ] as const,
   // Logo-inspired gradient
-  logo: ['#00D4FF', '#A855F7'] as const,
+  logo: ['#00D4FF', '#3B82F6'] as const,
   // Reversed gradient
-  logoReversed: ['#A855F7', '#00D4FF'] as const,
+  logoReversed: ['#3B82F6', '#00D4FF'] as const,
 }; 
