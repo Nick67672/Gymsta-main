@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,11 +20,13 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useUnits } from '@/context/UnitContext';
 import Colors from '@/constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedButton } from '@/components/ThemedButton';
 import { ThemedInput } from '@/components/ThemedInput';
 import WorkoutCalendar from '@/components/WorkoutCalendar';
 import WorkoutSession from '@/components/WorkoutSession';
 import ProgressCharts from '@/components/ProgressCharts';
+import { ActivityRings } from '@/components/ActivityRings';
 import { 
   Plus, 
   Play, 
@@ -258,6 +260,87 @@ export default function WorkoutTrackerScreen() {
     } catch (error) {
       console.error('Error loading progress data:', error);
     }
+  };
+
+  // Helpers
+  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+  const getTodayISO = () => new Date().toISOString().split('T')[0];
+
+  // Derived metrics for engagement UI
+  const todayISO = useMemo(() => getTodayISO(), []);
+  const todayPlannedWorkout = useMemo(() => workouts.find(w => w.date === todayISO), [workouts, todayISO]);
+
+  const volumeByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    progressData.volume.forEach(v => {
+      map[v.date] = (map[v.date] || 0) + (v.value || 0);
+    });
+    return map;
+  }, [progressData.volume]);
+
+  const todayVolume = volumeByDate[todayISO] || 0;
+  const daysActive7 = useMemo(() => {
+    const d = new Date(todayISO);
+    let count = 0;
+    for (let i = 0; i < 7; i++) {
+      const iso = d.toISOString().split('T')[0];
+      if ((volumeByDate[iso] || 0) > 0) count++;
+      d.setDate(d.getDate() - 1);
+    }
+    return count;
+  }, [todayISO, volumeByDate]);
+
+  const totalVolume30d = useMemo(() => {
+    const d = new Date(todayISO);
+    d.setDate(d.getDate() - 29);
+    const start = d.toISOString().split('T')[0];
+    return progressData.volume
+      .filter(v => v.date >= start && v.date <= todayISO)
+      .reduce((sum, v) => sum + (v.value || 0), 0);
+  }, [progressData.volume, todayISO]);
+
+  const moveProgress = clamp(todayVolume / 10000, 0, 1);
+  const exerciseProgress = clamp((todayPlannedWorkout ? 1 : 0), 0, 1);
+  const standProgress = clamp(progressData.streak / 10, 0, 1);
+
+  const quickStartWorkout = () => {
+    const newWorkout: Workout = {
+      id: `qs-${Date.now()}`,
+      name: 'Quick Session',
+      date: todayISO,
+      exercises: [],
+      status: 'in_progress',
+      startTime: new Date()
+    };
+    setCurrentWorkout(newWorkout);
+    setCurrentView('session');
+  };
+
+  const startTemplate = (template: 'Push' | 'Pull' | 'Legs') => {
+    const baseSets = [{ id: `${Date.now()}-s1`, reps: 10, weight: 0, completed: false }];
+    const makeExercise = (name: string) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      sets: baseSets,
+      targetSets: 1,
+      targetReps: 10,
+      targetWeight: 0,
+    });
+    const templates: Record<string, string[]> = {
+      Push: ['Bench Press', 'Overhead Press', 'Tricep Pushdown'],
+      Pull: ['Barbell Row', 'Lat Pulldown', 'Bicep Curl'],
+      Legs: ['Back Squat', 'Romanian Deadlift', 'Leg Press'],
+    };
+    const exercises = (templates[template] || []).map(makeExercise);
+    const newWorkout: Workout = {
+      id: `tpl-${Date.now()}`,
+      name: `${template} Day`,
+      date: todayISO,
+      exercises,
+      status: 'planned'
+    };
+    setCurrentWorkout(newWorkout);
+    setCurrentView('create');
   };
 
   // Calculate 1RM using Epley formula
@@ -637,7 +720,7 @@ export default function WorkoutTrackerScreen() {
   // Render main tracker screen
   const renderMainScreen = () => (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
             style={styles.backButton}
@@ -657,16 +740,130 @@ export default function WorkoutTrackerScreen() {
             <Calendar size={24} color={colors.tint} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.planWorkoutButton, { backgroundColor: colors.tint }]}
-            onPress={startNewWorkoutCreation}
-          >
-            <Text style={styles.planWorkoutButtonText}>Plan workout</Text>
-          </TouchableOpacity>
+          <ThemedButton title="Plan workout" onPress={startNewWorkoutCreation} variant="primary" size="small" />
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        {/* Hero with Activity Rings and Streak */}
+        <LinearGradient
+          colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <View style={styles.heroContent}>
+            <View style={styles.ringsContainer}>
+              <ActivityRings
+                moveProgress={moveProgress}
+                exerciseProgress={exerciseProgress}
+                standProgress={standProgress}
+              />
+            </View>
+            <View style={styles.heroRight}>
+              <Text style={styles.heroTitle}>Keep the streak alive</Text>
+              <Text style={styles.heroSubtitle}>{progressData.streak} day streak • {daysActive7}/7 active</Text>
+              <View style={styles.heroActionsRow}>
+                <TouchableOpacity style={[styles.ctaPrimary]} onPress={quickStartWorkout}>
+                  <Play size={16} color={'white'} />
+                  <Text style={styles.ctaPrimaryText}>Quick start</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.ctaSecondary, { borderColor: 'rgba(255,255,255,0.6)' }]} onPress={startNewWorkoutCreation}>
+                  <Plus size={16} color={'white'} />
+                  <Text style={styles.ctaSecondaryText}>Plan</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* Summary Tiles */}
+        <View style={styles.tilesRow}>
+          <LinearGradient
+            colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.tileGradient}
+          >
+            <Text style={styles.tileLabel}>Streak</Text>
+            <Text style={styles.tileValue}>{progressData.streak} days</Text>
+          </LinearGradient>
+          <LinearGradient
+            colors={[colors.primaryGradientEnd, colors.primaryGradientStart]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.tileGradient}
+          >
+            <Text style={styles.tileLabel}>Active (7d)</Text>
+            <Text style={styles.tileValue}>{daysActive7} days</Text>
+          </LinearGradient>
+          <LinearGradient
+            colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.tileGradient}
+          >
+            <Text style={styles.tileLabel}>Volume (30d)</Text>
+            <Text style={styles.tileValue}>{Math.round(totalVolume30d)}</Text>
+          </LinearGradient>
+        </View>
+
+        {/* Today's plan highlight */}
+        {todayPlannedWorkout && (
+          <View style={[styles.todayCard, { backgroundColor: colors.card }]}>
+            <View style={styles.todayLeft}>
+              <Text style={[styles.todayLabel, { color: colors.textSecondary }]}>Today's plan</Text>
+              <Text style={[styles.todayTitle, { color: colors.text }]} numberOfLines={1}>{todayPlannedWorkout.name}</Text>
+              <Text style={[styles.todayMeta, { color: colors.textSecondary }]}>{todayPlannedWorkout.exercises.length} exercises</Text>
+            </View>
+            <TouchableOpacity style={[styles.beginWorkoutButton, { backgroundColor: colors.tint }]} onPress={() => startWorkoutSession(todayPlannedWorkout)}>
+              <Play size={16} color={'white'} />
+              <Text style={styles.beginWorkoutButtonText}>Start</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Action Tiles */}
+        <View style={styles.tilesRow}>
+          <LinearGradient colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
+            <TouchableOpacity style={styles.tileAction} onPress={quickStartWorkout}>
+              <Play size={18} color={'#fff'} />
+              <Text style={styles.tileActionText}>Quick start</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+          <LinearGradient colors={[colors.primaryGradientEnd, colors.primaryGradientStart]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
+            <TouchableOpacity style={styles.tileAction} onPress={startNewWorkoutCreation}>
+              <Plus size={18} color={'#fff'} />
+              <Text style={styles.tileActionText}>Plan</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+          <LinearGradient colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
+            <TouchableOpacity style={styles.tileAction} onPress={() => setShowCalendar(true)}>
+              <Calendar size={18} color={'#fff'} />
+              <Text style={styles.tileActionText}>Calendar</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+        <View style={styles.tilesRow}>
+          <LinearGradient colors={[colors.primaryGradientEnd, colors.primaryGradientStart]} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.tileGradient, { flex: 1 }] }>
+            <TouchableOpacity style={styles.tileAction} onPress={() => setTimeScale('30d')}>
+              <TrendingUp size={18} color={'#fff'} />
+              <Text style={styles.tileActionText}>Insights</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+          <View style={{ flex: 1, gap: 8 }}>
+            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Push')}>
+              <Text style={styles.templatePillText}>Push</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Pull')}>
+              <Text style={styles.templatePillText}>Pull</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Legs')}>
+              <Text style={styles.templatePillText}>Legs</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Planned Workouts Cards */}
         {workouts.length > 0 ? (
           <>
@@ -675,7 +872,7 @@ export default function WorkoutTrackerScreen() {
             </Text>
             <View style={styles.workoutGrid}>
               {workouts.map((workout) => (
-                <View key={workout.id} style={[styles.workoutGridCard, { backgroundColor: colors.card }]}>
+                <LinearGradient key={workout.id} colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.workoutGridGradient}>
                   <View style={styles.workoutCardHeader}>
                     <TouchableOpacity
                       style={styles.editIconButton}
@@ -684,20 +881,20 @@ export default function WorkoutTrackerScreen() {
                         setShowEditWorkoutModal(true);
                       }}
                     >
-                      <Edit3 size={16} color={colors.text + '60'} />
+                      <Edit3 size={16} color={'#ffffffcc'} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={[styles.workoutGridTitle, { color: colors.text }]}>
+                  <Text style={[styles.workoutGridTitle, { color: '#fff' }]}>
                     {workout.name}
                   </Text>
                   <TouchableOpacity
-                    style={[styles.beginWorkoutButton, { backgroundColor: colors.tint }]}
+                    style={[styles.beginWorkoutButton, { backgroundColor: 'rgba(0,0,0,0.25)' }]}
                     onPress={() => startWorkoutSession(workout)}
                   >
                     <Play size={16} color="white" />
                     <Text style={styles.beginWorkoutButtonText}>Begin Workout</Text>
                   </TouchableOpacity>
-                </View>
+                </LinearGradient>
               ))}
             </View>
           </>
@@ -800,13 +997,13 @@ export default function WorkoutTrackerScreen() {
                   keyboardType="numeric"
                   value={String(s.reps)}
                   onChangeText={v => updatePlannedSet(exercise.id, idx, 'reps', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
                 />
                 <TextInput
                   keyboardType="numeric"
                   value={String(s.weight)}
                   onChangeText={v => updatePlannedSet(exercise.id, idx, 'weight', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
+                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
                 />
                 <View style={{ width: 24, alignItems: 'center' }}>
                   {exercise.sets.length > 1 && (
@@ -819,7 +1016,7 @@ export default function WorkoutTrackerScreen() {
             ))}
 
             {/* Add set link */}
-            <TouchableOpacity style={styles.addSetInline} onPress={() => addSetToExercise(exercise.id)}>
+            <TouchableOpacity style={[styles.addSetInline, { backgroundColor: colors.border }]} onPress={() => addSetToExercise(exercise.id)}>
               <Plus size={16} color={colors.tint} />
               <Text style={styles.addSetInlineText}>Add Set</Text>
             </TouchableOpacity>
@@ -827,14 +1024,14 @@ export default function WorkoutTrackerScreen() {
         ))}
 
         <View style={styles.createWorkoutActions}>
-          <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: colors.tint }]}
+          <ThemedButton
+            title="Save Workout"
             onPress={saveWorkout}
+            variant="primary"
+            size="large"
             disabled={!currentWorkout?.exercises.length}
-          >
-            <CheckCircle size={20} color="white" />
-            <Text style={styles.primaryButtonText}>Save Workout</Text>
-          </TouchableOpacity>
+            icon={<CheckCircle size={18} color="#fff" />}
+          />
         </View>
       </ScrollView>
     </View>
@@ -1316,7 +1513,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    // border color set inline with theme
   },
   headerLeft: {
     width: 44, // Fixed width for back button
@@ -1344,6 +1541,188 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  heroCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  heroContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  ringsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroRight: {
+    flex: 1,
+    gap: 8,
+  },
+  heroTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  heroSubtitle: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  heroActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ctaPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderWidth: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  ctaPrimaryText: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  ctaSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  ctaSecondaryText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  tilesRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  tileGradient: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  tileLabel: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tileValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 6,
+  },
+  tileAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tileActionText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  templatePill: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  templatePillText: {
+    fontWeight: '700',
+    fontSize: 12,
+    color: '#fff',
+  },
+  badgeCard: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  badgeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  badgeValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  todayCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  todayLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  todayLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  todayTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  todayMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  quickAction: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  templatesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  templateChip: {
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  templateText: {
+    fontWeight: '700',
+    fontSize: 12,
   },
   mainCard: {
     borderRadius: 16,
@@ -1664,6 +2043,18 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   workoutGridCard: {
+    width: '48%',
+    minWidth: 150,
+    borderRadius: 12,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    alignItems: 'center',
+  },
+  workoutGridGradient: {
     width: '48%',
     minWidth: 150,
     borderRadius: 12,

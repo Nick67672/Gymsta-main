@@ -108,8 +108,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const searchInputRef = useRef<TextInput>(null);
 
+  // Run entrance animation and (re)load data when the modal becomes visible
   useEffect(() => {
-    // Animate modal entrance
+    if (!visible) return;
+
+    // Reset animation values before showing to ensure it's on-screen
+    slideAnim.setValue(screenHeight);
+    fadeAnim.setValue(0);
+    scaleAnim.setValue(0.8);
+
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
@@ -130,7 +137,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     ]).start();
 
     loadData();
-  }, []);
+  }, [visible]);
 
   const loadData = async () => {
     if (!currentUser) {
@@ -243,143 +250,21 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         console.log(`Sharing to user: ${selectedUser.username} (${selectedUser.id})`);
         
         try {
-          // Find or create chat
-          let chatId: string | null = null;
+          // Use the new database function to handle sharing
+          const { data: chatId, error: shareError } = await supabase
+            .rpc('share_post_to_chat', {
+              p_post_id: postId,
+              p_recipient_id: selectedUser.id,
+              p_message: message.trim() || null
+            });
 
-          const { data: currentUserChats, error: currentChatsErr } = await supabase
-            .from('a_chat_users')
-            .select('chat_id')
-            .eq('user_id', currentUser.id);
-
-          if (currentChatsErr) {
-            console.error('Error fetching current user chats:', currentChatsErr);
-            throw new Error(`Failed to load your chats: ${currentChatsErr.message}`);
+          if (shareError) {
+            console.error(`Error sharing to ${selectedUser.username}:`, shareError);
+            throw new Error(`Failed to share with ${selectedUser.username}: ${shareError.message}`);
           }
 
-          console.log('Current user chats:', currentUserChats);
-
-        if (currentUserChats && currentUserChats.length > 0) {
-          const chatIds = currentUserChats.map((c: any) => c.chat_id);
-
-          const { data: sharedChats, error: sharedChatErr } = await supabase
-            .from('a_chat_users')
-            .select('chat_id')
-            .eq('user_id', selectedUser.id)
-            .in('chat_id', chatIds);
-
-          if (sharedChatErr) {
-            console.error('Error finding shared chats:', sharedChatErr);
-            throw new Error(`Failed to find existing chat with ${selectedUser.username}: ${sharedChatErr.message}`);
-          }
-
-          console.log('Shared chats found:', sharedChats);
-
-          if (sharedChats && sharedChats.length > 0) {
-            chatId = sharedChats[0].chat_id;
-            console.log('Using existing chat:', chatId);
-          }
-        }
-
-        if (!chatId) {
-          console.log('Creating new chat...');
-          const { data: newChat, error: chatError } = await supabase
-            .from('a_chat')
-            .insert({ last_message: 'Shared a post.' })
-            .select('id')
-            .single();
-
-          if (chatError) {
-            console.error('Error creating chat:', chatError);
-            throw new Error(`Failed to create chat with ${selectedUser.username}: ${chatError.message}`);
-          }
-          
-          chatId = newChat.id;
-          console.log('Created new chat:', chatId);
-
-          const { data: maxIdData, error: maxIdError } = await supabase
-            .from('a_chat_users')
-            .select('id')
-            .order('id', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (maxIdError) {
-            console.error('Error getting max ID:', maxIdError);
-            throw maxIdError;
-          }
-          
-          const nextId = (maxIdData?.id || 0) + 1;
-          console.log('Using next ID:', nextId);
-
-          const { error: usersInsertError } = await supabase.from('a_chat_users').insert([
-            { id: nextId, chat_id: chatId, user_id: currentUser.id },
-            { id: nextId + 1, chat_id: chatId, user_id: selectedUser.id },
-          ]);
-
-          if (usersInsertError) {
-            console.error('Error inserting chat users:', usersInsertError);
-            throw usersInsertError;
-          }
-          
-          console.log('Successfully created chat users');
-        }
-
-        // Send message with shared post
-        console.log('Sending message with shared post...');
-        const messageData = {
-          chat_id: chatId,
-          user_id: currentUser.id,
-          message_type: 'post',
-          post_id: postId,
-          message: message.trim() || ' ',
-        };
-        
-        console.log('Message data:', messageData);
-        
-        const { data: insertedMessage, error: messageError } = await supabase
-          .from('a_chat_messages')
-          .insert(messageData)
-          .select('*')
-          .single();
-
-                  if (messageError) {
-            console.error('Error sending message:', messageError);
-            throw new Error(`Failed to send message to ${selectedUser.username}: ${messageError.message}`);
-          }
-        
-        console.log('Successfully inserted message:', insertedMessage);
-
-        // Update last message
-        const { error: lastMessageError } = await supabase
-          .from('a_chat')
-          .update({ last_message: 'Shared a post.' })
-          .eq('id', chatId);
-        
-        if (lastMessageError) {
-          console.error('Error updating last message:', lastMessageError);
-          throw lastMessageError;
-        }
-
-        console.log('Successfully updated last message');
-
-        // Track the share
-        const { data: shareData, error: shareError } = await supabase.from('post_shares').insert({
-          post_id: postId,
-          sharer_id: currentUser.id,
-          recipient_id: selectedUser.id,
-          share_type: 'direct_message',
-          share_medium: 'chat',
-          message: message.trim() || null,
-        }).select('*').single();
-        
-        if (shareError) {
-          console.error('Error tracking share:', shareError);
-          // Don't throw here as the message was sent successfully
-        } else {
-          console.log('Successfully tracked share:', shareData);
-        }
-
-        return true;
+          console.log(`Successfully shared to ${selectedUser.username}, chat ID:`, chatId);
+          return true;
         } catch (shareError) {
           console.error(`Error sharing to ${selectedUser.username}:`, shareError);
           // Return false instead of throwing to allow other shares to continue
@@ -440,12 +325,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       }
 
       // Track the share
-      await supabase.from('post_shares').insert({
-        post_id: postId,
-        sharer_id: currentUser?.id,
-        share_type: 'copy_link',
-        share_medium: 'copy',
-      });
+      if (currentUser?.id) {
+        await supabase.from('post_shares').insert({
+          post_id: postId,
+          sharer_id: currentUser.id,
+          share_type: 'copy_link',
+          share_medium: 'clipboard',
+        });
+      }
 
       Alert.alert('Link Copied! 📋', 'Post link copied to clipboard');
     } catch (err) {
@@ -464,13 +351,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
       const result = await Share.share(shareContent);
       
-      if (result.action === Share.sharedAction) {
+      if (result.action === Share.sharedAction && currentUser?.id) {
         // Track the share
         await supabase.from('post_shares').insert({
           post_id: postId,
-          sharer_id: currentUser?.id,
+          sharer_id: currentUser.id,
           share_type: 'external_link',
-          share_medium: result.activityType || 'unknown',
+          share_medium: result.activityType || 'native_share',
         });
 
         if (Platform.OS === 'ios') {
@@ -593,7 +480,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
+    <Modal 
+      visible={visible} 
+      transparent 
+      animationType="none" 
+      onRequestClose={handleClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+    >
       <Animated.View 
         style={[
           styles.overlay, 
@@ -623,7 +517,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 20}
             style={{ flex: 1 }}
           >
             {/* Header */}
@@ -701,7 +595,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </View>
 
             {/* Content */}
-            <View style={[styles.content, { paddingBottom: insets.bottom }]}>
+            <View style={[styles.content, { paddingBottom: 12 + insets.bottom }]}> 
               {activeTab === 'friends' ? (
                 <>
                   {/* Search */}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, Platform, PanResponder, RefreshControl, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
-import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell, Folder } from 'lucide-react-native';
+import { CircleCheck as CheckCircle2, Heart, Settings, ArrowLeft, Plus, Grid3x3, Activity, Dumbbell, Bell, Folder, Bookmark } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
@@ -16,7 +16,9 @@ import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing } from '@/constants/Spacing';
 import EnhancedWorkoutPost from '@/components/EnhancedWorkoutPost';
+import WeightTracker from '@/components/WeightTracker';
 import FeedPost from '@/components/Post';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface ProfileStory {
   id: string;
@@ -940,7 +942,7 @@ export default function ProfileScreen() {
   };
 
   const handleViewPost = (postId: string) => {
-    router.push(`/post/${postId}`);
+    router.push(`/(tabs)/post/${postId}`);
   };
 
   if (loading) {
@@ -997,6 +999,11 @@ export default function ProfileScreen() {
         <View style={styles.headerButtons}>
                   <TouchableOpacity
           style={styles.settingsButton}
+          onPress={() => router.push('/profile/saved-posts')}>
+          <Bookmark size={24} color="#fff" />
+        </TouchableOpacity>
+                  <TouchableOpacity
+          style={styles.settingsButton}
           onPress={navigateToSettings}>
           <Settings size={24} color="#fff" />
         </TouchableOpacity>
@@ -1015,7 +1022,7 @@ export default function ProfileScreen() {
             ]}>
             <Image
               source={{ 
-                uri: profile.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                uri: getAvatarUrl(profile.avatar_url, profile.username)
               }}
               style={styles.profileImage}
             />
@@ -1210,13 +1217,14 @@ export default function ProfileScreen() {
         )}
 
         {activeTab === 'lifts' && (
-          lifts.length === 0 ? (
-            <View style={styles.progressContainer}>
-              <Text style={[styles.progressText, { color: colors.textSecondary }]}>No lift records to show yet.</Text>
-              <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
-            </View>
-          ) : (
-            <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView style={{ paddingHorizontal: Layout.horizontalPadding }} contentContainerStyle={{ paddingBottom: 20 }}>
+            <WeightTracker />
+            {lifts.length === 0 ? (
+              <View style={styles.progressContainer}>
+                <Text style={[styles.progressText, { color: colors.textSecondary }]}>No lift records to show yet.</Text>
+                <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
+              </View>
+            ) : (
               <View style={styles.postsGrid}>
                 {lifts.map((lift) => (
                   <TouchableOpacity
@@ -1236,8 +1244,8 @@ export default function ProfileScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </ScrollView>
-          )
+            )}
+          </ScrollView>
         )}
 
         {activeTab === 'workouts' && (
@@ -1520,7 +1528,7 @@ export default function ProfileScreen() {
                     }}>
                     <Image 
                       source={{ 
-                        uri: follower.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                        uri: getAvatarUrl(follower.profiles?.avatar_url ?? null, follower.profiles?.username || 'default')
                       }} 
                       style={styles.followerAvatar} 
                     />
@@ -1581,7 +1589,7 @@ export default function ProfileScreen() {
                     }}>
                     <Image 
                       source={{ 
-                        uri: followingUser.profiles?.avatar_url || 'https://source.unsplash.com/random/200x200/?portrait'
+                        uri: getAvatarUrl(followingUser.profiles?.avatar_url ?? null, followingUser.profiles?.username || 'default')
                       }} 
                       style={styles.followerAvatar} 
                     />
@@ -1752,9 +1760,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    paddingVertical: 8,
-    marginTop: 8,
-    marginBottom: 4,
+    paddingVertical: 10,
+    marginTop: 10,
+    marginBottom: 5,
+    marginHorizontal: -(Layout.horizontalPadding - 1),
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
   },
   statItem: {
     alignItems: 'center',
@@ -1921,8 +1932,8 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     paddingHorizontal: Layout.horizontalPadding - 1,
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 6,
   },
   toggleButton: {
     flex: 1,
@@ -2110,9 +2121,7 @@ const styles = StyleSheet.create({
   // New styles for edit button (matching follow button)
   editButtonContainer: {
     borderRadius: 25,
-    minWidth: 140,
-    maxWidth: 160,
-    minHeight: 36,
+    minHeight: 44,
     shadowColor: '#00D4FF',
     shadowOffset: {
       width: 0,
@@ -2122,17 +2131,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
     overflow: 'hidden',
-    flex: 0,
+    flex: 1,
   },
   editButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 25,
-    minWidth: 140,
-    maxWidth: 160,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: 44,
     flex: 1,
   },
   editButtonText: {

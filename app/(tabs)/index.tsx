@@ -7,9 +7,9 @@ import { LogIn, MessageSquare, Bell, Search } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
 import { markAllNotificationsAsRead, getUnreadNotificationCount } from '@/lib/notificationUtils';
 
@@ -86,9 +86,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
       
       if (newIndex !== activeTabIndex) {
         // Add haptic feedback for tab change
-        if (Platform.OS === 'ios') {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        }
+        haptics.tabChange();
         setActiveTabIndex(newIndex);
         setActiveTab(tabs[newIndex].key as 'explore' | 'following' | 'my-gym');
       }
@@ -97,9 +95,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
 
   const selectTab = (index: number) => {
     // Add haptic feedback for tab selection
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    haptics.tabChange();
     setActiveTabIndex(index);
     setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
   };
@@ -177,6 +173,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
 };
 
 function HomeScreenContent() {
+  const params = useLocalSearchParams();
   const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
@@ -351,7 +348,7 @@ function HomeScreenContent() {
           .from('profiles')
           .select('gym')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
         
         setCurrentUserGym(profile?.gym || null);
       } else {
@@ -776,6 +773,14 @@ function HomeScreenContent() {
       loadGymWorkouts();
       loadUnreadCounts();
 
+      // If invoked with refresh flag (from double-tap), scroll to top and refresh feed
+      if ((params as any)?.refresh) {
+        if (listRef?.current) {
+          listRef.current.scrollToOffset({ offset: 0, animated: true });
+        }
+        onRefresh();
+      }
+
       // Setup Supabase real-time subscriptions
       // ... (rest of the subscription logic remains the same)
 
@@ -987,9 +992,9 @@ function HomeScreenContent() {
           .from('profiles')
           .select('gym')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (error) throw error;
+        if (error && (error as any).code !== 'PGRST116') throw error;
 
         setCurrentUserGym(profile?.gym || null);
       } catch (err) {
@@ -1044,9 +1049,7 @@ function HomeScreenContent() {
 
   const onRefresh = () => {
     // Add haptic feedback for refresh action
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    haptics.pullToRefresh();
     setRefreshing(true);
     loadPosts();
     loadFeed();
@@ -1234,9 +1237,7 @@ function HomeScreenContent() {
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
                   onPress={() => {
-                    if (Platform.OS === 'ios') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
+                    haptics.tap();
                     router.push('/search');
                   }}
                 >
@@ -1246,9 +1247,7 @@ function HomeScreenContent() {
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
                   onPress={async () => {
-                    if (Platform.OS === 'ios') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
+                    haptics.tap();
                     
                     // Mark all notifications as read
                     const success = await markAllNotificationsAsRead();
@@ -1271,9 +1270,7 @@ function HomeScreenContent() {
                 <TouchableOpacity
                   style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
                   onPress={() => {
-                    if (Platform.OS === 'ios') {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
+                    haptics.tap();
                     router.push('/chat');
                   }}
                 >
@@ -1289,9 +1286,7 @@ function HomeScreenContent() {
               <TouchableOpacity
                 style={[styles.loginButton, { backgroundColor: colors.tint }]}
                 onPress={() => {
-                  if (Platform.OS === 'ios') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  }
+                  haptics.buttonPress();
                   showAuthModal();
                 }}
               >

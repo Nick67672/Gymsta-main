@@ -32,6 +32,7 @@ import {
   Settings
 } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
@@ -147,7 +148,7 @@ export default function WorkoutHubScreen() {
         <View style={styles.headerLeft}>
           <TouchableOpacity
             style={[styles.backButton, { backgroundColor: colors.card }]}
-            onPress={() => router.back()}
+            onPress={goBack}
           >
             <ChevronLeft size={24} color={colors.text} />
           </TouchableOpacity>
@@ -166,7 +167,7 @@ export default function WorkoutHubScreen() {
         </View>
       </Animated.View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Spacing.xl }}>
         {/* Main CTA Card */}
         <Animated.View 
           style={[
@@ -178,13 +179,13 @@ export default function WorkoutHubScreen() {
           ]}
         >
           <TouchableOpacity
-            style={styles.mainCTA}
+            style={[styles.mainCTA, { borderRadius: BorderRadius.xl }]}
             onPress={navigateToWorkoutTracker}
             activeOpacity={0.9}
           >
             <LinearGradient
-              colors={['#667eea', '#764ba2', '#f093fb']}
-              style={styles.mainCTAGradient}
+              colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+              style={[styles.mainCTAGradient, { borderRadius: BorderRadius.xl }]}
             >
               <View style={styles.mainCTAContent}>
                 <View style={styles.mainCTAHeader}>
@@ -216,7 +217,7 @@ export default function WorkoutHubScreen() {
                   </View>
                 </View>
 
-                <View style={styles.mainCTAButton}>
+                <View style={[styles.mainCTAButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
                   <Play size={20} color="#fff" />
                   <Text style={styles.mainCTAButtonText}>Start Now</Text>
                   <ChevronRight size={16} color="#fff" />
@@ -239,7 +240,7 @@ export default function WorkoutHubScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>This Week's Progress</Text>
           
           <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
               <LinearGradient
                 colors={['rgba(16, 185, 129, 0.1)', 'rgba(5, 150, 105, 0.05)']}
                 style={styles.statCardGradient}
@@ -258,7 +259,7 @@ export default function WorkoutHubScreen() {
               </LinearGradient>
             </View>
             
-            <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
               <LinearGradient
                 colors={['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)']}
                 style={styles.statCardGradient}
@@ -277,7 +278,7 @@ export default function WorkoutHubScreen() {
               </LinearGradient>
             </View>
             
-            <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
               <LinearGradient
                 colors={['rgba(245, 158, 11, 0.1)', 'rgba(217, 119, 6, 0.05)']}
                 style={styles.statCardGradient}
@@ -296,7 +297,7 @@ export default function WorkoutHubScreen() {
               </LinearGradient>
             </View>
 
-            <View style={[styles.statCard, { backgroundColor: colors.card }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
               <LinearGradient
                 colors={['rgba(168, 85, 247, 0.1)', 'rgba(147, 51, 234, 0.05)']}
                 style={styles.statCardGradient}
@@ -331,7 +332,7 @@ export default function WorkoutHubScreen() {
           
           <View style={styles.actionCardsGrid}>
             <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: colors.card }]}
+              style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
               onPress={() => router.push('/fitness/workout-history')}
               activeOpacity={0.8}
             >
@@ -348,7 +349,7 @@ export default function WorkoutHubScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: colors.card }]}
+              style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
               onPress={() => router.push('/fitness/workout-tracker')}
               activeOpacity={0.8}
             >

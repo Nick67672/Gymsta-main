@@ -69,6 +69,7 @@ export default function WorkoutHistoryScreen() {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [selectedWorkoutIndex, setSelectedWorkoutIndex] = useState<number | null>(null);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [isUpdatingUnits, setIsUpdatingUnits] = useState(false);
 
   // Animation values for modal
   const modalTranslateX = useSharedValue(screenWidth);
@@ -197,11 +198,19 @@ export default function WorkoutHistoryScreen() {
   };
 
   const toggleWeightUnit = async () => {
+    if (isUpdatingUnits) return; // Prevent multiple simultaneous updates
+    
     const newUnit = units.weight_unit === 'lbs' ? 'kg' : 'lbs';
+    console.log('Toggling weight unit from', units.weight_unit, 'to', newUnit);
+    
+    setIsUpdatingUnits(true);
     try {
       await updateUnits({ weight_unit: newUnit });
+      console.log('Successfully updated weight unit to', newUnit);
     } catch (error) {
       console.error('Error updating weight unit:', error);
+    } finally {
+      setIsUpdatingUnits(false);
     }
   };
 
@@ -281,7 +290,7 @@ export default function WorkoutHistoryScreen() {
                 {/* Workout Status */}
                 <View style={[
                   styles.statusSection,
-                  { backgroundColor: isCompleted ? colors.tint + '15' : colors.border + '30' }
+                  { backgroundColor: isCompleted ? colors.tint + '15' : colors.border + '30', borderWidth: 1, borderColor: colors.border }
                 ]}>
                   <View style={styles.statusContent}>
                     {isCompleted ? (
@@ -300,7 +309,7 @@ export default function WorkoutHistoryScreen() {
 
                 {/* Workout Stats */}
                 <View style={styles.detailedStats}>
-                  <View style={styles.statCard}>
+                  <View style={[styles.statCard, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }]}>
                     <BarChart3 size={24} color={colors.tint} />
                     <Text style={[styles.statValue, { color: colors.text }]}>
                       {formatWeight(stats.totalVolume, 'kg')}
@@ -308,7 +317,7 @@ export default function WorkoutHistoryScreen() {
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
                   </View>
                   
-                  <View style={styles.statCard}>
+                  <View style={[styles.statCard, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }]}>
                     <Target size={24} color="#4CAF50" />
                     <Text style={[styles.statValue, { color: colors.text }]}>
                       {stats.totalSets}
@@ -316,7 +325,7 @@ export default function WorkoutHistoryScreen() {
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Sets</Text>
                   </View>
                   
-                  <View style={styles.statCard}>
+                  <View style={[styles.statCard, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }]}>
                     <TrendingUp size={24} color="#FF9800" />
                     <Text style={[styles.statValue, { color: colors.text }]}>
                       {stats.totalReps}
@@ -325,7 +334,7 @@ export default function WorkoutHistoryScreen() {
                   </View>
                   
                   {(workout.actual_duration_minutes || workout.duration_minutes) && (
-                    <View style={styles.statCard}>
+                    <View style={[styles.statCard, { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }]}>
                       <Clock size={24} color="#9C27B0" />
                       <Text style={[styles.statValue, { color: colors.text }]}>
                         {workout.actual_duration_minutes || workout.duration_minutes}m
@@ -535,7 +544,7 @@ export default function WorkoutHistoryScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: colors.card }]}
           onPress={goBack}
@@ -554,10 +563,15 @@ export default function WorkoutHistoryScreen() {
           <TouchableOpacity
             style={[styles.unitToggleButton, { backgroundColor: colors.card }]}
             onPress={toggleWeightUnit}
+            disabled={isUpdatingUnits}
           >
-            <Scale size={16} color={colors.text} />
+            {isUpdatingUnits ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <Scale size={16} color={colors.text} />
+            )}
             <Text style={[styles.unitToggleText, { color: colors.text }]}>
-              {units.weight_unit.toUpperCase()}
+              {isUpdatingUnits ? '...' : units.weight_unit.toUpperCase()}
             </Text>
           </TouchableOpacity>
           
@@ -572,7 +586,7 @@ export default function WorkoutHistoryScreen() {
 
       {/* Filter Dropdown */}
       {showFilterDropdown && (
-        <View style={[styles.filterDropdown, { backgroundColor: colors.card }]}>
+        <View style={[styles.filterDropdown, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
           <View style={styles.filterRow}>
             <Text style={[styles.filterLabel, { color: colors.text }]}>Status:</Text>
             <View style={styles.filterOptions}>

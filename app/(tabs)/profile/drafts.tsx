@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { ThemedText, ThemedH2 } from '@/components/ThemedText';
 import Colors from '@/constants/Colors';
 import { Spacing, BorderRadius } from '@/constants/Spacing';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 const DRAFTS_KEY_PREFIX = 'post_drafts_';
 
@@ -109,7 +110,7 @@ export default function DraftsScreen() {
   const renderItem = ({ item }: { item: Draft }) => (
     <View style={[styles.draftContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.draftHeader}>
-        <Image source={{ uri: profile?.avatar_url || undefined }} style={styles.avatar} />
+        <Image source={{ uri: getAvatarUrl(profile?.avatar_url, profile?.username || 'default') }} style={styles.avatar} />
         <Text style={[styles.username, { color: colors.text }]}>{profile?.username}</Text>
       </View>
       <Image source={{ uri: item.imageUri }} style={styles.draftImage} />

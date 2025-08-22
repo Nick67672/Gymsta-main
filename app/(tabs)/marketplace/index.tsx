@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Spacing } from '@/constants/Spacing';
 import { ThemedButton } from '@/components/ThemedButton';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface Product {
   id: string;
@@ -411,7 +412,7 @@ export default function MarketplaceScreen() {
               <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>{item.name}</Text>
               <Text style={[styles.productPrice, { color: colors.tint }]}>${item.price.toFixed(2)}</Text>
               <View style={styles.sellerInfo}>
-                <Image source={{ uri: item.seller?.avatar_url || 'https://placehold.co/24x24' }} style={styles.sellerAvatar} />
+                <Image source={{ uri: getAvatarUrl(item.seller?.avatar_url, item.seller?.username || 'default') }} style={styles.sellerAvatar} />
                 <Text style={[styles.sellerName, { color: colors.text }]} numberOfLines={1}>{item.seller?.username || 'Unknown'}</Text>
               </View>
             </View>

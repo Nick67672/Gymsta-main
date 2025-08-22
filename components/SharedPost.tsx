@@ -71,7 +71,7 @@ export const SharedPost: React.FC<SharedPostProps> = ({ postId, message, colors 
 
   const handlePostPress = () => {
     if (post) {
-      router.push(`/post/${post.id}`);
+      router.push(`/(tabs)/post/${post.id}`);
     }
   };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
-import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, ChevronRight, Bookmark } from 'lucide-react-native';
+import { ArrowLeft, Lock, Trash2, TriangleAlert as AlertTriangle, Users, ChevronRight, HelpCircle } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -197,31 +197,9 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Preferences */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Privacy & Safety</Text>
-          <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
-            <View style={styles.settingLabelContainer}>
-              <Lock size={20} color={colors.text} style={styles.settingIcon} />
-              <View>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>Private Account</Text>
-                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                  Only followers can see your posts
-                </Text>
-              </View>
-            </View>
-            {savingPrivacy ? (
-              <ActivityIndicator size="small" color={colors.tint} />
-            ) : (
-              <Switch
-                trackColor={{ false: '#E5E5E5', true: '#a395e9' }}
-                thumbColor={isPrivate ? '#6C5CE7' : '#f4f3f4'}
-                ios_backgroundColor="#E5E5E5"
-                onValueChange={handlePrivacyToggle}
-                value={isPrivate}
-              />
-            )}
-          </View>
-
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Preferences</Text>
           <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
             <View style={styles.settingLabelContainer}>
               <View style={[styles.settingIcon, { backgroundColor: colors.tint + '20', borderRadius: 8, padding: 4 }]}>
@@ -231,9 +209,7 @@ export default function SettingsScreen() {
               </View>
               <View>
                 <Text style={[styles.settingLabel, { color: colors.text }]}>Weight Units</Text>
-                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                  Display weights in {units.weight_unit === 'kg' ? 'kilograms' : 'pounds'}
-                </Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Display weights in {units.weight_unit === 'kg' ? 'kilograms' : 'pounds'}</Text>
               </View>
             </View>
             <View style={styles.unitToggleContainer}>
@@ -271,6 +247,34 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Privacy & Safety</Text>
+          <View style={[styles.settingItem, { borderBottomColor: colors.border }]}>
+            <View style={styles.settingLabelContainer}>
+              <Lock size={20} color={colors.text} style={styles.settingIcon} />
+              <View>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Private Account</Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                  Only followers can see your posts
+                </Text>
+              </View>
+            </View>
+            {savingPrivacy ? (
+              <ActivityIndicator size="small" color={colors.tint} />
+            ) : (
+              <Switch
+                trackColor={{ false: '#E5E5E5', true: '#a395e9' }}
+                thumbColor={isPrivate ? '#6C5CE7' : '#f4f3f4'}
+                ios_backgroundColor="#E5E5E5"
+                onValueChange={handlePrivacyToggle}
+                value={isPrivate}
+              />
+            )}
+          </View>
+
+          
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomWidth: 0 }]}
             onPress={openBlockedUsers}>
@@ -286,16 +290,16 @@ export default function SettingsScreen() {
             <ChevronRight size={20} color={colors.textSecondary} />
           </TouchableOpacity>
           
+          
+
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomWidth: 0 }]}
-            onPress={() => router.push('/profile/saved-posts')}>
+            onPress={() => router.push('/profile/help')}>
             <View style={styles.settingLabelContainer}>
-              <Bookmark size={20} color={colors.text} style={styles.settingIcon} />
+              <HelpCircle size={20} color={colors.text} style={styles.settingIcon} />
               <View>
-                <Text style={[styles.settingLabel, { color: colors.text }]}>Saved Posts</Text>
-                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                  View posts you've saved
-                </Text>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Help & Support</Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>FAQ, contact us, and status</Text>
               </View>
             </View>
             <ChevronRight size={20} color={colors.textSecondary} />

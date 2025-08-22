@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator } from 'react-native';
 import { X, Search as SearchIcon, MessageCircle, Users } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -141,7 +142,7 @@ export default function SearchScreen() {
           </View>
           <TouchableOpacity 
             style={[styles.closeButton, { backgroundColor: colors.card }]}
-            onPress={() => router.back()}>
+            onPress={goBack}>
             <X size={20} color={colors.text} />
           </TouchableOpacity>
         </View>

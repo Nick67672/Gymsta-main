@@ -619,7 +619,7 @@ export default function UserProfileScreen() {
           { 
             borderTopColor: colors.border,
             backgroundColor: colors.background,
-            paddingBottom: isKeyboardVisible ? 0 : 16
+            paddingBottom: isKeyboardVisible ? 0 : 6
           }
         ]}>
           <View style={[styles.inputWrapper, { backgroundColor: colors.card }]}>

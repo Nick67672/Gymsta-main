@@ -11,12 +11,14 @@ import {
   FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 import { ArrowLeft, Search, MapPin, Users } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { BorderRadius, Spacing } from '@/constants/Spacing';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 interface User {
   id: string;
@@ -122,7 +124,7 @@ export default function SearchScreen() {
       activeOpacity={0.7}
     >
       <Image
-        source={{ uri: item.avatar_url || 'https://via.placeholder.com/50' }}
+        source={{ uri: getAvatarUrl(item.avatar_url, item.username) }}
         style={styles.avatar}
       />
       <View style={styles.userInfo}>
@@ -154,7 +156,7 @@ export default function SearchScreen() {
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={goBack}
         >
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>

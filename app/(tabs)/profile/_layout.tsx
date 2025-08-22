@@ -5,7 +5,6 @@ export default function ProfileLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="edit" options={{ presentation: 'modal' }} />
-      <Stack.Screen name="[id]" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="saved-posts" />
     </Stack>

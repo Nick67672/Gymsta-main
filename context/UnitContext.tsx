@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface MeasurementUnits {
   measurement_system: 'imperial' | 'metric';
@@ -46,6 +47,7 @@ interface UnitProviderProps {
 export const UnitProvider: React.FC<UnitProviderProps> = ({ children }) => {
   const [units, setUnits] = useState<MeasurementUnits>(defaultUnits);
   const [loading, setLoading] = useState(true);
+  const STORAGE_KEY = 'user_measurement_units_v1';
 
   useEffect(() => {
     loadUserUnits();
@@ -55,46 +57,99 @@ export const UnitProvider: React.FC<UnitProviderProps> = ({ children }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        console.log('No user found, attempting to load units from local storage');
+        try {
+          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored) as MeasurementUnits;
+            setUnits(parsed);
+            console.log('Loaded units from local storage (no user):', parsed);
+          }
+        } catch (storageErr) {
+          console.warn('Failed to load units from local storage:', storageErr);
+        }
         setLoading(false);
         return;
       }
 
-      // First try RPC for performance and centralized logic
-      const { data, error } = await supabase.rpc('get_user_measurement_units', {
-        p_user_id: user.id
-      });
+      console.log('Loading units for user:', user.id);
 
-      if (!error && data && data.length > 0) {
-        setUnits({
-          measurement_system: data[0].measurement_system,
-          weight_unit: data[0].weight_unit,
-          distance_unit: data[0].distance_unit,
-          height_unit: data[0].height_unit,
-          temperature_unit: data[0].temperature_unit,
-        });
-      } else {
-        // Fallback: read directly from user_measurement_preferences if RPC missing
-        const { data: tableData, error: tableError } = await supabase
-          .from('user_measurement_preferences')
-          .select('measurement_system, weight_unit, distance_unit, height_unit, temperature_unit')
-          .eq('user_id', user.id)
-          .maybeSingle();
+      // Try direct table access first (more reliable)
+      const { data: tableData, error: tableError } = await supabase
+        .from('user_measurement_preferences')
+        .select('measurement_system, weight_unit, distance_unit, height_unit, temperature_unit')
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-        if (!tableError && tableData) {
-          setUnits({
-            measurement_system: tableData.measurement_system,
-            weight_unit: tableData.weight_unit,
-            distance_unit: tableData.distance_unit,
-            height_unit: tableData.height_unit,
-            temperature_unit: tableData.temperature_unit,
-          });
-        } else if (tableError) {
-          // Suppress noisy error if table does not exist; keep defaults silently
-          if ((tableError as any).code === '42P01') {
-            // relation does not exist → migration likely not applied yet
-          } else {
-            console.error('Error loading user units (fallback):', tableError);
+      console.log('Direct table access result:', { tableData, tableError });
+
+      if (!tableError && tableData) {
+        const loadedUnits = {
+          measurement_system: tableData.measurement_system,
+          weight_unit: tableData.weight_unit,
+          distance_unit: tableData.distance_unit,
+          height_unit: tableData.height_unit,
+          temperature_unit: tableData.temperature_unit,
+        };
+        console.log('Setting units from direct table access:', loadedUnits);
+        setUnits(loadedUnits);
+        try {
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loadedUnits));
+        } catch (e) {
+          console.warn('Failed to cache loaded units to local storage:', e);
+        }
+      } else if (tableError) {
+        // Check if table doesn't exist
+        if ((tableError as any).code === '42P01') {
+          console.log('Table does not exist, using default units');
+          // relation does not exist → migration likely not applied yet
+        } else {
+          console.error('Error loading user units:', tableError);
+        }
+        // Attempt to load from local storage as a fallback
+        try {
+          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored) as MeasurementUnits;
+            setUnits(parsed);
+            console.log('Loaded units from local storage (fallback after table error):', parsed);
           }
+        } catch (storageErr) {
+          console.warn('Failed to load units from local storage (fallback):', storageErr);
+        }
+      } else {
+        console.log('No user preferences found, creating default preferences');
+        // Create default preferences for the user
+        try {
+          const { error: createError } = await supabase
+            .from('user_measurement_preferences')
+            .insert({
+              user_id: user.id,
+              measurement_system: 'imperial',
+              weight_unit: 'lbs',
+              distance_unit: 'miles',
+              height_unit: 'ft',
+              temperature_unit: 'f',
+            });
+
+          if (createError) {
+            console.error('Error creating default preferences:', createError);
+          } else {
+            console.log('Created default preferences for user');
+          }
+        } catch (createError) {
+          console.error('Error creating default preferences:', createError);
+        }
+        // Also try loading any locally stored preferences
+        try {
+          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored) as MeasurementUnits;
+            setUnits(parsed);
+            console.log('Loaded units from local storage (no prefs found):', parsed);
+          }
+        } catch (storageErr) {
+          console.warn('Failed to load units from local storage (no prefs found):', storageErr);
         }
       }
       // If no data is returned, keep default units
@@ -107,29 +162,66 @@ export const UnitProvider: React.FC<UnitProviderProps> = ({ children }) => {
   };
 
   const updateUnits = async (newUnits: Partial<MeasurementUnits>) => {
+    const updatedUnits = { ...units, ...newUnits };
+    console.log('Updating units (optimistic):', { current: units, new: newUnits, updated: updatedUnits });
+
+    // Optimistically update local state
+    setUnits(updatedUnits);
+
+    // Persist to local storage regardless of auth state
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUnits));
+    } catch (e) {
+      console.warn('Failed to persist units to local storage:', e);
+    }
+
+    // Try to sync with server if user is logged in
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const updatedUnits = { ...units, ...newUnits };
-      
-      const { error } = await supabase
-        .from('user_measurement_preferences')
-        .upsert({
-          user_id: user.id,
-          ...updatedUnits,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) {
-        console.error('Error updating units:', error);
-        throw error;
+      if (!user) {
+        console.log('No user found, skipped remote sync for units');
+        return;
       }
 
-      setUnits(updatedUnits);
+      // Lightweight ping to avoid noisy errors when table doesn't exist
+      const { error: pingError } = await supabase
+        .from('user_measurement_preferences')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .limit(1);
+      if (pingError) {
+        const anyPing: any = pingError as any;
+        if (anyPing?.code === '42P01') {
+          console.log('Measurement preferences table missing; skipping remote sync');
+          return;
+        }
+        // If another unexpected ping error occurs, skip remote sync silently
+        console.log('Skipping remote sync due to preflight error');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('user_measurement_preferences')
+        .upsert(
+          {
+            user_id: user.id,
+            ...updatedUnits,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+
+      if (error) {
+        const anyErr: any = error as any;
+        const code = anyErr?.code ?? 'unknown';
+        const message = anyErr?.message ?? 'unknown error';
+        const details = anyErr?.details ?? undefined;
+        console.error('Error updating units in database (non-fatal):', { code, message, details });
+      } else {
+        console.log('Successfully updated units in database');
+      }
     } catch (error) {
-      console.error('Error updating units:', error);
-      throw error;
+      console.error('Unexpected error syncing units to server (non-fatal):', error);
     }
   };
 

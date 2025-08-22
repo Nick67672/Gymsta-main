@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, Bookmark, Grid3x3, List, User, Play, Heart, MessageCircle } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +23,7 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { Spacing, BorderRadius, Shadows } from '@/constants/Spacing';
 import { Post } from '@/types/social';
+import { getAvatarUrl } from '@/lib/avatarUtils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const isSmallScreen = screenWidth < 375;
@@ -144,7 +146,7 @@ export default function SavedPostsScreen() {
   };
 
   const handlePostPress = (postId: string) => {
-    router.push(`/post/${postId}`);
+    router.push(`/(tabs)/post/${postId}`);
   };
 
   const formatDate = (dateString: string) => {
@@ -170,48 +172,20 @@ export default function SavedPostsScreen() {
           style={styles.gridImage}
           resizeMode="cover"
         />
-        
-        {/* Media Type Indicator */}
+
         {item.post_data.media_type === 'video' && (
           <View style={styles.mediaIndicator}>
             <Play size={12} color="#FFFFFF" fill="#FFFFFF" />
           </View>
         )}
-        
-        {/* Gradient Overlay for better text readability */}
-        <View style={styles.gridOverlay}>
-          <View style={styles.gridOverlayTop}>
-            {/* Author Info */}
-            <View style={styles.authorInfo}>
-              <Image
-                source={{ 
-                  uri: item.post_data.profiles?.avatar_url || 
-                  `https://ui-avatars.com/api/?name=${item.post_data.profiles?.username || 'User'}&background=random`
-                }}
-                style={styles.authorAvatar}
-              />
-              <Text style={styles.authorName} numberOfLines={1}>
-                {item.post_data.profiles?.username || 'Unknown'}
-              </Text>
-            </View>
-            
-            {/* Unsave Button */}
-            <TouchableOpacity
-              style={styles.unsaveButtonGrid}
-              onPress={() => handleUnsavePost(item.post_id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Bookmark size={16} color="#FFFFFF" fill="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-          
-          {/* Caption Preview */}
-          {item.post_data.caption && (
-            <Text style={styles.gridCaption} numberOfLines={2}>
-              {item.post_data.caption}
-            </Text>
-          )}
-        </View>
+
+        <TouchableOpacity
+          style={styles.unsaveButtonGrid}
+          onPress={() => handleUnsavePost(item.post_id)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Bookmark size={16} color="#FFFFFF" fill="#FFFFFF" />
+        </TouchableOpacity>
       </TouchableOpacity>
     </View>
   );
@@ -233,8 +207,7 @@ export default function SavedPostsScreen() {
         <View style={styles.listAuthorInfo}>
           <Image
             source={{ 
-              uri: item.post_data.profiles?.avatar_url || 
-              `https://ui-avatars.com/api/?name=${item.post_data.profiles?.username || 'User'}&background=random`
+              uri: getAvatarUrl(item.post_data.profiles?.avatar_url, item.post_data.profiles?.username || 'default')
             }}
             style={styles.listAuthorAvatar}
           />
@@ -248,10 +221,7 @@ export default function SavedPostsScreen() {
           </View>
         </View>
         
-        {/* Caption */}
-        <Text style={[styles.listCaption, { color: colors.text }]} numberOfLines={2}>
-          {item.post_data.caption || 'No caption'}
-        </Text>
+        {/* Caption removed per design */}
         
         {/* Media Type Indicator */}
         {item.post_data.media_type === 'video' && (
@@ -325,7 +295,7 @@ export default function SavedPostsScreen() {
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={goBack}
           >
             <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
@@ -351,7 +321,7 @@ export default function SavedPostsScreen() {
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={goBack}
         >
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>
@@ -504,50 +474,18 @@ const styles = StyleSheet.create({
   mediaIndicator: {
     position: 'absolute',
     top: Spacing.xs,
-    right: Spacing.xs,
+    left: Spacing.xs,
     backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: BorderRadius.xs,
     padding: Spacing.xs,
   },
-  gridOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
-    justifyContent: 'space-between',
-  },
-  gridOverlayTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  authorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  authorAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.xs,
-  },
-  authorName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'white',
-  },
   unsaveButtonGrid: {
+    position: 'absolute',
+    top: Spacing.xs,
+    right: Spacing.xs,
     padding: Spacing.xs,
-  },
-  gridCaption: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: Spacing.xs,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: BorderRadius.xs,
   },
   listItem: {
     flexDirection: 'row',

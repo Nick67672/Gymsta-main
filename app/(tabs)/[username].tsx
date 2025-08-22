@@ -506,7 +506,7 @@ export default function UserProfileScreen() {
             text: 'OK',
             onPress: () => {
               // Navigate back to avoid showing blocked user's profile
-              router.back();
+              goBack();
             }
           }
         ]
@@ -542,7 +542,7 @@ export default function UserProfileScreen() {
             text: 'OK',
             onPress: () => {
               // Navigate back after reporting
-              router.back();
+              goBack();
             }
           }
         ]
@@ -1039,7 +1039,7 @@ export default function UserProfileScreen() {
             </Text>
           </View>
         ) : activeTab === 'posts' ? (
-        <View style={[styles.postsGrid, { paddingHorizontal: Math.max(0, (Layout.horizontalPadding || 0) - 4) }]}>
+        <View style={[styles.postsGrid, { padding: 5 }]}>
           {posts.map((item) => {
             const handlePress = () => {
               if (item.type === 'workout') {
@@ -1048,14 +1048,14 @@ export default function UserProfileScreen() {
                 setShowWorkoutModal(true);
               } else {
                 // Navigate to regular post
-                router.push(`/profile/${item.id}`);
+                router.push(`/(tabs)/post/${item.id}`);
               }
             };
             
             return (
               <TouchableOpacity 
                 key={item.id} 
-                style={[styles.postContainer, { width: '50%', padding: 3 }]}
+                style={styles.postContainer}
                 onPress={handlePress}
               >
                 <View style={styles.postImageContainer}>

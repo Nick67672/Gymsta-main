@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Alert, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Alert, Platform, ScrollView, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, User, MapPin, FileText } from 'lucide-react-native';
@@ -27,6 +27,8 @@ export default function EditProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [gymInputY, setGymInputY] = useState<number>(0);
 
   // Filter gyms based on user input
   const filteredGyms = GYM_LIST.filter((g: string) =>
@@ -232,10 +234,17 @@ export default function EditProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
       <ScrollView 
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         bounces={true}
         scrollEventThrottle={16}
         onScrollBeginDrag={() => {
@@ -339,7 +348,10 @@ export default function EditProfileScreen() {
                     />
                   </View>
 
-                  <View style={styles.gymInputContainer}>
+                  <View 
+                    style={styles.gymInputContainer}
+                    onLayout={(e) => setGymInputY(e.nativeEvent.layout.y)}
+                  >
                     <View style={styles.inputContainer}>
                       <ThemedText style={styles.inputLabel}>Gym (Optional)</ThemedText>
                       <ThemedInput
@@ -348,7 +360,15 @@ export default function EditProfileScreen() {
                           setGym(text);
                           setShowGymSuggestions(true);
                         }}
-                        onFocus={() => setShowGymSuggestions(true)}
+                        onFocus={() => {
+                          setShowGymSuggestions(true);
+                          // Ensure the field and dropdown are visible above the keyboard
+                          setTimeout(() => {
+                            if (scrollRef.current) {
+                              scrollRef.current.scrollTo({ y: Math.max(gymInputY - 20, 0), animated: true });
+                            }
+                          }, 50);
+                        }}
                         leftIcon={<MapPin size={20} color={colors.textSecondary} />}
                         variant="filled"
                         size="medium"
@@ -415,6 +435,7 @@ export default function EditProfileScreen() {
              />
            </View>
         </ScrollView>
+      </KeyboardAvoidingView>
       </ThemedView>
     );
 }
