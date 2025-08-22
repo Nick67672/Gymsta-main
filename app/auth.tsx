@@ -135,6 +135,16 @@ export default function AuthScreen() {
       return;
     }
 
+    if (!confirmPassword.trim()) {
+      setError('Please confirm your password');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -333,6 +343,22 @@ export default function AuthScreen() {
             secureTextEntry
             autoCapitalize="none"
           />
+          )}
+
+          {mode === 'signup' && (
+            <TextInput
+              style={[styles.input, { 
+                borderColor: colors.border,
+                backgroundColor: colors.inputBackground,
+                color: colors.text 
+              }]}
+              placeholder="Confirm Password"
+              placeholderTextColor={colors.textSecondary}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoCapitalize="none"
+            />
           )}
 
           {mode === 'reset-password' && (

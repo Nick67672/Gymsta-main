@@ -11,6 +11,7 @@ import { Typography } from '@/constants/Typography';
 export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [eulaAccepted, setEulaAccepted] = useState(false);
@@ -72,6 +73,21 @@ export default function Auth() {
 
     if (!eulaAccepted) {
       setError('You must agree to the End User License Agreement to continue');
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+
+    if (!confirmPassword.trim()) {
+      setError('Please confirm your password');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
 
@@ -140,6 +156,22 @@ export default function Auth() {
           secureTextEntry
           autoCapitalize="none"
         />
+
+        {mode === 'signup' && (
+          <TextInput
+            style={[styles.input, { 
+              borderColor: colors.border,
+              backgroundColor: colors.inputBackground,
+              color: colors.text 
+            }]}
+            placeholder="Confirm Password"
+            placeholderTextColor={colors.textSecondary}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+        )}
 
         <TouchableOpacity
           style={styles.eulaContainer}
