@@ -320,7 +320,8 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     gap: 10,
   },
   messageInput: {

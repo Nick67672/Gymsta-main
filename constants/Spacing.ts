@@ -1,11 +1,13 @@
+import { responsiveSpacing as RS } from '@/lib/responsive';
+
 export const Spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  xxl: 48,
-  xxxl: 64,
+  xs: RS.xs,
+  sm: RS.sm,
+  md: RS.md,
+  lg: RS.lg,
+  xl: RS.xl,
+  xxl: RS.xl * 1.5,
+  xxxl: RS.xl * 2,
 };
 
 export const BorderRadius = {

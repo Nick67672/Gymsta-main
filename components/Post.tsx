@@ -13,10 +13,11 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { touchTargets } from '@/constants/Layout';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView } from 'expo-video';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '@/lib/haptics';
 import {
   Heart,
   MessageCircle,
@@ -263,9 +264,7 @@ const PostComponent: React.FC<PostProps> = ({
         }),
       ]).start();
 
-      if (Platform.OS === 'ios') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      haptics.doubleTap();
 
       performLikeAction();
     }
@@ -283,10 +282,8 @@ const PostComponent: React.FC<PostProps> = ({
   const handleLikePress = useCallback(() => {
     if (isProcessingLike) return;
 
-    // iOS Haptic feedback
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    // Haptic feedback
+    haptics.like();
 
     // Enhanced heart animation
     Animated.sequence([
@@ -340,9 +337,7 @@ const PostComponent: React.FC<PostProps> = ({
 
   // Report post handler
   const onReportPress = useCallback(async () => {
-    if (Platform.OS === 'ios') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
+    haptics.warning();
 
     setShowMenu(false);
     setFlagging(prev => ({ ...prev, [post.id]: true }));
@@ -788,9 +783,7 @@ const PostComponent: React.FC<PostProps> = ({
                   showAuthModal();
                   return;
                 }
-                if (Platform.OS === 'ios') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
+                haptics.tap();
                 setShowComments(true);
               }}
               style={styles.actionButton}
@@ -908,7 +901,7 @@ const PostComponent: React.FC<PostProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: Spacing.lg,
+    marginHorizontal: 0,
     marginVertical: Spacing.md,
   },
   floatingCard: {
@@ -1024,8 +1017,8 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   menuButton: {
-    width: 32,
-    height: 32,
+    width: Math.max(32, touchTargets.minWidth * 0.7),
+    height: Math.max(32, touchTargets.minHeight * 0.7),
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1241,6 +1234,10 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     borderRadius: BorderRadius.lg,
     backgroundColor: 'rgba(0,0,0,0.05)',
+    minHeight: touchTargets.minHeight,
+    minWidth: touchTargets.minWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   likeContainer: {
     flexDirection: 'row',

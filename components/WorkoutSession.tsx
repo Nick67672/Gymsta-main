@@ -731,7 +731,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }] }>
         <TouchableOpacity onPress={() => {
           setIsWorkoutActive(false);
           onClose();
@@ -1108,7 +1108,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    // themed border color applied inline
   },
   headerInfo: {
     alignItems: 'center',

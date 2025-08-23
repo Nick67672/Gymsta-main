@@ -58,7 +58,12 @@ export default function ProductDetailScreen() {
         .single();
 
       if (error) throw error;
-      setProduct(data);
+      // Transform the data to match our interface
+      const transformedData = {
+        ...data,
+        seller: Array.isArray(data.seller) ? data.seller[0] : data.seller
+      } as Product;
+      setProduct(transformedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load product');
     } finally {
@@ -89,7 +94,7 @@ export default function ProductDetailScreen() {
         <Text style={[styles.error, { color: colors.error }]}>{error || 'Product not found'}</Text>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: 'rgba(255, 255, 255, 0.9)' }]}
-          onPress={() => router.back()}>
+          onPress={goBack}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>

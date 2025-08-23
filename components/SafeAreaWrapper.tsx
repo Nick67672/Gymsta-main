@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { safeAreaPadding } from '@/constants/Layout';
+import { iOSDeviceTypes } from '@/lib/responsive';
 
 interface SafeAreaWrapperProps {
   children: React.ReactNode;
@@ -24,11 +25,28 @@ export const SafeAreaWrapper: React.FC<SafeAreaWrapperProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
 
+  // iOS-specific safe area adjustments
+  const getAdjustedInsets = () => {
+    if (Platform.OS !== 'ios') {
+      return insets;
+    }
+
+    return {
+      ...insets,
+      // Additional padding for Dynamic Island on Pro Max models
+      top: iOSDeviceTypes.isIPhoneProMax ? insets.top + 4 : insets.top,
+      // Ensure minimum bottom padding for home indicator
+      bottom: Math.max(insets.bottom, iOSDeviceTypes.hasNotch ? 34 : 0),
+    };
+  };
+
+  const adjustedInsets = getAdjustedInsets();
+
   const containerStyle: ViewStyle = {
     flex: 1,
     backgroundColor,
-    paddingTop: edges.includes('top') ? (padding?.top ?? safeAreaPadding.top) : 0,
-    paddingBottom: edges.includes('bottom') ? (padding?.bottom ?? safeAreaPadding.bottom) : 0,
+    paddingTop: edges.includes('top') ? (padding?.top ?? adjustedInsets.top) : 0,
+    paddingBottom: edges.includes('bottom') ? (padding?.bottom ?? adjustedInsets.bottom) : 0,
     paddingHorizontal: edges.includes('left') && edges.includes('right') ? (padding?.horizontal ?? safeAreaPadding.horizontal) : 0,
     ...style,
   };

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/goBack';
 import { Image as ImageIcon, ChevronLeft, Camera, Eye, Dumbbell } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
@@ -193,7 +194,7 @@ export default function WorkoutSummaryScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={[styles.backButton, { backgroundColor: colors.card }]}
-          onPress={() => router.back()}
+          onPress={goBack}
         >
           <ChevronLeft size={24} color={colors.text} />
         </TouchableOpacity>

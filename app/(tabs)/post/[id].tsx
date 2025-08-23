@@ -3,7 +3,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Post as PostType } from '@/types/social';
-import PostComponent from '@/components/Post';
+import GymstaPost from '@/components/GymstaPost';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
@@ -29,7 +29,20 @@ export default function PostDetailScreen() {
 
   /* Helpers duplicated from feed */
   const toggleVideoPlayback = (postId: string) => {
-    setPlayingVideo(prev => (prev === postId ? null : postId));
+    if (playingVideo === postId) {
+      if (videoRefs.current[postId]) {
+        videoRefs.current[postId].pauseAsync();
+      }
+      setPlayingVideo(null);
+    } else {
+      if (playingVideo && videoRefs.current[playingVideo]) {
+        videoRefs.current[playingVideo].pauseAsync();
+      }
+      if (videoRefs.current[postId]) {
+        videoRefs.current[postId].playAsync();
+      }
+      setPlayingVideo(postId);
+    }
   };
 
   const navigateToProfile = (userId: string, username: string) => {
@@ -187,7 +200,7 @@ export default function PostDetailScreen() {
       </TouchableOpacity>
       
       <View style={styles.postContainer}>
-        <PostComponent
+        <GymstaPost
           post={post}
           colors={colors}
           playingVideo={playingVideo}
@@ -216,9 +229,7 @@ const styles = StyleSheet.create({
   },
   postContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingTop: 100, // Space for back button
   },
   backButton: {
     position: 'absolute',

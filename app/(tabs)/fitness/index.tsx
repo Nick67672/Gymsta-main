@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions, Easing, TextInput } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Zap, Apple, TrendingUp, Calendar, Target, ChefHat, ChevronRight, Sparkles, Heart } from 'lucide-react-native';
+import { Zap, Apple, TrendingUp, Calendar, Target, ChefHat, ChevronRight, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -25,6 +28,8 @@ const motivationalQuotes = [
 export default function FitnessHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   
   // Animation values
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -38,7 +43,7 @@ export default function FitnessHubScreen() {
 
   // Collapsing header animation
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerHeight = 120; // Reduced height since we removed the title
+  const headerHeight = 150; // Increased to accommodate header title and quote
   const headerTranslateY = scrollY.interpolate({
     inputRange: [0, headerHeight],
     outputRange: [0, -headerHeight],
@@ -127,6 +132,55 @@ export default function FitnessHubScreen() {
     router.push('/fitness/nutrition-hub');
   };
 
+  // Lightweight weight tracker CTA (private storage, weekly average)
+  const [weightInput, setWeightInput] = useState('');
+  const [weeklyAvg, setWeeklyAvg] = useState<number | null>(null);
+
+  useEffect(() => {
+    loadWeeklyAverage();
+  }, [user?.id]);
+
+  const loadWeeklyAverage = async () => {
+    try {
+      if (!user) return;
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      const { data, error } = await supabase
+        .from('user_weight_entries')
+        .select('weight_kg, recorded_on')
+        .eq('user_id', user.id)
+        .gte('recorded_on', sevenDaysAgo.toISOString().split('T')[0]);
+      if (error) throw error;
+      const values = (data || []).map((r: any) => r.weight_kg).filter((v: any) => typeof v === 'number');
+      if (values.length === 0) {
+        setWeeklyAvg(null);
+      } else {
+        const avg = values.reduce((a: number, b: number) => a + b, 0) / values.length;
+        setWeeklyAvg(avg);
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  };
+
+  const saveTodayWeight = async () => {
+    try {
+      if (!user) return;
+      const raw = parseFloat(weightInput);
+      if (Number.isNaN(raw) || raw <= 0) return;
+      const weightKg = raw; // For simplicity assume kg input. Could convert via useUnits.
+      const today = new Date().toISOString().split('T')[0];
+      const { error } = await supabase
+        .from('user_weight_entries')
+        .upsert({ user_id: user.id, recorded_on: today, weight_kg: weightKg, source: 'quick' }, { onConflict: 'user_id,recorded_on' });
+      if (error) throw error;
+      setWeightInput('');
+      loadWeeklyAverage();
+    } catch (e) {
+      // non-fatal
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Collapsing Header */}
@@ -138,14 +192,20 @@ export default function FitnessHubScreen() {
           }
         ]}
       >
-        {/* Enhanced Quote Banner */}
+        {/* Header + Quote Banner */}
         <LinearGradient
           colors={theme === 'dark' 
-            ? ['rgba(99, 102, 241, 0.25)', 'rgba(168, 85, 247, 0.2)', 'rgba(236, 72, 153, 0.15)']
-            : ['rgba(99, 102, 241, 0.2)', 'rgba(168, 85, 247, 0.15)', 'rgba(236, 72, 153, 0.1)']
+            ? ['rgba(0, 212, 255, 0.25)', 'rgba(168, 85, 247, 0.25)']
+            : ['rgba(0, 212, 255, 0.20)', 'rgba(168, 85, 247, 0.20)']
           }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={styles.quoteBanner}
         >
+          <View style={styles.headerTopRow}>
+            <View />
+            <Sparkles size={20} color={theme === 'dark' ? 'rgba(168,85,247,0.9)' : 'rgba(124,58,237,0.9)'} />
+          </View>
           <View style={styles.quoteContainer}>
             <Animated.View 
               style={[
@@ -156,15 +216,18 @@ export default function FitnessHubScreen() {
                 }
               ]}
             >
-              <View style={styles.quoteIconContainer}>
-                <Heart size={28} color={colors.tint} />
-              </View>
+              {/* Removed heart icon from quote carousel */}
               <View style={styles.quoteTextContainer}>
-                <Text style={[styles.quoteText, { color: colors.text }]}>
+                <Text
+                  style={[styles.quoteText, { color: colors.text }]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
                   {motivationalQuotes[currentQuoteIndex]}
                 </Text>
               </View>
             </Animated.View>
+            {/* Dots removed for cleaner, stable layout */}
           </View>
         </LinearGradient>
       </Animated.View>
@@ -172,15 +235,17 @@ export default function FitnessHubScreen() {
       <Animated.ScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingTop: headerHeight + Spacing.xl * 2 }}
+        contentContainerStyle={{ paddingTop: headerHeight + Spacing.xl, paddingHorizontal: Spacing.lg, paddingBottom: Math.max(Spacing.lg, insets.bottom + Spacing.md) }}
       >
-
-
+        {/* Removed Explore heading per request */}
+        {/* Weight tracker moved to Profile -> Lifts tab */}
         {/* Main Hub Options */}
         <Animated.View 
           style={[
@@ -199,7 +264,9 @@ export default function FitnessHubScreen() {
             activeOpacity={0.9}
           >
             <LinearGradient
-              colors={['#667eea', '#764ba2', '#f093fb']}
+              colors={['#00D4FF', '#A855F7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
               style={styles.hubCardGradient}
             >
               <View style={styles.hubCardContent}>
@@ -207,6 +274,7 @@ export default function FitnessHubScreen() {
                   <View style={styles.hubIconContainer}>
                     <Zap size={36} color="#fff" />
                   </View>
+                  <ChevronRight size={22} color="rgba(255,255,255,0.9)" />
                 </View>
                 
                 <View style={styles.hubCardBody}>
@@ -251,6 +319,7 @@ export default function FitnessHubScreen() {
                   <View style={styles.hubIconContainer}>
                     <Apple size={36} color="#fff" />
                   </View>
+                  <ChevronRight size={22} color="rgba(255,255,255,0.9)" />
                 </View>
                 
                 <View style={styles.hubCardBody}>
@@ -294,9 +363,24 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   quoteBanner: {
-    paddingTop: 60,
-    paddingBottom: Spacing.xl,
+    paddingTop: 48,
+    paddingBottom: Spacing.lg,
     paddingHorizontal: Spacing.lg,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    marginBottom: Spacing.md,
   },
   quoteContainer: {
     alignItems: 'center',
@@ -304,52 +388,47 @@ const styles = StyleSheet.create({
   quoteContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.lg,
+    gap: Spacing.md,
     maxWidth: screenWidth - Spacing.lg * 2,
+    minHeight: 72,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  quoteIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   quoteTextContainer: {
     flex: 1,
   },
   quoteText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 22,
+    fontStyle: 'italic',
   },
+  // Removed dots styles
   content: {
     flex: 1,
-    paddingHorizontal: Spacing.lg,
   },
   sectionTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     letterSpacing: -0.3,
   },
   hubSection: {
     gap: Spacing.lg,
+    marginTop: Spacing.lg,
     marginBottom: Spacing.xl,
   },
   hubCardContainer: {
-    borderRadius: BorderRadius.xl,
+    borderRadius: 16,
     overflow: 'hidden',
     ...Shadows.heavy,
   },
   hubCardGradient: {
-    minHeight: 220,
+    minHeight: 180,
+    borderRadius: 16,
   },
   hubCardContent: {
     padding: Spacing.xl,
@@ -386,16 +465,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   hubTitle: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   hubDescription: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
     color: 'rgba(255,255,255,0.9)',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   hubFeatures: {
     gap: Spacing.md,
@@ -406,7 +485,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   featureText: {
-    fontSize: 15,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '600',
   },
@@ -431,5 +510,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '600',
+  },
+  weightCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
+  weightTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: Spacing.md,
+  },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  weightInput: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: Spacing.md,
+    fontSize: 16,
+  },
+  weightSave: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: 10,
+  },
+  weightSaveText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  weightHint: {
+    fontSize: 12,
   },
 });

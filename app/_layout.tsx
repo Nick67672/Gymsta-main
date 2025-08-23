@@ -2,8 +2,9 @@ import '@/lib/polyfills';
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet, LogBox } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { View, Text, ActivityIndicator, StyleSheet, LogBox, Platform } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native';
 
 // Suppress specific warning that doesn't affect functionality
 LogBox.ignoreLogs([
@@ -37,22 +38,29 @@ function AppContent() {
   useFrameworkReady();
   const { loading } = useAuth();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   
   if (loading) {
     return <LoadingScreen />;
   }
 
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="register" />
-        <Stack.Screen name="onboarding" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="auth" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-    </>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={insets.top}
+    >
+      <>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="register" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="auth" />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      </>
+    </KeyboardAvoidingView>
   );
 }
 

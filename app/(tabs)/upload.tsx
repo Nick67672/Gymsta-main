@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList, SafeAreaView, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList, SafeAreaView, PanResponder, KeyboardAvoidingView } from 'react-native';
 import { Camera, Upload, Search, X, MapPin, AtSign, Save, ArrowLeft } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -14,6 +14,8 @@ import { ThemedText, ThemedH2, ThemedCaptionText } from '@/components/ThemedText
 import { ThemedButton } from '@/components/ThemedButton';
 import { useAuth } from '@/context/AuthContext';
 import { goBack } from '@/lib/goBack';
+import { getAvatarUrl } from '@/lib/avatarUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Product {
   id: string;
@@ -143,6 +145,7 @@ export default function UploadScreen() {
   const colors = Colors[theme];
   const { user } = useAuth();
   const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -574,12 +577,17 @@ export default function UploadScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={insets.top}
+    >
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}> 
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity 
           style={styles.backButton} 
-          onPress={() => router.back()}
+          onPress={goBack}
         >
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>
@@ -597,7 +605,12 @@ export default function UploadScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+      >
         {error && (
           <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
             <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
@@ -648,7 +661,7 @@ export default function UploadScreen() {
         <View style={styles.captionSection}>
           <View style={styles.userInfo}>
             <Image 
-              source={{ uri: user?.user_metadata?.avatar_url || 'https://via.placeholder.com/40' }} 
+              source={{ uri: getAvatarUrl(user?.user_metadata?.avatar_url, userProfile?.username || user?.user_metadata?.username || 'default') }} 
               style={styles.userAvatar} 
             />
             <Text style={[styles.username, { color: colors.text }]}>
@@ -867,6 +880,7 @@ export default function UploadScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, Mail, Lock } from 'lucide-react-native';
+import { ArrowLeft, Check, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedInput } from '../components/ThemedInput';
 import { ThemedButton } from '../components/ThemedButton';
 import { useAuth } from '../hooks/useAuth';
@@ -20,6 +20,9 @@ export default function AuthScreen() {
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordBarWidth, setPasswordBarWidth] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -27,6 +30,7 @@ export default function AuthScreen() {
   const colors = Colors[theme];
   const [eulaChecked, setEulaChecked] = useState(false);
   const [showEula, setShowEula] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const dismissKeyboard = () => {
     Keyboard.dismiss();
@@ -51,6 +55,21 @@ export default function AuthScreen() {
   const isEmail = (input: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(input);
+  };
+
+  const getPasswordStrength = (pwd: string) => {
+    let score = 0;
+    if (pwd.length >= 8) score++;
+    if (/[A-Z]/.test(pwd)) score++;
+    if (/[a-z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^A-Za-z0-9]/.test(pwd)) score++;
+    const levels = ['Very weak', 'Weak', 'Okay', 'Good', 'Strong', 'Excellent'];
+    const clamped = Math.min(score, 5);
+    const texts = levels[clamped];
+    const colorsMap = [colors.error, '#FFA726', '#FFD54F', '#64B5F6', colors.tint, colors.tint];
+    const widthPercents = ['16%', '32%', '48%', '64%', '80%', '100%'];
+    return { score: clamped, label: texts, barColor: colorsMap[clamped], width: widthPercents[clamped] };
   };
 
   async function signInWithEmail() {
@@ -97,16 +116,18 @@ export default function AuthScreen() {
         throw error;
       }
 
-      // Check if user has a profile
+      // Check if user has a profile and completed onboarding
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('username')
+          .select('username, has_completed_onboarding')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (!profile) {
+        if (!profile || !profile.username) {
           router.replace('/register');
+        } else if (!profile.has_completed_onboarding) {
+          router.replace('/onboarding');
         } else {
           router.replace('/(tabs)');
         }
@@ -130,8 +151,19 @@ export default function AuthScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (!eulaChecked) {
+      setError('You must agree to the End User License Agreement to continue');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    // Basic strength threshold
+    if (getPasswordStrength(password).score < 3) {
+      setError('Please use a stronger password (8+ chars, mix of cases, number)');
       return;
     }
 
@@ -170,7 +202,7 @@ export default function AuthScreen() {
         if (signInError) throw signInError;
         
         if (signInData.user) {
-      router.replace('/register');
+          router.replace('/register');
         }
       }
     } catch (error) {
@@ -278,6 +310,11 @@ export default function AuthScreen() {
 
   return (
     <TouchableWithoutFeedback onPress={dismissKeyboard}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={insets.top}
+      >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
           <TouchableOpacity
@@ -287,7 +324,7 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
         
-        <View style={styles.formContainer}>
+        <ScrollView contentContainerStyle={styles.formContainer} keyboardShouldPersistTaps="handled">
           <Text style={[styles.headerText, { color: colors.tint }]}>
             {getHeaderText()}
           </Text>
@@ -314,35 +351,57 @@ export default function AuthScreen() {
           {success && <Text style={styles.success}>{success}</Text>}
           
           {mode !== 'reset-password' && (
-          <TextInput
-            style={[styles.input, { 
-              borderColor: colors.border,
-              backgroundColor: colors.inputBackground,
-              color: colors.text 
-            }]}
-              placeholder={mode === 'signin' ? "Email or Username" : "Email"}
-            placeholderTextColor={colors.textSecondary}
+            <ThemedInput
+              label={mode === 'signin' ? 'Email or Username' : 'Email'}
               value={emailOrUsername}
               onChangeText={setEmailOrUsername}
-            autoCapitalize="none"
-              keyboardType={mode === 'signin' ? "default" : "email-address"}
-          />
+              autoCapitalize="none"
+              keyboardType={mode === 'signin' ? 'default' : 'email-address'}
+              leftIcon={<Mail size={18} color={colors.textSecondary} />}
+              variant="filled"
+              size="large"
+            />
           )}
           
           {mode !== 'forgot-password' && (
-          <TextInput
-            style={[styles.input, { 
-              borderColor: colors.border,
-              backgroundColor: colors.inputBackground,
-              color: colors.text 
-            }]}
-              placeholder={mode === 'reset-password' ? "New Password" : "Password"}
-            placeholderTextColor={colors.textSecondary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+            <ThemedInput
+              label={mode === 'reset-password' ? 'New Password' : 'Password'}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={mode === 'reset-password' ? !showPassword : !showPassword}
+              autoCapitalize="none"
+              leftIcon={<Lock size={18} color={colors.textSecondary} />} 
+              rightIcon={
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  {showPassword ? (
+                    <EyeOff size={18} color={colors.textSecondary} />
+                  ) : (
+                    <Eye size={18} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              }
+              variant="filled"
+              size="large"
+            />
+          )}
+
+          {mode === 'signup' && password.length > 0 && (
+            <View style={{ marginBottom: 12 }}>
+              <View
+                style={{ height: 6, borderRadius: 6, backgroundColor: colors.border, overflow: 'hidden' }}
+                onLayout={(e) => setPasswordBarWidth(e.nativeEvent.layout.width)}
+              >
+                <View style={{
+                  height: '100%',
+                  width: passwordBarWidth * (parseInt(getPasswordStrength(password).width) / 100),
+                  backgroundColor: getPasswordStrength(password).barColor,
+                  borderRadius: 6,
+                }} />
+              </View>
+              <Text style={{ marginTop: 6, color: colors.textSecondary, fontSize: 12 }}>
+                Password strength: {getPasswordStrength(password).label}
+              </Text>
+            </View>
           )}
 
           {mode === 'signup' && (
@@ -362,18 +421,47 @@ export default function AuthScreen() {
           )}
 
           {mode === 'reset-password' && (
-            <TextInput
-              style={[styles.input, { 
-                borderColor: colors.border,
-                backgroundColor: colors.inputBackground,
-                color: colors.text 
-              }]}
-              placeholder="Confirm New Password"
-              placeholderTextColor={colors.textSecondary}
+            <ThemedInput
+              label="Confirm New Password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              secureTextEntry
+              secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
+              leftIcon={<Lock size={18} color={colors.textSecondary} />}
+              rightIcon={
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  {showConfirmPassword ? (
+                    <EyeOff size={18} color={colors.textSecondary} />
+                  ) : (
+                    <Eye size={18} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              }
+              variant="filled"
+              size="large"
+            />
+          )}
+
+          {mode === 'signup' && (
+            <ThemedInput
+              label="Confirm Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+              leftIcon={<Lock size={18} color={colors.textSecondary} />}
+              rightIcon={
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  {showConfirmPassword ? (
+                    <EyeOff size={18} color={colors.textSecondary} />
+                  ) : (
+                    <Eye size={18} color={colors.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              }
+              error={confirmPassword.length > 0 && confirmPassword !== password ? 'Passwords do not match' : undefined}
+              variant="filled"
+              size="large"
             />
           )}
 
@@ -400,18 +488,18 @@ export default function AuthScreen() {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity
-            style={[styles.button, styles.signInButton, loading && styles.buttonDisabled, { backgroundColor: colors.button }]}
+          <ThemedButton
+            title={getButtonText()}
             onPress={handleSubmit}
-            disabled={loading || (mode === 'signup' && !eulaChecked)}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {getButtonText()}
-              </Text>
-            )}
-          </TouchableOpacity>
+            variant="primary"
+            size="large"
+            loading={loading}
+            disabled={
+              loading ||
+              (mode === 'signup' && (!eulaChecked || !emailOrUsername.trim() || !password.trim() || password !== confirmPassword))
+            }
+            style={{ marginBottom: 12 }}
+          />
 
           {mode === 'signin' && (
             <TouchableOpacity
@@ -442,7 +530,7 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
 
         {/* EULA Modal */}
         <Modal
@@ -503,6 +591,7 @@ By using the App, you acknowledge that you have read, understood, and agree to b
           </View>
         </Modal>
       </View>
+      </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
 }

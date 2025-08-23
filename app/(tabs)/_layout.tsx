@@ -1,7 +1,7 @@
 import { Tabs, useRouter, useSegments, usePathname } from 'expo-router';
 import { House, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '@/lib/haptics';
 import { router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,9 @@ import { useHomeScreen } from '@/context/HomeScreenContext';
 import { useDoubleTap } from '@/lib/doubleTapUtils';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { touchTargets, tabBarHeight } from '@/constants/Layout';
 import { Image, View, Platform, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import GradientTabIcon, { GradientUploadButton } from '@/components/GradientTabIcon';
@@ -17,6 +19,7 @@ import GradientTabIcon, { GradientUploadButton } from '@/components/GradientTabI
 export default function TabLayout() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const insets = useSafeAreaInsets();
   const { isAuthenticated, showAuthModal, session } = useAuth();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const router = useRouter();
@@ -60,23 +63,23 @@ export default function TabLayout() {
   }, [pathname, Array.isArray(segments) ? segments.join('/') : String(segments)]);
 
   const handleTabPress = () => {
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    haptics.tabChange();
   };
 
   const handleHomeSingleTap = () => {
-    // Single tap - navigate to home
-    router.replace(lastHomeRoute as any);
+    // Single tap - always navigate to main feed root
+    router.replace('/');
   };
 
   const handleHomeDoubleTap = () => {
-    // Double tap - scroll to top and refresh
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    // Double tap - navigate home, scroll to top and refresh
+    haptics.pullToRefresh();
     if (homeScreenFunctions?.scrollToTopAndRefresh) {
+      // If already on Home and context is available, run directly
       homeScreenFunctions.scrollToTopAndRefresh();
+    } else {
+      // Ensure we go to Home and trigger refresh via query param
+      router.replace('/?refresh=1');
     }
   };
 
@@ -92,9 +95,7 @@ export default function TabLayout() {
     }
 
     // Add haptic feedback for upload action
-    if (Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    haptics.buttonPress();
 
     // Show action sheet to choose between camera and gallery
     Alert.alert(
@@ -179,12 +180,13 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          height: 90,
+          height: tabBarHeight,
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: 'rgba(0,0,0,0.05)',
-          paddingBottom: Spacing.lg,
+          paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 0) + Spacing.md,
           paddingTop: Spacing.sm,
           paddingHorizontal: Spacing.sm,
         },
@@ -194,7 +196,8 @@ export default function TabLayout() {
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          height: 50,
+          height: Math.max(touchTargets.minHeight, 50),
+          minWidth: touchTargets.minWidth,
           borderRadius: BorderRadius.lg,
           marginHorizontal: 2,
         },
@@ -227,7 +230,12 @@ export default function TabLayout() {
           ),
         }}
         listeners={{
-          tabPress: handleTabPress,
+          tabPress: (e) => {
+            handleTabPress();
+            e.preventDefault();
+            // Always navigate to the root of the fitness tab
+            router.replace('/fitness');
+          },
         }}
       />
       <Tabs.Screen
@@ -254,10 +262,14 @@ export default function TabLayout() {
               <ShoppingBag size={24} />
             </GradientTabIcon>
           ),
-          href: '/marketplace',
         }}
         listeners={{
-          tabPress: handleTabPress,
+          tabPress: (e) => {
+            handleTabPress();
+            e.preventDefault();
+            // Always navigate to the root of the marketplace tab
+            router.replace('/marketplace');
+          },
         }}
       />
       <Tabs.Screen
@@ -303,9 +315,7 @@ export default function TabLayout() {
             e.preventDefault();
 
             // Add haptic feedback
-            if (Platform.OS === 'ios') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
+            haptics.tabChange();
 
             if (!isAuthenticated) {
               showAuthModal();

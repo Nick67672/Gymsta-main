@@ -660,7 +660,7 @@ export default function NotificationsScreen() {
     // Navigate based on notification type
     if (notification.type === 'like' || notification.type === 'comment') {
       if (notification.post) {
-        router.push(`/post/${notification.post.id}`);
+        router.push(`/(tabs)/post/${notification.post.id}`);
       }
     } else if (notification.type === 'workout_like') {
       if (notification.workout) {

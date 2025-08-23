@@ -18,7 +18,7 @@ const ProfilePost: React.FC<ProfilePostProps> = ({ post }) => {
   return (
     <TouchableOpacity 
       style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}
-      onPress={() => router.push(`/post/${post.id}`)}
+      onPress={() => router.push(`/(tabs)/post/${post.id}`)}
       activeOpacity={0.8}
     >
       {post.image_url && (

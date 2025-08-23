@@ -5,12 +5,16 @@ import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { ThemedButton } from '../components/ThemedButton';
+import { ThemedInput } from '../components/ThemedInput';
+import { Check, User as UserIcon, MapPin } from 'lucide-react-native';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [gym, setGym] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGymSuggestions, setShowGymSuggestions] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -32,6 +36,34 @@ export default function RegisterScreen() {
   const filteredGyms = GYM_LIST.filter(g => 
     g.toLowerCase().includes(gym.toLowerCase())
   );
+
+  const checkUsername = async (candidate: string) => {
+    const name = candidate.trim();
+    if (!name) {
+      setUsernameAvailable(null);
+      return;
+    }
+    // Allow letters, numbers, underscores, 3-30 chars
+    const valid = /^[_A-Za-z0-9]{3,30}$/.test(name);
+    if (!valid) {
+      setUsernameAvailable(false);
+      return;
+    }
+    setCheckingUsername(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', name)
+        .maybeSingle();
+      if (error) throw error;
+      setUsernameAvailable(!data);
+    } catch (e) {
+      setUsernameAvailable(null);
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!username.trim()) {
@@ -59,21 +91,14 @@ export default function RegisterScreen() {
         return;
       }
 
-      // Check if username is already taken
+      // Re-check username availability server-side
       const { data: existingUser, error: checkError } = await supabase
         .from('profiles')
-        .select('username')
+        .select('id')
         .eq('username', username.trim())
         .maybeSingle();
-
-      if (checkError) {
-        throw checkError;
-      }
-
-      if (existingUser) {
-        setError('Username is already taken');
-        return;
-      }
+      if (checkError) throw checkError;
+      if (existingUser) { setError('Username is already taken'); return; }
 
       // Create new profile
       const { data: profile, error: createError } = await supabase
@@ -134,64 +159,47 @@ export default function RegisterScreen() {
           </View>
         )}
         
-        <TextInput
-          style={[
-            styles.input, 
-            { 
-              borderColor: colors.border,
-              backgroundColor: colors.inputBackground,
-              color: colors.text
-            }
-          ]}
-          placeholder="Username"
-          placeholderTextColor={colors.textSecondary}
+        <ThemedInput
+          label="Username"
           value={username}
-          onChangeText={setUsername}
+          onChangeText={(t) => { setUsername(t); checkUsername(t); }}
           autoCapitalize="none"
           autoCorrect={false}
-          maxLength={30}
+          leftIcon={<UserIcon size={18} color={colors.textSecondary} />}
+          rightIcon={username.length >= 3 && usernameAvailable ? <Check size={18} color={colors.tint} /> : undefined}
+          error={username.length > 0 && usernameAvailable === false ? 'Username unavailable or invalid' : undefined}
+          variant="filled"
+          size="large"
         />
         
-        <TextInput
-          style={[
-            styles.input,
-            styles.bioInput, 
-            { 
-              borderColor: colors.border,
-              backgroundColor: colors.inputBackground,
-              color: colors.text
-            }
-          ]}
-          placeholder="Bio (optional)"
-          placeholderTextColor={colors.textSecondary}
+        <ThemedInput
+          label="Bio (optional)"
           value={bio}
           onChangeText={setBio}
           multiline
           numberOfLines={4}
-          maxLength={160}
+          variant="filled"
+          size="large"
+          style={{ minHeight: 100, textAlignVertical: 'top' }}
         />
 
         <View style={styles.gymInputContainer}>
-          <TextInput
-            style={[
-              styles.input,
-              { 
-                borderColor: colors.border,
-                backgroundColor: colors.inputBackground,
-                color: colors.text,
-                marginBottom: showGymSuggestions && filteredGyms.length > 0 ? 0 : 16,
-                borderBottomLeftRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
-                borderBottomRightRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8
-              }
-            ]}
-            placeholder="Gym (optional)"
-            placeholderTextColor={colors.textSecondary}
+          <ThemedInput
+            label="Gym (optional)"
             value={gym}
             onChangeText={(text) => {
               setGym(text);
               setShowGymSuggestions(true);
             }}
             onFocus={() => setShowGymSuggestions(true)}
+            leftIcon={<MapPin size={18} color={colors.textSecondary} />}
+            variant="filled"
+            size="large"
+            style={{
+              marginBottom: showGymSuggestions && filteredGyms.length > 0 ? 0 : 16,
+              borderBottomLeftRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
+              borderBottomRightRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
+            }}
           />
           
           {showGymSuggestions && filteredGyms.length > 0 && (

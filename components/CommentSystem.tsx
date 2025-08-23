@@ -14,6 +14,7 @@ import {
   Platform,
   Dimensions,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import {
   Heart,
@@ -25,6 +26,9 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
+import { getAvatarUrl } from '@/lib/avatarUtils';
+import { ConfirmModal } from './ConfirmModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -63,17 +67,24 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
   visible,
   onClose,
   initialCommentCount = 0,
+  postOwnerId,
   onCommentCountChange,
 }) => {
   const { user } = useAuth();
   const { theme, isDarkMode } = useTheme();
   const colors = Colors[theme];
+  const insets = useSafeAreaInsets();
   const [allComments, setAllComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [commentPendingDelete, setCommentPendingDelete] = useState<Comment | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<Comment | null>(null);
   
   const scrollViewRef = useRef<ScrollView>(null);
   const textInputRef = useRef<TextInput>(null);
@@ -360,13 +371,20 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
   const renderComment = (comment: Comment, isReply = false) => {
     const hasReplies = comment.replies && comment.replies.length > 0;
     const isExpanded = expandedReplies.has(comment.id);
+    const canDelete = user?.id === comment.user_id;
 
     return (
       <View key={comment.id}>
-        <View style={[
+        <Pressable
+          onLongPress={() => {
+            setSelectedComment(comment);
+            setShowOptionsModal(true);
+          }}
+          style={[
           styles.commentContainer,
           isReply && styles.replyContainer,
-        ]}>
+        ]}
+        >
           <Image source={{ uri: comment.profile.avatar_url }} style={styles.avatar} />
           
           <View style={styles.commentContent}>
@@ -396,6 +414,8 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
                   Reply
                 </Text>
               </TouchableOpacity>
+
+              {/* Delete action moved to long-press options */}
             </View>
 
             {/* View Replies Button */}
@@ -417,12 +437,12 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
             onPress={() => handleLike(comment.id)}
           >
             <Heart 
-              size={12} 
+              size={14} 
               color={comment.user_has_liked ? '#FF3B30' : colors.textSecondary}
               fill={comment.user_has_liked ? '#FF3B30' : 'none'}
             />
           </TouchableOpacity>
-        </View>
+        </Pressable>
 
         {/* Render Replies */}
         {hasReplies && isExpanded && (
@@ -449,10 +469,101 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
             styles.container,
             { 
               transform: [{ translateY: slideAnim }],
-              backgroundColor: colors.background
+              backgroundColor: colors.background,
+              paddingBottom: insets.bottom
             }
           ]}
         >
+          {/* Options Modal for Long Press */}
+          <Modal
+            visible={showOptionsModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowOptionsModal(false)}
+          >
+            <Pressable style={styles.optionsOverlay} onPress={() => setShowOptionsModal(false)}>
+              <View style={[styles.optionsContainer, { backgroundColor: colors.card, paddingBottom: 32 + insets.bottom }]}> 
+                {selectedComment && user?.id === selectedComment.user_id ? (
+                  <TouchableOpacity
+                    style={styles.optionsItem}
+                    onPress={() => {
+                      setShowOptionsModal(false);
+                      setCommentPendingDelete(selectedComment);
+                      setShowDeleteConfirm(true);
+                    }}
+                  >
+                    <Text style={[styles.optionsItemText, { color: colors.error }]}>Delete Comment</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.optionsItem}
+                    onPress={async () => {
+                      if (!selectedComment || !user) return;
+                      setShowOptionsModal(false);
+                      try {
+                        const { error } = await supabase
+                          .from('comment_reports')
+                          .insert({
+                            comment_id: selectedComment.id,
+                            reporter_id: user.id,
+                            reason: 'other',
+                            description: 'Reported via quick action',
+                          });
+                        if (error) {
+                          // Ignore duplicate report
+                          if ((error as any).code !== '23505') throw error;
+                        }
+                        Alert.alert('Reported', 'Thanks for your report. Our team will review it.');
+                      } catch (e) {
+                        console.error('Error reporting comment:', e);
+                        Alert.alert('Error', 'Failed to report comment.');
+                      }
+                    }}
+                  >
+                    <Text style={[styles.optionsItemText, { color: colors.text }]}>Report Comment</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.optionsItem}
+                  onPress={() => setShowOptionsModal(false)}
+                >
+                  <Text style={[styles.optionsItemText, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Modal>
+
+          <ConfirmModal
+            visible={showDeleteConfirm}
+            title="Delete Comment"
+            message="Are you sure you want to delete this comment? This action cannot be undone."
+            onCancel={() => {
+              setShowDeleteConfirm(false);
+              setCommentPendingDelete(null);
+            }}
+            onConfirm={async () => {
+              if (!commentPendingDelete) return;
+              try {
+                setDeletingId(commentPendingDelete.id);
+                setShowDeleteConfirm(false);
+                const { error } = await supabase
+                  .from('comments')
+                  .delete()
+                  .eq('id', commentPendingDelete.id);
+                if (error) throw error;
+                // Optimistically update local state
+                setAllComments(prev => prev.filter(c => c.id !== commentPendingDelete.id && c.parent_comment_id !== commentPendingDelete.id));
+                setCommentPendingDelete(null);
+              } catch (e) {
+                console.error('Error deleting comment:', e);
+                Alert.alert('Error', 'Failed to delete comment.');
+              } finally {
+                setDeletingId(null);
+              }
+            }}
+            confirmButtonTitle="Delete"
+            isDestructive
+          />
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Comments</Text>
@@ -481,11 +592,12 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
           {/* Input Section */}
           <KeyboardAvoidingView 
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + 64 : 0}
           >
             <View style={[styles.inputContainer, { 
               borderTopColor: colors.border,
-              backgroundColor: colors.background 
+              backgroundColor: colors.background,
+              paddingBottom: 48 + insets.bottom
             }]}>
               {replyingTo && (
                 <View style={[styles.replyingContainer, { backgroundColor: colors.backgroundSecondary }]}>
@@ -502,7 +614,7 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
               
               <View style={styles.inputRow}>
                 <Image 
-                  source={{ uri: user?.user_metadata?.avatar_url || 'https://via.placeholder.com/32' }} 
+                  source={{ uri: getAvatarUrl(user?.user_metadata?.avatar_url, user?.user_metadata?.username || 'default') }} 
                   style={styles.inputAvatar} 
                 />
                 
@@ -552,6 +664,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
+  },
+  optionsOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)'
+  },
+  optionsContainer: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  optionsItem: {
+    paddingVertical: 16,
+  },
+  optionsItemText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   container: {
     borderTopLeftRadius: 12,
@@ -680,7 +810,7 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 12,
   },
   inputAvatar: {

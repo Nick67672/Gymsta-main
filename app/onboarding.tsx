@@ -35,13 +35,13 @@ import { Typography } from '@/constants/Typography';
 
 interface OnboardingData {
   age: string;
-  location: string;
-  fitnessLevel: string;
-  primaryGoal: string;
-  workoutFrequency: string;
-  workoutDuration: string;
-  experienceYears: string;
+  location: string; // country
   measurementSystem: 'imperial' | 'metric';
+  weight: string; // optional
+  workoutFrequency: string; // 1-2_times,3-4_times,5-6_times,daily
+  goals: string[]; // multi-select
+  preferredDuration?: string; // optional: 15-30_min,30-45_min,45-60_min,60+_min
+  experienceYears?: string; // optional
 }
 
 const FITNESS_LEVELS = [
@@ -304,29 +304,23 @@ export default function OnboardingScreen() {
   const [data, setData] = useState<OnboardingData>({
     age: '',
     location: '',
-    fitnessLevel: '',
-    primaryGoal: '',
-    workoutFrequency: '',
-    workoutDuration: '',
-    experienceYears: '',
     measurementSystem: 'imperial',
+    weight: '',
+    workoutFrequency: '',
+    goals: [],
+    preferredDuration: undefined,
+    experienceYears: undefined,
   });
 
   const steps = [
-    { title: 'Basic Info', subtitle: 'Tell us about yourself' },
-    { title: 'Fitness Level', subtitle: 'How experienced are you?' },
-    { title: 'Goals', subtitle: 'What do you want to achieve?' },
-    { title: 'Preferences', subtitle: 'How do you like to train?' },
-    { title: 'Units', subtitle: 'Choose your measurement system' },
+    { title: 'Quick Setup', subtitle: 'Just a few details to personalize' },
   ];
 
   const filteredCountries = COUNTRIES_LIST.filter(c => 
     c.toLowerCase().includes(data.location.toLowerCase())
   );
 
-  const filteredExperienceLevels = EXPERIENCE_LEVELS.filter(level => 
-    level.toLowerCase().includes(data.experienceYears.toLowerCase())
-  );
+  // Simplified flow: no experience level suggestions
 
   const updateData = (field: keyof OnboardingData, value: string) => {
     setData(prev => ({ ...prev, [field]: value }));
@@ -345,20 +339,11 @@ export default function OnboardingScreen() {
   };
 
   const canProceed = () => {
-    switch (currentStep) {
-      case 0: // Basic Info
-        return data.age.trim() && data.location.trim();
-      case 1: // Fitness Level
-        return data.fitnessLevel !== '';
-      case 2: // Goals
-        return data.primaryGoal !== '';
-      case 3: // Preferences
-        return data.workoutFrequency !== '' && data.workoutDuration !== '';
-      case 4: // Units
-        return data.measurementSystem === 'imperial' || data.measurementSystem === 'metric';
-      default:
-        return false;
-    }
+    const ageValid = !!data.age.trim();
+    const locationValid = !!data.location.trim();
+    const unitsValid = data.measurementSystem === 'imperial' || data.measurementSystem === 'metric';
+    const frequencyValid = !!data.workoutFrequency;
+    return ageValid && locationValid && unitsValid && frequencyValid;
   };
 
   const handleComplete = async () => {
@@ -369,17 +354,23 @@ export default function OnboardingScreen() {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('User not authenticated');
 
-      // Update profile with onboarding data
+      // Convert optional weight to kg if provided
+      const weightKg = data.weight
+        ? (data.measurementSystem === 'imperial' ? Math.round((parseFloat(data.weight) || 0) * 0.453592 * 10) / 10 : parseFloat(data.weight))
+        : null;
+
+      // Update profile with simplified data (avoid non-existent columns)
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           age: parseInt(data.age),
           location: data.location,
-          fitness_level: data.fitnessLevel,
-          primary_goal: data.primaryGoal,
+          primary_goal: (data as any).goals?.[0] || null,
+          goals: (data as any).goals && (data as any).goals.length ? (data as any).goals : null,
           workout_frequency: data.workoutFrequency,
-          preferred_workout_duration: data.workoutDuration,
-          experience_years: parseInt(data.experienceYears) || 0,
+          // body_weight_kg removed to prevent PGRST204 when column isn't present
+          preferred_workout_duration: data.preferredDuration || null,
+          experience_years: data.experienceYears ? parseInt(data.experienceYears) : null,
           has_completed_onboarding: true,
           updated_at: new Date().toISOString(),
         })
@@ -404,6 +395,18 @@ export default function OnboardingScreen() {
         // Suppress table missing error on first-run environments
         if ((measurementError as any).code !== '42P01') {
           throw measurementError;
+        }
+      }
+
+      // Optionally store last known weight in preferences if table exists
+      if (weightKg !== null) {
+        try {
+          await supabase
+            .from('user_measurement_preferences')
+            .update({ last_weight_kg: weightKg, updated_at: new Date().toISOString() })
+            .eq('user_id', user.id);
+        } catch (e) {
+          // ignore if column/table not present
         }
       }
 
@@ -440,7 +443,7 @@ export default function OnboardingScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Location</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Country</Text>
               <View style={styles.locationInputContainer}>
                 <TextInput
                   style={[
@@ -454,7 +457,7 @@ export default function OnboardingScreen() {
                       borderBottomRightRadius: showLocationSuggestions && filteredCountries.length > 0 ? 0 : 8
                     }
                   ]}
-                  placeholder="City, Country"
+                  placeholder="e.g., United States"
                   placeholderTextColor={colors.textSecondary}
                   value={data.location}
                   onChangeText={(value) => {
@@ -498,250 +501,156 @@ export default function OnboardingScreen() {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.text }]}>Experience Level</Text>
-              <View style={styles.experienceInputContainer}>
-                <TextInput
-                  style={[
-                    styles.textInput,
-                    { 
-                      borderColor: colors.border,
-                      backgroundColor: colors.inputBackground,
-                      color: colors.text,
-                      marginBottom: showExperienceSuggestions && filteredExperienceLevels.length > 0 ? 0 : 0,
-                      borderBottomLeftRadius: showExperienceSuggestions && filteredExperienceLevels.length > 0 ? 0 : 8,
-                      borderBottomRightRadius: showExperienceSuggestions && filteredExperienceLevels.length > 0 ? 0 : 8
-                    }
-                  ]}
-                  placeholder="Select your experience level"
-                  placeholderTextColor={colors.textSecondary}
-                  value={data.experienceYears}
-                  onChangeText={(value) => {
-                    updateData('experienceYears', value);
-                    setShowExperienceSuggestions(true);
-                  }}
-                  onFocus={() => setShowExperienceSuggestions(true)}
-                />
-                
-                {showExperienceSuggestions && filteredExperienceLevels.length > 0 && (
-                  <ScrollView 
-                    style={[
-                      styles.suggestionsContainer,
-                      {
-                        backgroundColor: colors.inputBackground,
-                        borderColor: colors.border
-                      }
-                    ]}
-                    keyboardShouldPersistTaps="handled"
-                    nestedScrollEnabled
-                  >
-                    {filteredExperienceLevels.map((suggestion, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[
-                          styles.suggestionItem,
-                          { borderBottomColor: colors.border }
-                        ]}
-                        onPress={() => {
-                          updateData('experienceYears', suggestion);
-                          setShowExperienceSuggestions(false);
-                        }}
-                      >
-                        <Text style={[styles.suggestionText, { color: colors.text }]}>
-                          {suggestion}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
+            {/* Units */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Units</Text>
+            <TouchableOpacity
+              style={[
+                styles.measurementCard,
+                { backgroundColor: colors.card, borderColor: data.measurementSystem === 'metric' ? colors.tint : colors.border }
+              ]}
+              onPress={() => updateData('measurementSystem', 'metric')}
+            >
+              <View style={styles.measurementContent}>
+                <View style={styles.measurementHeader}>
+                  <Text style={[styles.measurementTitle, { color: colors.text }]}>Metric (KG)</Text>
+                  {data.measurementSystem === 'metric' && (<Check size={20} color={colors.tint} />)}
+                </View>
               </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.measurementCard,
+                { backgroundColor: colors.card, borderColor: data.measurementSystem === 'imperial' ? colors.tint : colors.border }
+              ]}
+              onPress={() => updateData('measurementSystem', 'imperial')}
+            >
+              <View style={styles.measurementContent}>
+                <View style={styles.measurementHeader}>
+                  <Text style={[styles.measurementTitle, { color: colors.text }]}>Imperial (LBS)</Text>
+                  {data.measurementSystem === 'imperial' && (<Check size={20} color={colors.tint} />)}
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Optional Weight */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Weight (optional)</Text>
+              <TextInput
+                style={[styles.textInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.inputBackground,
+                  color: colors.text
+                }]}
+                placeholder={data.measurementSystem === 'imperial' ? 'Enter weight in lbs' : 'Enter weight in kg'}
+                placeholderTextColor={colors.textSecondary}
+                value={data.weight as any}
+                onChangeText={(value) => updateData('weight' as any, value)}
+                keyboardType="numeric"
+                maxLength={4}
+              />
+            </View>
+
+            {/* Frequency */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>How often do you work out?</Text>
+            {WORKOUT_FREQUENCIES.map((freq) => (
+              <TouchableOpacity
+                key={freq.value}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: colors.card, borderColor: data.workoutFrequency === freq.value ? colors.tint : colors.border }
+                ]}
+                onPress={() => updateData('workoutFrequency', freq.value)}
+              >
+                <View style={styles.optionContent}>
+                  <Text style={[styles.optionTitle, { color: colors.text }]}>{freq.label}</Text>
+                  {data.workoutFrequency === freq.value && (<Check size={20} color={colors.tint} />)}
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {/* Optional Preferred Duration */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Preferred session length (optional)</Text>
+            {WORKOUT_DURATIONS.map((dur) => (
+              <TouchableOpacity
+                key={dur.value}
+                style={[
+                  styles.optionCard,
+                  { backgroundColor: colors.card, borderColor: data.preferredDuration === dur.value ? colors.tint : colors.border }
+                ]}
+                onPress={() => updateData('preferredDuration' as any, dur.value)}
+              >
+                <View style={styles.optionContent}>
+                  <Text style={[styles.optionTitle, { color: colors.text }]}>{dur.label}</Text>
+                  {data.preferredDuration === dur.value && (<Check size={20} color={colors.tint} />)}
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {/* Goals Multi-select */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>What’s your purpose? (select multiple)</Text>
+            <View style={styles.goalsGrid}>
+              {PRIMARY_GOALS.map((goal) => {
+                const selected = (data as any).goals?.includes(goal.value);
+                return (
+                  <TouchableOpacity
+                    key={goal.value}
+                    style={[
+                      styles.goalCard,
+                      { backgroundColor: colors.card, borderColor: selected ? colors.tint : colors.border }
+                    ]}
+                    onPress={() => {
+                      const current = (data as any).goals || [];
+                      const next = selected ? current.filter((g: string) => g !== goal.value) : [...current, goal.value];
+                      updateData('goals' as any, next as any);
+                    }}
+                  >
+                    <View style={styles.goalContent}>
+                      <Text style={[styles.goalTitle, { color: colors.text }]}>{goal.label}</Text>
+                      {selected && (<Check size={16} color={colors.tint} style={styles.goalCheck} />)}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Optional Experience Years */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Training experience (years, optional)</Text>
+              <TextInput
+                style={[styles.textInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.inputBackground,
+                  color: colors.text
+                }]}
+                placeholder="e.g., 0, 1, 2"
+                placeholderTextColor={colors.textSecondary}
+                value={(data.experienceYears || '') as any}
+                onChangeText={(value) => updateData('experienceYears' as any, value)}
+                keyboardType="numeric"
+                maxLength={2}
+              />
             </View>
           </View>
         );
 
       case 1:
         return (
-          <View style={styles.stepContainer}>
-            <Text style={[styles.stepDescription, { color: colors.textSecondary }]}>
-              Select your current fitness level to help us personalize your experience
-            </Text>
-            {FITNESS_LEVELS.map((level) => (
-              <TouchableOpacity
-                key={level.value}
-                style={[
-                  styles.optionCard,
-                  { 
-                    backgroundColor: colors.card,
-                    borderColor: data.fitnessLevel === level.value ? colors.tint : colors.border
-                  }
-                ]}
-                onPress={() => updateData('fitnessLevel', level.value)}
-              >
-                <View style={styles.optionContent}>
-                  <View style={styles.optionHeader}>
-                    <Text style={[styles.optionTitle, { color: colors.text }]}>
-                      {level.label}
-                    </Text>
-                    {data.fitnessLevel === level.value && (
-                      <Check size={20} color={colors.tint} />
-                    )}
-                  </View>
-                  <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>
-                    {level.description}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <View />
         );
 
       case 2:
         return (
-          <View style={styles.stepContainer}>
-            <Text style={[styles.stepDescription, { color: colors.textSecondary }]}>
-              What's your primary fitness goal?
-            </Text>
-            <View style={styles.goalsGrid}>
-              {PRIMARY_GOALS.map((goal) => (
-                <TouchableOpacity
-                  key={goal.value}
-                  style={[
-                    styles.goalCard,
-                    { 
-                      backgroundColor: colors.card,
-                      borderColor: data.primaryGoal === goal.value ? colors.tint : colors.border
-                    }
-                  ]}
-                  onPress={() => updateData('primaryGoal', goal.value)}
-                >
-                  <View style={styles.goalContent}>
-                    <Text style={[styles.goalTitle, { color: colors.text }]}>
-                      {goal.label}
-                    </Text>
-                    {data.primaryGoal === goal.value && (
-                      <Check size={16} color={colors.tint} style={styles.goalCheck} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <View />
         );
 
       case 3:
         return (
-          <View style={styles.stepContainer}>
-            <View style={styles.preferenceSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Workout Frequency</Text>
-              {WORKOUT_FREQUENCIES.map((freq) => (
-                <TouchableOpacity
-                  key={freq.value}
-                  style={[
-                    styles.optionCard,
-                    { 
-                      backgroundColor: colors.card,
-                      borderColor: data.workoutFrequency === freq.value ? colors.tint : colors.border
-                    }
-                  ]}
-                  onPress={() => updateData('workoutFrequency', freq.value)}
-                >
-                  <View style={styles.optionContent}>
-                    <Text style={[styles.optionTitle, { color: colors.text }]}>
-                      {freq.label}
-                    </Text>
-                    {data.workoutFrequency === freq.value && (
-                      <Check size={20} color={colors.tint} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.preferenceSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Preferred Workout Duration</Text>
-              {WORKOUT_DURATIONS.map((duration) => (
-                <TouchableOpacity
-                  key={duration.value}
-                  style={[
-                    styles.optionCard,
-                    { 
-                      backgroundColor: colors.card,
-                      borderColor: data.workoutDuration === duration.value ? colors.tint : colors.border
-                    }
-                  ]}
-                  onPress={() => updateData('workoutDuration', duration.value)}
-                >
-                  <View style={styles.optionContent}>
-                    <Text style={[styles.optionTitle, { color: colors.text }]}>
-                      {duration.label}
-                    </Text>
-                    {data.workoutDuration === duration.value && (
-                      <Check size={20} color={colors.tint} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <View />
         );
 
       case 4:
         return (
-          <View style={styles.stepContainer}>
-            <Text style={[styles.stepDescription, { color: colors.textSecondary }]}>
-              Choose your preferred measurement system
-            </Text>
-            
-            <TouchableOpacity
-              style={[
-                styles.measurementCard,
-                { 
-                  backgroundColor: colors.card,
-                  borderColor: data.measurementSystem === 'imperial' ? colors.tint : colors.border
-                }
-              ]}
-              onPress={() => updateData('measurementSystem', 'imperial')}
-            >
-              <View style={styles.measurementContent}>
-                <View style={styles.measurementHeader}>
-                  <Text style={[styles.measurementTitle, { color: colors.text }]}>
-                    Imperial (US)
-                  </Text>
-                  {data.measurementSystem === 'imperial' && (
-                    <Check size={20} color={colors.tint} />
-                  )}
-                </View>
-                <Text style={[styles.measurementDescription, { color: colors.textSecondary }]}>
-                  Pounds (lbs), Miles, Feet, Fahrenheit
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.measurementCard,
-                { 
-                  backgroundColor: colors.card,
-                  borderColor: data.measurementSystem === 'metric' ? colors.tint : colors.border
-                }
-              ]}
-              onPress={() => updateData('measurementSystem', 'metric')}
-            >
-              <View style={styles.measurementContent}>
-                <View style={styles.measurementHeader}>
-                  <Text style={[styles.measurementTitle, { color: colors.text }]}>
-                    Metric
-                  </Text>
-                  {data.measurementSystem === 'metric' && (
-                    <Check size={20} color={colors.tint} />
-                  )}
-                </View>
-                <Text style={[styles.measurementDescription, { color: colors.textSecondary }]}>
-                  Kilograms (kg), Kilometers, Centimeters, Celsius
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+          <View />
         );
 
       default:
@@ -768,31 +677,25 @@ export default function OnboardingScreen() {
         style={styles.header}
       >
         <View style={styles.headerContent}>
-          {currentStep > 0 && (
-            <TouchableOpacity onPress={prevStep} style={styles.backButton}>
-              <ChevronLeft size={24} color={colors.text} />
-            </TouchableOpacity>
-          )}
+          {/* Single-step flow: no back button */}
           
           <View style={styles.headerText}>
             <Text style={[styles.stepTitle, { color: colors.text }]}>
-              {steps[currentStep].title}
+              Quick Setup
             </Text>
             <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>
-              {steps[currentStep].subtitle}
+              Just a few details to personalize
             </Text>
           </View>
 
           <View style={styles.progressContainer}>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-              {currentStep + 1} of {steps.length}
-            </Text>
+            <Text style={[styles.progressText, { color: colors.textSecondary }]}>Quick</Text>
             <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
               <View 
                 style={[
                   styles.progressFill, 
                   { 
-                    width: `${((currentStep + 1) / steps.length) * 100}%`,
+                    width: `100%`,
                     backgroundColor: colors.tint
                   }
                 ]} 
@@ -821,15 +724,13 @@ export default function OnboardingScreen() {
               opacity: canProceed() ? 1 : 0.5
             }
           ]}
-          onPress={currentStep === steps.length - 1 ? handleComplete : nextStep}
+          onPress={handleComplete}
           disabled={!canProceed() || loading}
         >
           <Text style={[styles.nextButtonText, { color: canProceed() ? '#fff' : colors.textSecondary }]}>
-            {loading ? 'Saving...' : currentStep === steps.length - 1 ? 'Complete Setup' : 'Continue'}
+            {loading ? 'Saving...' : 'Get Started'}
           </Text>
-          {currentStep < steps.length - 1 && (
-            <ChevronRight size={20} color={canProceed() ? '#fff' : colors.textSecondary} />
-          )}
+          <ChevronRight size={20} color={canProceed() ? '#fff' : colors.textSecondary} />
         </TouchableOpacity>
       </View>
       </KeyboardAvoidingView>
