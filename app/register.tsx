@@ -108,6 +108,7 @@ export default function RegisterScreen() {
           username: username.trim(),
           bio: bio.trim() || null,
           gym: gym.trim() || null,
+          has_completed_onboarding: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -131,8 +132,8 @@ export default function RegisterScreen() {
         setTheme('dark');
       }
 
-      // Redirect to onboarding on success
-      router.replace('/onboarding');
+      // Go straight to the app on success
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Profile creation error:', err);
       setError(

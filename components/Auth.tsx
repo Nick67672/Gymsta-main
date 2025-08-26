@@ -42,19 +42,23 @@ export default function Auth() {
 
       if (error) throw error;
 
-      // Check if user has a profile and has completed onboarding
+      // Check if user has a profile; if onboarding not completed, mark it complete and continue
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
           .select('username, has_completed_onboarding')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (!profile) {
+        if (!profile || !profile.username) {
           router.replace('/register');
-        } else if (!profile.has_completed_onboarding) {
-          router.replace('/onboarding');
         } else {
+          if (!profile.has_completed_onboarding) {
+            await supabase
+              .from('profiles')
+              .update({ has_completed_onboarding: true, updated_at: new Date().toISOString() })
+              .eq('id', user.id);
+          }
           router.replace('/(tabs)');
         }
       }
