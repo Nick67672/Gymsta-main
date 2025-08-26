@@ -29,7 +29,7 @@ export default function SearchScreen() {
 
   const searchUsers = async (query: string) => {
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/auth?mode=signup');
       return;
     }
     
@@ -64,7 +64,7 @@ export default function SearchScreen() {
 
   const handleUserPress = (user: User) => {
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/auth?mode=signup');
       return;
     }
     

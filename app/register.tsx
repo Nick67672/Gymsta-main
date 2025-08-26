@@ -26,7 +26,7 @@ export default function RegisterScreen() {
       const { data: { user }, error } = await supabase.auth.getUser();
       if (error || !user) {
         setError('Please sign in to continue');
-        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+        setTimeout(() => router.replace('/auth?mode=signup'), 2000);
       }
     };
     
@@ -81,13 +81,13 @@ export default function RegisterScreen() {
       if (userError) {
         console.error('Auth error:', userError);
         setError('Authentication session expired. Please sign in again.');
-        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+        setTimeout(() => router.replace('/auth?mode=signup'), 2000);
         return;
       }
       
       if (!user) {
         setError('No authenticated user found. Redirecting to sign in...');
-        setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+        setTimeout(() => router.replace('/auth?mode=signup'), 2000);
         return;
       }
 

@@ -127,12 +127,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const handleSignIn = () => {
     setModalVisible(false);
-    router.push('/auth');
+    router.push('/auth?mode=signup');
   };
 
   const handleSignUp = () => {
     setModalVisible(false);
-    router.push('/auth');
+    router.push('/auth?mode=signup');
   };
 
   return (

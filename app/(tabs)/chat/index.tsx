@@ -129,7 +129,7 @@ export default function ChatScreen() {
 
   const loadStories = async (userId: string) => {
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/auth?mode=signup');
       return;
     }
     
@@ -397,7 +397,7 @@ export default function ChatScreen() {
 
   const handleNewChat = () => {
     if (!isAuthenticated) {
-      router.push('/auth');
+      router.push('/auth?mode=signup');
       return;
     }
     router.push('/chat/search');
@@ -607,7 +607,7 @@ export default function ChatScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.signInButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.push('/auth')}
+            onPress={() => router.push('/auth?mode=signup')}
           >
             <Text style={styles.signInButtonText}>Sign In</Text>
           </TouchableOpacity>

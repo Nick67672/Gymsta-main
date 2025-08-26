@@ -65,7 +65,7 @@ export default function UserProfileScreen() {
     // Check if user is authenticated
     if (!isAuthenticated) {
       setLoading(false);
-      router.replace('/auth');
+      router.replace('/auth?mode=signup');
       return;
     }
     

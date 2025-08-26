@@ -1287,7 +1287,7 @@ function HomeScreenContent() {
                 style={[styles.loginButton, { backgroundColor: colors.tint }]}
                 onPress={() => {
                   haptics.buttonPress();
-                  showAuthModal();
+                  router.push('/auth?mode=signup');
                 }}
               >
                 <LogIn size={20} color="#fff" />

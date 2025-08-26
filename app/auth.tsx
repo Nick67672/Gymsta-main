@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { ArrowLeft, Check, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -228,7 +229,11 @@ export default function AuthScreen() {
     setSuccess(null);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(emailOrUsername.trim());
+      const redirectTo = Linking.createURL('/auth', { queryParams: { type: 'recovery' } });
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        emailOrUsername.trim(),
+        { redirectTo }
+      );
 
       if (error) throw error;
 
@@ -404,22 +409,6 @@ export default function AuthScreen() {
             </View>
           )}
 
-          {mode === 'signup' && (
-            <TextInput
-              style={[styles.input, { 
-                borderColor: colors.border,
-                backgroundColor: colors.inputBackground,
-                color: colors.text 
-              }]}
-              placeholder="Confirm Password"
-              placeholderTextColor={colors.textSecondary}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              autoCapitalize="none"
-            />
-          )}
-
           {mode === 'reset-password' && (
             <ThemedInput
               label="Confirm New Password"
@@ -506,7 +495,7 @@ export default function AuthScreen() {
               style={styles.forgotPasswordButton}
               onPress={() => setMode('forgot-password')}>
               <Text style={[styles.forgotPasswordText, { color: colors.tint }]}>
-                Forgot Password?
+                Forgot password
               </Text>
             </TouchableOpacity>
           )}

@@ -90,7 +90,7 @@ export default function TabLayout() {
 
   const handleUploadPress = async () => {
     if (!isAuthenticated) {
-      showAuthModal();
+      router.push('/auth?mode=signup');
       return;
     }
 
@@ -318,7 +318,7 @@ export default function TabLayout() {
             haptics.tabChange();
 
             if (!isAuthenticated) {
-              showAuthModal();
+              router.push('/auth?mode=signup');
               return;
             }
 

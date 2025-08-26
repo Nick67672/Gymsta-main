@@ -966,7 +966,7 @@ export default function ProfileScreen() {
         <View style={styles.signInContainer}>
                       <TouchableOpacity 
               style={styles.signInButton}
-              onPress={() => router.push('/auth')}
+              onPress={() => router.push('/auth?mode=signup')}
             >
               <LinearGradient
                 colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}

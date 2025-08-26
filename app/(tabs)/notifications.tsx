@@ -765,7 +765,7 @@ export default function NotificationsScreen() {
           </Text>
           <GradientButton
             title="Sign In"
-            onPress={() => router.push('/auth')}
+            onPress={() => router.push('/auth?mode=signup')}
             variant="logo"
             size="medium"
             style={{ marginTop: 24 }}

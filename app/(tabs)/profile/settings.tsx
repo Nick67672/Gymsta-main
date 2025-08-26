@@ -274,7 +274,19 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.border }]}
+            onPress={() => router.push('/profile/change-password')}>
+            <View style={styles.settingLabelContainer}>
+              <Lock size={20} color={colors.text} style={styles.settingIcon} />
+              <View>
+                <Text style={[styles.settingLabel, { color: colors.text }]}>Change Password</Text>
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Update your account password</Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomWidth: 0 }]}
             onPress={openBlockedUsers}>
