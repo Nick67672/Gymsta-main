@@ -132,6 +132,10 @@ export default function FitnessHubScreen() {
     router.push('/fitness/nutrition-hub');
   };
 
+  const navigateToAiHub = () => {
+    router.push('/fitness/ai-hub');
+  };
+
   // Lightweight weight tracker CTA (private storage, weekly average)
   const [weightInput, setWeightInput] = useState('');
   const [weeklyAvg, setWeeklyAvg] = useState<number | null>(null);
@@ -342,6 +346,36 @@ export default function FitnessHubScreen() {
                 </View>
 
                 {/* Removed goal/progress footer */}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* AI Hub */}
+          <TouchableOpacity
+            style={styles.hubCardContainer}
+            onPress={navigateToAiHub}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={['#7C3AED', '#A855F7']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.hubCardGradient}
+            >
+              <View style={styles.hubCardContent}>
+                <View style={styles.hubCardHeader}>
+                  <View style={styles.hubIconContainer}>
+                    <Sparkles size={36} color="#fff" />
+                  </View>
+                  <ChevronRight size={22} color="rgba(255,255,255,0.9)" />
+                </View>
+
+                <View style={styles.hubCardBody}>
+                  <Text style={styles.hubTitle}>AI Hub</Text>
+                  <Text style={styles.hubDescription}>
+                    Correct your form with AI-powered video analysis and get real-time feedback.
+                  </Text>
+                </View>
               </View>
             </LinearGradient>
           </TouchableOpacity>

@@ -8,6 +8,11 @@ export interface ImagePickerOptions {
   allowsMultipleSelection?: boolean;
 }
 
+export interface VideoPickerOptions {
+  quality?: number;
+  allowsMultipleSelection?: boolean;
+}
+
 export const requestPermissions = async (): Promise<boolean> => {
   try {
     // Request media library permissions
@@ -84,6 +89,40 @@ export const pickImageFromLibrary = async (options: ImagePickerOptions = {}): Pr
     }
     
     Alert.alert('Error', errorMessage);
+    return null;
+  }
+};
+
+export const pickVideoFromLibrary = async (options: VideoPickerOptions = {}): Promise<string | null> => {
+  try {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) {
+      return null;
+    }
+
+    const defaultOptions = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsMultipleSelection: false,
+      quality: 1,
+      ...options
+    } as any;
+
+    const result = await ImagePicker.launchImageLibraryAsync(defaultOptions);
+
+    if (result.canceled || !result.assets || result.assets.length === 0) {
+      return null;
+    }
+
+    const asset = result.assets[0];
+
+    if (!asset.uri) {
+      throw new Error('No video URI received');
+    }
+
+    return asset.uri;
+  } catch (error) {
+    console.error('Video picker error:', error);
+    Alert.alert('Error', 'Failed to pick video. Please try again.');
     return null;
   }
 };

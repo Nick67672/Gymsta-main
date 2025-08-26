@@ -20,7 +20,7 @@ export const useTab = () => {
 };
 
 export const TabProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('explore');
+  const [activeTab, setActiveTab] = useState<TabType>('my-gym');
   const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   return (

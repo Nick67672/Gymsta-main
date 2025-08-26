@@ -51,8 +51,8 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
   overrideTintColor
 }) => {
   const tabs = [
-    { key: 'explore', label: 'Explore' },
     { key: 'my-gym', label: 'My Gym' },
+    { key: 'explore', label: 'Explore' },
     { key: 'following', label: 'Following' }
   ];
 
@@ -100,38 +100,18 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
     setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
   };
 
-  const getRotatedTabs = () => {
-    // Always put the active tab in the center (index 1)
-    const rotatedTabs = [];
-    const totalTabs = tabs.length;
-    
-    for (let i = 0; i < totalTabs; i++) {
-      const tabIndex = (activeTabIndex - 1 + i + totalTabs) % totalTabs;
-      rotatedTabs.push({
-        ...tabs[tabIndex],
-        originalIndex: tabIndex,
-        displayIndex: i
-      });
-    }
-    
-    return rotatedTabs;
-  };
-
-  const getTabStyle = (displayIndex: number, originalIndex: number) => {
-    const isActive = originalIndex === activeTabIndex;
-    const distance = Math.abs(displayIndex - 1); // Distance from center (index 1)
-    
+  const getTabStyle = (index: number) => {
+    const isActive = index === activeTabIndex;
+    const distance = Math.abs(index - activeTabIndex);
     return {
-      opacity: isActive ? 1 : 0.6 - (distance * 0.2),
+      opacity: isActive ? 1 : Math.max(0.6 - (distance * 0.2), 0.4),
       transform: [
         {
-          scale: isActive ? 1.1 : 1 - (distance * 0.1)
+          scale: isActive ? 1.1 : Math.max(1 - (distance * 0.1), 0.9)
         }
       ]
     };
   };
-
-  const rotatedTabs = getRotatedTabs();
 
   const tintColor = overrideTintColor ?? colors.tint;
 
@@ -143,29 +123,45 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
     >
       <Animated.View style={[tikTokStyles.container, { backgroundColor: colors.background }]}>
         <View style={tikTokStyles.tabsContainer}>
-          {rotatedTabs.map((tab, displayIndex) => (
-            <TouchableOpacity
-              key={`${tab.key}-${tab.originalIndex}`}
-              style={[tikTokStyles.tab, getTabStyle(displayIndex, tab.originalIndex)]}
-              onPress={() => selectTab(tab.originalIndex)}
-              activeOpacity={0.7}
-            >
-              <Animated.Text
-                style={[
-                  tikTokStyles.tabText,
-                  {
-                    color: tab.originalIndex === activeTabIndex ? tintColor : colors.textSecondary,
-                    fontWeight: tab.originalIndex === activeTabIndex ? '700' : '600'
-                  }
-                ]}
-              >
-                {tab.label}
-              </Animated.Text>
-              {tab.originalIndex === activeTabIndex && (
-                <View style={[tikTokStyles.activeUnderline, { backgroundColor: tintColor }]} />
-              )}
-            </TouchableOpacity>
-          ))}
+          {(() => {
+            const prevIndex = activeTabIndex - 1;
+            const nextIndex = activeTabIndex + 1;
+            const slots: Array<{ type: 'tab'; index: number } | { type: 'empty' }> = [
+              prevIndex >= 0 ? { type: 'tab', index: prevIndex } : { type: 'empty' },
+              { type: 'tab', index: activeTabIndex },
+              nextIndex < tabs.length ? { type: 'tab', index: nextIndex } : { type: 'empty' }
+            ];
+            return slots.map((slot, i) => {
+              if (slot.type === 'empty') {
+                return <View key={`empty-${i}`} style={[tikTokStyles.tab, { opacity: 0 }]} />;
+              }
+              const index = slot.index;
+              const tab = tabs[index];
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[tikTokStyles.tab, getTabStyle(index)]}
+                  onPress={() => selectTab(index)}
+                  activeOpacity={0.7}
+                >
+                  <Animated.Text
+                    style={[
+                      tikTokStyles.tabText,
+                      {
+                        color: index === activeTabIndex ? tintColor : colors.textSecondary,
+                        fontWeight: index === activeTabIndex ? '700' : '600'
+                      }
+                    ]}
+                  >
+                    {tab.label}
+                  </Animated.Text>
+                  {index === activeTabIndex && (
+                    <View style={[tikTokStyles.activeUnderline, { backgroundColor: tintColor }]} />
+                  )}
+                </TouchableOpacity>
+              );
+            });
+          })()}
         </View>
       </Animated.View>
     </PanGestureHandler>
