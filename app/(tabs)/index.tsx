@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import React from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, RefreshControl, Modal, ActivityIndicator, Dimensions, Alert, Animated, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Modal,
+  ActivityIndicator,
+  Dimensions,
+  Alert,
+  Animated,
+  Platform,
+} from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { LogIn, MessageSquare, Bell, Search } from 'lucide-react-native';
@@ -11,7 +25,10 @@ import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 import { router, useLocalSearchParams } from 'expo-router';
 import StoryViewer from '@/components/StoryViewer';
-import { markAllNotificationsAsRead, getUnreadNotificationCount } from '@/lib/notificationUtils';
+import {
+  markAllNotificationsAsRead,
+  getUnreadNotificationCount,
+} from '@/lib/notificationUtils';
 
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -48,12 +65,12 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
   translateX,
   colors,
   panRef,
-  overrideTintColor
+  overrideTintColor,
 }) => {
   const tabs = [
     { key: 'my-gym', label: 'My Gym' },
     { key: 'explore', label: 'Explore' },
-    { key: 'following', label: 'Following' }
+    { key: 'following', label: 'Following' },
   ];
 
   const onGestureEvent = Animated.event(
@@ -65,9 +82,9 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
     if (event.nativeEvent.state === State.END) {
       const { translationX, velocityX } = event.nativeEvent;
       const threshold = screenWidth * 0.25;
-      
+
       let newIndex = activeTabIndex;
-      
+
       if (translationX > threshold || velocityX > 500) {
         // Swipe right - go to previous tab
         newIndex = Math.max(0, activeTabIndex - 1);
@@ -75,7 +92,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
         // Swipe left - go to next tab
         newIndex = Math.min(tabs.length - 1, activeTabIndex + 1);
       }
-      
+
       // Animate back to position
       Animated.spring(translateX, {
         toValue: 0,
@@ -83,7 +100,7 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
         tension: 100,
         friction: 8,
       }).start();
-      
+
       if (newIndex !== activeTabIndex) {
         // Add haptic feedback for tab change
         haptics.tabChange();
@@ -104,12 +121,12 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
     const isActive = index === activeTabIndex;
     const distance = Math.abs(index - activeTabIndex);
     return {
-      opacity: isActive ? 1 : Math.max(0.6 - (distance * 0.2), 0.4),
+      opacity: isActive ? 1 : Math.max(0.6 - distance * 0.2, 0.4),
       transform: [
         {
-          scale: isActive ? 1.1 : Math.max(1 - (distance * 0.1), 0.9)
-        }
-      ]
+          scale: isActive ? 1.1 : Math.max(1 - distance * 0.1, 0.9),
+        },
+      ],
     };
   };
 
@@ -121,19 +138,32 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
       onGestureEvent={onGestureEvent}
       onHandlerStateChange={onHandlerStateChange}
     >
-      <Animated.View style={[tikTokStyles.container, { backgroundColor: colors.background }]}>
+      <Animated.View
+        style={[tikTokStyles.container, { backgroundColor: colors.background }]}
+      >
         <View style={tikTokStyles.tabsContainer}>
           {(() => {
             const prevIndex = activeTabIndex - 1;
             const nextIndex = activeTabIndex + 1;
-            const slots: Array<{ type: 'tab'; index: number } | { type: 'empty' }> = [
-              prevIndex >= 0 ? { type: 'tab', index: prevIndex } : { type: 'empty' },
+            const slots: Array<
+              { type: 'tab'; index: number } | { type: 'empty' }
+            > = [
+              prevIndex >= 0
+                ? { type: 'tab', index: prevIndex }
+                : { type: 'empty' },
               { type: 'tab', index: activeTabIndex },
-              nextIndex < tabs.length ? { type: 'tab', index: nextIndex } : { type: 'empty' }
+              nextIndex < tabs.length
+                ? { type: 'tab', index: nextIndex }
+                : { type: 'empty' },
             ];
             return slots.map((slot, i) => {
               if (slot.type === 'empty') {
-                return <View key={`empty-${i}`} style={[tikTokStyles.tab, { opacity: 0 }]} />;
+                return (
+                  <View
+                    key={`empty-${i}`}
+                    style={[tikTokStyles.tab, { opacity: 0 }]}
+                  />
+                );
               }
               const index = slot.index;
               const tab = tabs[index];
@@ -148,15 +178,23 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
                     style={[
                       tikTokStyles.tabText,
                       {
-                        color: index === activeTabIndex ? tintColor : colors.textSecondary,
-                        fontWeight: index === activeTabIndex ? '700' : '600'
-                      }
+                        color:
+                          index === activeTabIndex
+                            ? tintColor
+                            : colors.textSecondary,
+                        fontWeight: index === activeTabIndex ? '700' : '600',
+                      },
                     ]}
                   >
                     {tab.label}
                   </Animated.Text>
                   {index === activeTabIndex && (
-                    <View style={[tikTokStyles.activeUnderline, { backgroundColor: tintColor }]} />
+                    <View
+                      style={[
+                        tikTokStyles.activeUnderline,
+                        { backgroundColor: tintColor },
+                      ]}
+                    />
                   )}
                 </TouchableOpacity>
               );
@@ -174,13 +212,14 @@ function HomeScreenContent() {
   const colors = Colors[theme];
   const { isAuthenticated, showAuthModal, user } = useAuth();
   const { blockedUserIds, blockingLoading } = useBlocking();
-  const { activeTab, setActiveTab, activeTabIndex, setActiveTabIndex } = useTab();
+  const { activeTab, setActiveTab, activeTabIndex, setActiveTabIndex } =
+    useTab();
   const { listRef, setRefreshFunction } = useHomeScreen();
-  
+
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  
+
   // Collapsible header state
   const headerHeight = 160; // Increased height for more spacing between header and content
   const [scrollY] = useState(new Animated.Value(0));
@@ -211,12 +250,14 @@ function HomeScreenContent() {
       activeTab,
       currentUserGym,
       hasGym: !!currentUserGym,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }, [activeTab, currentUserGym]);
 
   const videoRefs = useRef<{ [key: string]: any }>({});
-  const [flaggedPosts, setFlaggedPosts] = useState<{ [postId: string]: boolean }>({});
+  const [flaggedPosts, setFlaggedPosts] = useState<{
+    [postId: string]: boolean;
+  }>({});
   const [flagging, setFlagging] = useState<{ [postId: string]: boolean }>({});
   const channelsRef = useRef<{
     posts?: any;
@@ -224,7 +265,7 @@ function HomeScreenContent() {
     stories?: any;
     notifications?: any;
   }>({});
-  
+
   const loadFeed = useCallback(async () => {
     // If the user is not authenticated, skip personalised feed loading.
     if (!isAuthenticated || !user) {
@@ -235,7 +276,9 @@ function HomeScreenContent() {
     setError(null);
 
     try {
-      const { data: feedPosts, error: feedError } = await supabase.rpc('get_feed_posts');
+      const { data: feedPosts, error: feedError } = await supabase.rpc(
+        'get_feed_posts'
+      );
 
       if (feedError) throw feedError;
 
@@ -246,7 +289,7 @@ function HomeScreenContent() {
 
       if (followingError) throw followingError;
 
-      const followingIds = followingData.map(f => f.following_id);
+      const followingIds = followingData.map((f) => f.following_id);
 
       const userAndFollowingPosts = (feedPosts as Post[]).filter(
         (p: Post) => p.user_id === user.id || followingIds.includes(p.user_id)
@@ -254,7 +297,6 @@ function HomeScreenContent() {
 
       setPosts(feedPosts as Post[]);
       setFollowingPosts(userAndFollowingPosts);
-      
     } catch (err: any) {
       console.error('Error loading feed:', err);
       setError('Could not load your feed. Please try again.');
@@ -266,20 +308,24 @@ function HomeScreenContent() {
 
   const loadFollowing = async () => {
     if (!isAuthenticated) return;
-    
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: followingData, error: followingError } = await supabase
         .from('followers')
-        .select(`
+        .select(
+          `
           following:following_id(
             id,
             username,
             avatar_url
           )
-        `)
+        `
+        )
         .eq('follower_id', user.id);
 
       if (followingError) throw followingError;
@@ -288,17 +334,23 @@ function HomeScreenContent() {
         .map((f: any) => f.following as Profile)
         .filter(Boolean);
 
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      
+      const twentyFourHoursAgo = new Date(
+        Date.now() - 24 * 60 * 60 * 1000
+      ).toISOString();
+
       const { data: storiesData } = await supabase
         .from('stories')
         .select('user_id')
-        .in('user_id', profiles.map(p => p.id))
+        .in(
+          'user_id',
+          profiles.map((p) => p.id)
+        )
         .gte('created_at', twentyFourHoursAgo);
 
-      const profilesWithStoryStatus = profiles.map(profile => ({
+      const profilesWithStoryStatus = profiles.map((profile) => ({
         ...profile,
-        has_story: storiesData?.some((s: any) => s.user_id === profile.id) || false
+        has_story:
+          storiesData?.some((s: any) => s.user_id === profile.id) || false,
       }));
 
       setFollowing(profilesWithStoryStatus as Profile[]);
@@ -312,10 +364,12 @@ function HomeScreenContent() {
       showAuthModal();
       return;
     }
-    
+
     try {
-      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      
+      const twentyFourHoursAgo = new Date(
+        Date.now() - 24 * 60 * 60 * 1000
+      ).toISOString();
+
       const { data: stories, error } = await supabase
         .from('stories')
         .select('id, media_url, user_id')
@@ -337,7 +391,9 @@ function HomeScreenContent() {
   const loadPosts = useCallback(async () => {
     try {
       // Get current user's gym
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         setCurrentUserId(user.id);
         const { data: profile } = await supabase
@@ -345,7 +401,7 @@ function HomeScreenContent() {
           .select('gym')
           .eq('id', user.id)
           .maybeSingle();
-        
+
         setCurrentUserGym(profile?.gym || null);
       } else {
         setCurrentUserId(null);
@@ -359,26 +415,26 @@ function HomeScreenContent() {
       // Get comment counts for all posts
       const postIds = data?.map((post: any) => post.id) || [];
       let commentCounts: { [postId: string]: number } = {};
-      
+
       if (postIds.length > 0) {
         const { data: commentsData } = await supabase
           .from('comments')
           .select('post_id, id')
           .in('post_id', postIds);
-        
+
         // Count comments per post
         commentCounts = (commentsData || []).reduce((acc, comment) => {
           acc[comment.post_id] = (acc[comment.post_id] || 0) + 1;
           return acc;
         }, {} as { [postId: string]: number });
       }
-      
+
       const postsWithMediaType = (data || []).map((post: any) => ({
         ...post,
         media_type: post.media_type || 'image',
-        comments_count: commentCounts[post.id] || 0
+        comments_count: commentCounts[post.id] || 0,
       }));
-      
+
       setPosts(postsWithMediaType as Post[]);
     } catch (err) {
       // Capture Supabase PostgrestError details if available for easier debugging
@@ -397,13 +453,15 @@ function HomeScreenContent() {
 
   const loadGymWorkouts = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user || !currentUserGym) {
         console.log('🔍 [DEBUG] loadGymWorkouts: User or gym not available', {
           user: user?.id,
           currentUserGym,
           hasUser: !!user,
-          hasGym: !!currentUserGym
+          hasGym: !!currentUserGym,
         });
         return;
       }
@@ -411,12 +469,13 @@ function HomeScreenContent() {
       console.log('🔍 [DEBUG] loadGymWorkouts: Starting query', {
         userId: user.id,
         currentUserGym,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       const { data: workouts, error } = await supabase
         .from('workouts')
-        .select(`
+        .select(
+          `
           id,
           user_id,
           exercises,
@@ -432,7 +491,8 @@ function HomeScreenContent() {
             photo_url,
             is_my_gym
           )
-        `)
+        `
+        )
         .eq('profiles.gym', currentUserGym)
         .eq('workout_sharing_information.is_my_gym', true)
         .order('created_at', { ascending: false })
@@ -445,18 +505,19 @@ function HomeScreenContent() {
 
       console.log('✅ [DEBUG] loadGymWorkouts: Query successful', {
         workoutsCount: workouts?.length || 0,
-        workouts: workouts?.map(w => ({
-          id: w.id,
-          userId: w.user_id,
-          username: w.profiles?.[0]?.username,
-          userGym: w.profiles?.[0]?.gym,
-          hasSharingInfo: !!w.workout_sharing_information,
-          isMyGym: w.workout_sharing_information?.[0]?.is_my_gym,
-          title: w.workout_sharing_information?.[0]?.title,
-          created: w.created_at
-        })) || [],
+        workouts:
+          workouts?.map((w) => ({
+            id: w.id,
+            userId: w.user_id,
+            username: w.profiles?.[0]?.username,
+            userGym: w.profiles?.[0]?.gym,
+            hasSharingInfo: !!w.workout_sharing_information,
+            isMyGym: w.workout_sharing_information?.[0]?.is_my_gym,
+            title: w.workout_sharing_information?.[0]?.title,
+            created: w.created_at,
+          })) || [],
         currentUserGym,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       setGymWorkouts((workouts || []) as Workout[]);
@@ -464,16 +525,18 @@ function HomeScreenContent() {
       console.error('❌ [DEBUG] loadGymWorkouts: Caught error', {
         error: err,
         currentUserGym,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   };
 
   const loadFollowingContent = async () => {
     if (!isAuthenticated) return;
-    
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // Get list of users the current user follows
@@ -484,8 +547,8 @@ function HomeScreenContent() {
 
       if (followingError) throw followingError;
 
-      const followingIds = followingData?.map(f => f.following_id) || [];
-      
+      const followingIds = followingData?.map((f) => f.following_id) || [];
+
       if (followingIds.length === 0) {
         setFollowingPosts([]);
         setFollowingWorkouts([]);
@@ -493,24 +556,27 @@ function HomeScreenContent() {
       }
 
       // Use get_feed_posts function which includes privacy logic, then filter for followed users
-      const { data: feedPosts, error: feedError } = await supabase.rpc('get_feed_posts');
+      const { data: feedPosts, error: feedError } = await supabase.rpc(
+        'get_feed_posts'
+      );
 
       if (feedError) throw feedError;
 
       // Filter posts to only include those from followed users
-      const followingPosts = (feedPosts || []).filter((post: any) => 
+      const followingPosts = (feedPosts || []).filter((post: any) =>
         followingIds.includes(post.user_id)
       );
 
       const postsWithMediaType = followingPosts.map((post: any) => ({
         ...post,
-        media_type: post.media_type || 'image'
+        media_type: post.media_type || 'image',
       }));
 
       // Load workouts from followed users
       const { data: workoutsData, error: workoutsError } = await supabase
         .from('workouts')
-        .select(`
+        .select(
+          `
           id,
           user_id,
           exercises,
@@ -526,7 +592,8 @@ function HomeScreenContent() {
             photo_url,
             is_my_gym
           )
-        `)
+        `
+        )
         .in('user_id', followingIds)
         .order('created_at', { ascending: false });
 
@@ -554,7 +621,6 @@ function HomeScreenContent() {
       // Load unread messages count (you'll need to implement this based on your messages table structure)
       // For now, setting a placeholder - you can implement based on your chat/messages schema
       setUnreadMessages(0);
-      
     } catch (error) {
       console.error('Error loading unread counts:', error);
     }
@@ -567,13 +633,20 @@ function HomeScreenContent() {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // optimistic: add like to UI immediately
       const tempLike = { id: String(Date.now()), user_id: user.id };
       const originalPosts = [...posts];
-      const addLikeLocal = (arr: Post[]) => arr.map(post => post.id===postId && !post.likes.some(l=>l.user_id===user.id)?{...post,likes:[...post.likes,tempLike]}:post);
+      const addLikeLocal = (arr: Post[]) =>
+        arr.map((post) =>
+          post.id === postId && !post.likes.some((l) => l.user_id === user.id)
+            ? { ...post, likes: [...post.likes, tempLike] }
+            : post
+        );
       setPosts(addLikeLocal);
       setFollowingPosts(addLikeLocal);
 
@@ -589,13 +662,14 @@ function HomeScreenContent() {
         setFollowingPosts(originalPosts);
       } else {
         const newLike = insertedRows?.[0] || tempLike;
-        const replaceTemp = (posts: Post[]) => posts.map(post => {
-          if (post.id === postId) {
-            const filtered = post.likes.filter(l => l.user_id !== user.id); // remove any previous
-            return { ...post, likes: [...filtered, newLike] };
-          }
-          return post;
-        });
+        const replaceTemp = (posts: Post[]) =>
+          posts.map((post) => {
+            if (post.id === postId) {
+              const filtered = post.likes.filter((l) => l.user_id !== user.id); // remove any previous
+              return { ...post, likes: [...filtered, newLike] };
+            }
+            return post;
+          });
         setPosts(replaceTemp);
         setFollowingPosts(replaceTemp);
       }
@@ -609,21 +683,27 @@ function HomeScreenContent() {
       showAuthModal();
       return;
     }
-    
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
-      
+
       const originalPosts = [...posts];
       let likeId: string | null = null;
-      const removeLocal = (arr: Post[]) => arr.map(post => {
-        if (post.id === postId) {
-          const targetLike = post.likes.find(l => l.user_id === user.id);
-          if (targetLike) likeId = targetLike.id;
-          return { ...post, likes: post.likes.filter(l => l.user_id !== user.id) };
-        }
-        return post;
-      });
+      const removeLocal = (arr: Post[]) =>
+        arr.map((post) => {
+          if (post.id === postId) {
+            const targetLike = post.likes.find((l) => l.user_id === user.id);
+            if (targetLike) likeId = targetLike.id;
+            return {
+              ...post,
+              likes: post.likes.filter((l) => l.user_id !== user.id),
+            };
+          }
+          return post;
+        });
       setPosts(removeLocal);
       setFollowingPosts(removeLocal);
 
@@ -657,7 +737,7 @@ function HomeScreenContent() {
       if (playingVideo && videoRefs.current[playingVideo]) {
         videoRefs.current[playingVideo].pauseAsync();
       }
-      
+
       if (videoRefs.current[postId]) {
         videoRefs.current[postId].playAsync();
       }
@@ -673,8 +753,6 @@ function HomeScreenContent() {
     }
   };
 
-
-
   const handleDeletePost = async (postId: string) => {
     // Keep a copy of the original data in case we need to revert
     const originalPosts = [...posts];
@@ -682,20 +760,24 @@ function HomeScreenContent() {
     const originalGymWorkouts = [...gymWorkouts];
 
     // Optimistically remove the post/workout from the UI for a snappy response
-    setPosts(prev => prev.filter(p => p.id !== postId));
-    setFollowingPosts(prev => prev.filter(p => p.id !== postId));
-    setGymWorkouts(prev => prev.filter(w => w.id !== postId));
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    setFollowingPosts((prev) => prev.filter((p) => p.id !== postId));
+    setGymWorkouts((prev) => prev.filter((w) => w.id !== postId));
 
     try {
       // Check if this is a workout or a post by looking at the data we have
-      const isWorkout = gymWorkouts.some(w => w.id === postId) || 
-                       originalGymWorkouts.some(w => w.id === postId);
+      const isWorkout =
+        gymWorkouts.some((w) => w.id === postId) ||
+        originalGymWorkouts.some((w) => w.id === postId);
 
       if (isWorkout) {
         // Use the secure database function for complete workout deletion
-        const { error: workoutError } = await supabase.rpc('delete_my_workout', { 
-          workout_id: postId 
-        });
+        const { error: workoutError } = await supabase.rpc(
+          'delete_my_workout',
+          {
+            workout_id: postId,
+          }
+        );
 
         if (workoutError) {
           throw workoutError;
@@ -726,11 +808,13 @@ function HomeScreenContent() {
       showAuthModal();
       return;
     }
-    
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
-      
+
       // The real-time listener will handle the UI update.
       const { error } = await supabase
         .from('likes')
@@ -747,15 +831,18 @@ function HomeScreenContent() {
   };
 
   // Handle comment count updates
-  const handleCommentCountChange = useCallback((postId: string, count: number) => {
-    const updatePostCommentCount = (posts: Post[]) => 
-      posts.map(post => 
-        post.id === postId ? { ...post, comments_count: count } : post
-      );
-    
-    setPosts(updatePostCommentCount);
-    setFollowingPosts(updatePostCommentCount);
-  }, []);
+  const handleCommentCountChange = useCallback(
+    (postId: string, count: number) => {
+      const updatePostCommentCount = (posts: Post[]) =>
+        posts.map((post) =>
+          post.id === postId ? { ...post, comments_count: count } : post
+        );
+
+      setPosts(updatePostCommentCount);
+      setFollowingPosts(updatePostCommentCount);
+    },
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -779,7 +866,6 @@ function HomeScreenContent() {
 
       // Setup Supabase real-time subscriptions
       // ... (rest of the subscription logic remains the same)
-
     }, [isAuthenticated, blockingLoading, loadFeed, loadPosts])
   );
 
@@ -810,7 +896,8 @@ function HomeScreenContent() {
     }
 
     // Test real-time connection
-    const testChannel = supabase.channel('test-connection-' + Date.now())
+    const testChannel = supabase
+      .channel('test-connection-' + Date.now())
       .subscribe((status) => {
         console.log('🔗 Test channel status:', status);
       });
@@ -831,23 +918,24 @@ function HomeScreenContent() {
 
       // Add the new post only if it's not from a blocked user
       if (!blockedUserIds.includes(newPost.user_id)) {
-        setPosts(currentPosts => [newPost, ...currentPosts]);
-        
+        setPosts((currentPosts) => [newPost, ...currentPosts]);
+
         // Also add to following feed if the author is followed
-        const isFollowing = following.some(f => f.id === newPost.user_id);
+        const isFollowing = following.some((f) => f.id === newPost.user_id);
         if (isFollowing || newPost.user_id === user?.id) {
-          setFollowingPosts(currentPosts => [newPost, ...currentPosts]);
+          setFollowingPosts((currentPosts) => [newPost, ...currentPosts]);
         }
       }
     };
 
-    const postsChannel = supabase.channel('posts-channel-' + Date.now())
+    const postsChannel = supabase
+      .channel('posts-channel-' + Date.now())
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'posts'
+          table: 'posts',
         },
         handlePostInsert
       )
@@ -856,52 +944,67 @@ function HomeScreenContent() {
         {
           event: 'DELETE',
           schema: 'public',
-          table: 'posts'
+          table: 'posts',
         },
         (payload) => {
           console.log('🗑️ Post deletion detected:', payload.old.id);
           // Remove the deleted post from all feeds
-          setPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
-          setFollowingPosts(currentPosts => currentPosts.filter(p => p.id !== payload.old.id));
+          setPosts((currentPosts) =>
+            currentPosts.filter((p) => p.id !== payload.old.id)
+          );
+          setFollowingPosts((currentPosts) =>
+            currentPosts.filter((p) => p.id !== payload.old.id)
+          );
         }
       )
       .subscribe();
 
-    const likesChannel = supabase.channel('likes-channel-' + Date.now())
+    const likesChannel = supabase
+      .channel('likes-channel-' + Date.now())
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'likes'
+          table: 'likes',
         },
         (payload) => {
           console.log('🔥 Main feed - Likes change detected:', payload);
-          
+
           if (payload.eventType === 'INSERT') {
             const { post_id } = payload.new;
-            const newLike = { id: payload.new.id, user_id: payload.new.user_id };
+            const newLike = {
+              id: payload.new.id,
+              user_id: payload.new.user_id,
+            };
 
-            const addLikeToPost = (posts: Post[]) => posts.map(post => {
-              if (post.id === post_id && !post.likes.some(l => l.id === newLike.id)) {
-                return { ...post, likes: [...post.likes, newLike] };
-              }
-              return post;
-            });
-            
+            const addLikeToPost = (posts: Post[]) =>
+              posts.map((post) => {
+                if (
+                  post.id === post_id &&
+                  !post.likes.some((l) => l.id === newLike.id)
+                ) {
+                  return { ...post, likes: [...post.likes, newLike] };
+                }
+                return post;
+              });
+
             setPosts(addLikeToPost);
             setFollowingPosts(addLikeToPost);
-
           } else if (payload.eventType === 'DELETE') {
             const deletedLikeId = payload.old.id;
             if (!deletedLikeId) return;
 
-            const removeLikeFromPost = (posts: Post[]) => posts.map(post => {
-              if (post.likes.some(l => l.id === deletedLikeId)) {
-                return { ...post, likes: post.likes.filter(l => l.id !== deletedLikeId) };
-              }
-              return post;
-            });
+            const removeLikeFromPost = (posts: Post[]) =>
+              posts.map((post) => {
+                if (post.likes.some((l) => l.id === deletedLikeId)) {
+                  return {
+                    ...post,
+                    likes: post.likes.filter((l) => l.id !== deletedLikeId),
+                  };
+                }
+                return post;
+              });
 
             setPosts(removeLikeFromPost);
             setFollowingPosts(removeLikeFromPost);
@@ -912,13 +1015,14 @@ function HomeScreenContent() {
         console.log('📡 Main feed likes subscription status:', status);
       });
 
-    const storiesChannel = supabase.channel('stories-channel-' + Date.now())
+    const storiesChannel = supabase
+      .channel('stories-channel-' + Date.now())
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'stories'
+          table: 'stories',
         },
         () => {
           loadFollowing();
@@ -927,14 +1031,15 @@ function HomeScreenContent() {
       .subscribe();
 
     // Notifications channel for real-time badge updates
-    const notificationsChannel = supabase.channel('notifications-channel-' + Date.now())
+    const notificationsChannel = supabase
+      .channel('notifications-channel-' + Date.now())
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user?.id}`
+          filter: `user_id=eq.${user?.id}`,
         },
         (payload) => {
           console.log('🔔 Notification change detected:', payload);
@@ -949,7 +1054,7 @@ function HomeScreenContent() {
       posts: postsChannel,
       likes: likesChannel,
       stories: storiesChannel,
-      notifications: notificationsChannel
+      notifications: notificationsChannel,
     };
 
     return () => {
@@ -979,7 +1084,9 @@ function HomeScreenContent() {
   useEffect(() => {
     const fetchUserGym = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
           setCurrentUserGym(null);
           return;
@@ -1003,45 +1110,53 @@ function HomeScreenContent() {
   }, [user]);
 
   // Header animation logic - Complete collapse
-  const handleScroll = useCallback((event: any) => {
-    const currentScrollY = event.nativeEvent.contentOffset.y;
-    const diff = currentScrollY - lastScrollY.current;
-    
-    // Determine scroll direction
-    if (diff > 0) {
-      scrollDirection.current = 'down';
-    } else if (diff < 0) {
-      scrollDirection.current = 'up';
-    }
-    
-    // Hide entire header when scrolling down, show when scrolling up
-    if (Math.abs(diff) > 5) { // Threshold to prevent jittery animations
-      if (scrollDirection.current === 'down' && currentScrollY > 20 && isHeaderVisible) {
-        // Hide entire header completely
-        setIsHeaderVisible(false);
-        Animated.timing(headerTranslateY, {
-          toValue: -headerHeight - 50, // Extra offset to completely hide including status bar
-          duration: 250,
-          useNativeDriver: true,
-        }).start();
-      } else if (scrollDirection.current === 'up' && !isHeaderVisible) {
-        // Show header
-        setIsHeaderVisible(true);
-        Animated.timing(headerTranslateY, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: true,
-        }).start();
+  const handleScroll = useCallback(
+    (event: any) => {
+      const currentScrollY = event.nativeEvent.contentOffset.y;
+      const diff = currentScrollY - lastScrollY.current;
+
+      // Determine scroll direction
+      if (diff > 0) {
+        scrollDirection.current = 'down';
+      } else if (diff < 0) {
+        scrollDirection.current = 'up';
       }
-    }
-    
-    lastScrollY.current = currentScrollY;
-    
-    // Stop video playback when scrolling
-    if (playingVideo) {
-      setPlayingVideo(null);
-    }
-  }, [headerTranslateY, isHeaderVisible, playingVideo]);
+
+      // Hide entire header when scrolling down, show when scrolling up
+      if (Math.abs(diff) > 5) {
+        // Threshold to prevent jittery animations
+        if (
+          scrollDirection.current === 'down' &&
+          currentScrollY > 20 &&
+          isHeaderVisible
+        ) {
+          // Hide entire header completely
+          setIsHeaderVisible(false);
+          Animated.timing(headerTranslateY, {
+            toValue: -headerHeight - 50, // Extra offset to completely hide including status bar
+            duration: 250,
+            useNativeDriver: true,
+          }).start();
+        } else if (scrollDirection.current === 'up' && !isHeaderVisible) {
+          // Show header
+          setIsHeaderVisible(true);
+          Animated.timing(headerTranslateY, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+          }).start();
+        }
+      }
+
+      lastScrollY.current = currentScrollY;
+
+      // Stop video playback when scrolling
+      if (playingVideo) {
+        setPlayingVideo(null);
+      }
+    },
+    [headerTranslateY, isHeaderVisible, playingVideo]
+  );
 
   const onRefresh = () => {
     // Add haptic feedback for refresh action
@@ -1061,11 +1176,12 @@ function HomeScreenContent() {
   }, [onRefresh, setRefreshFunction]);
 
   // Filter posts based on active tab
-  const filteredPosts = activeTab === 'my-gym' && currentUserGym
-    ? posts.filter(post => (post.profiles as any).gym === currentUserGym)
-    : activeTab === 'following'
-    ? followingPosts
-    : posts;
+  const filteredPosts =
+    activeTab === 'my-gym' && currentUserGym
+      ? posts.filter((post) => (post.profiles as any).gym === currentUserGym)
+      : activeTab === 'following'
+      ? followingPosts
+      : posts;
 
   // Get combined and sorted gym content (posts + workouts)
   const getGymContent = () => {
@@ -1073,32 +1189,41 @@ function HomeScreenContent() {
       console.log('🔍 [DEBUG] getGymContent: No currentUserGym available');
       return [];
     }
-    
-    const gymPosts = posts.filter(post => (post.profiles as any).gym === currentUserGym);
-    const gymWorkoutItems = gymWorkouts.map(workout => ({
+
+    const gymPosts = posts.filter(
+      (post) => (post.profiles as any).gym === currentUserGym
+    );
+    const gymWorkoutItems = gymWorkouts.map((workout) => ({
       ...workout,
-      type: 'workout' as const
+      type: 'workout' as const,
     }));
-    const gymPostItems = gymPosts.map(post => ({
+    const gymPostItems = gymPosts.map((post) => ({
       ...post,
-      type: 'post' as const
+      type: 'post' as const,
     }));
-    
+
     // Combine and sort by created_at
     const combinedContent = [...gymPostItems, ...gymWorkoutItems].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-    
+
     console.log('🔍 [DEBUG] getGymContent: Combined content', {
       currentUserGym,
       gymPostsCount: gymPosts.length,
       gymWorkoutsCount: gymWorkouts.length,
       combinedContentCount: combinedContent.length,
-      posts: gymPosts.map(p => ({ id: p.id, caption: p.caption?.substring(0, 50) })),
-      workouts: gymWorkouts.map(w => ({ id: w.id, title: w.workout_sharing_information?.[0]?.title })),
-      timestamp: new Date().toISOString()
+      posts: gymPosts.map((p) => ({
+        id: p.id,
+        caption: p.caption?.substring(0, 50),
+      })),
+      workouts: gymWorkouts.map((w) => ({
+        id: w.id,
+        title: w.workout_sharing_information?.[0]?.title,
+      })),
+      timestamp: new Date().toISOString(),
     });
-    
+
     return combinedContent;
   };
 
@@ -1108,29 +1233,41 @@ function HomeScreenContent() {
 
   // Individual post renderer for FlashList
   const renderPost = useCallback(
-    ({ item }: { item: Post }) => (
-      <GymstaPost
-        post={item}
-        colors={colors}
-        playingVideo={playingVideo}
-        currentUserId={currentUserId}
-        flaggedPosts={flaggedPosts}
-        flagging={flagging}
-        setFlagging={setFlagging}
-        setFlaggedPosts={setFlaggedPosts}
-        isAuthenticated={isAuthenticated}
-        showAuthModal={showAuthModal}
-        toggleVideoPlayback={toggleVideoPlayback}
-        navigateToProfile={navigateToProfile}
-        handleLike={handleLike}
-        handleUnlike={handleUnlike}
-        videoRefs={videoRefs}
-        handleDeletePost={handleDeletePost}
-        onCommentCountChange={handleCommentCountChange}
-        isMyGymTab={activeTab === 'my-gym'}
-      />
-    ),
-    [colors, playingVideo, currentUserId, flaggedPosts, flagging, handleDeletePost, handleCommentCountChange, activeTab]
+    ({ item }: { item: Post }) => {
+      console.warn('item', item);
+      return (
+        <GymstaPost
+          post={item}
+          colors={colors}
+          playingVideo={playingVideo}
+          currentUserId={currentUserId}
+          flaggedPosts={flaggedPosts}
+          flagging={flagging}
+          setFlagging={setFlagging}
+          setFlaggedPosts={setFlaggedPosts}
+          isAuthenticated={isAuthenticated}
+          showAuthModal={showAuthModal}
+          toggleVideoPlayback={toggleVideoPlayback}
+          navigateToProfile={navigateToProfile}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          videoRefs={videoRefs}
+          handleDeletePost={handleDeletePost}
+          onCommentCountChange={handleCommentCountChange}
+          isMyGymTab={activeTab === 'my-gym'}
+        />
+      );
+    },
+    [
+      colors,
+      playingVideo,
+      currentUserId,
+      flaggedPosts,
+      flagging,
+      handleDeletePost,
+      handleCommentCountChange,
+      activeTab,
+    ]
   );
 
   const renderExploreItem = ({ item }: { item: Post }) => (
@@ -1157,7 +1294,8 @@ function HomeScreenContent() {
   );
 
   const renderFollowingItem = ({ item }: { item: Post | Workout }) => {
-    if ('caption' in item) { // It's a Post
+    if ('caption' in item) {
+      // It's a Post
       return (
         <GymstaPost
           post={item}
@@ -1223,7 +1361,9 @@ function HomeScreenContent() {
         <View style={styles.headerContent}>
           {/* Logo/Brand */}
           <View style={styles.logoContainer}>
-            <Text style={[styles.logoText, { color: colors.text }]}>ReRack</Text>
+            <Text style={[styles.logoText, { color: colors.text }]}>
+              ReRack
+            </Text>
           </View>
 
           {/* Action Buttons */}
@@ -1231,7 +1371,10 @@ function HomeScreenContent() {
             {isAuthenticated ? (
               <>
                 <TouchableOpacity
-                  style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
+                  style={[
+                    styles.headerButton,
+                    { backgroundColor: colors.backgroundSecondary },
+                  ]}
                   onPress={() => {
                     haptics.tap();
                     router.push('/search');
@@ -1239,32 +1382,42 @@ function HomeScreenContent() {
                 >
                   <Search size={24} color={colors.text} />
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
-                  style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
+                  style={[
+                    styles.headerButton,
+                    { backgroundColor: colors.backgroundSecondary },
+                  ]}
                   onPress={async () => {
                     haptics.tap();
-                    
+
                     // Mark all notifications as read
                     const success = await markAllNotificationsAsRead();
                     if (success) {
                       setUnreadNotifications(0);
                     }
-                    
+
                     // Navigate to notifications screen
                     router.push('/notifications');
                   }}
                 >
                   <Bell size={24} color={colors.text} />
                   {unreadNotifications > 0 && (
-                    <View style={[styles.badge, { backgroundColor: colors.error }]}>
-                      <Text style={styles.badgeText}>{unreadNotifications > 99 ? '99+' : unreadNotifications}</Text>
+                    <View
+                      style={[styles.badge, { backgroundColor: colors.error }]}
+                    >
+                      <Text style={styles.badgeText}>
+                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
-                  style={[styles.headerButton, { backgroundColor: colors.backgroundSecondary }]}
+                  style={[
+                    styles.headerButton,
+                    { backgroundColor: colors.backgroundSecondary },
+                  ]}
                   onPress={() => {
                     haptics.tap();
                     router.push('/chat');
@@ -1272,8 +1425,12 @@ function HomeScreenContent() {
                 >
                   <MessageSquare size={24} color={colors.text} />
                   {unreadMessages > 0 && (
-                    <View style={[styles.badge, { backgroundColor: colors.error }]}>
-                      <Text style={styles.badgeText}>{unreadMessages > 99 ? '99+' : unreadMessages}</Text>
+                    <View
+                      style={[styles.badge, { backgroundColor: colors.error }]}
+                    >
+                      <Text style={styles.badgeText}>
+                        {unreadMessages > 99 ? '99+' : unreadMessages}
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1322,13 +1479,22 @@ function HomeScreenContent() {
 
         {/* Feed Content */}
         {loading ? (
-          <View style={[styles.loadingContainer, { paddingTop: headerHeight + 30 }]}>
+          <View
+            style={[styles.loadingContainer, { paddingTop: headerHeight + 30 }]}
+          >
             <ActivityIndicator size="large" color={colors.tint} />
           </View>
         ) : error ? (
-          <View style={[styles.errorContainer, { paddingTop: headerHeight + 30 }]}>
-            <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-            <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.tint }]} onPress={loadFeed}>
+          <View
+            style={[styles.errorContainer, { paddingTop: headerHeight + 30 }]}
+          >
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {error}
+            </Text>
+            <TouchableOpacity
+              style={[styles.retryButton, { backgroundColor: colors.tint }]}
+              onPress={loadFeed}
+            >
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
@@ -1337,13 +1503,18 @@ function HomeScreenContent() {
             {activeTab === 'my-gym' ? (
               <ScrollView
                 style={styles.gymWorkoutsContainer}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                  />
+                }
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ 
+                contentContainerStyle={{
                   paddingTop: headerHeight + 30, // Increased padding for better spacing
-                  paddingBottom: 20 
+                  paddingBottom: 20,
                 }}
               >
                 {(() => {
@@ -1351,20 +1522,20 @@ function HomeScreenContent() {
                     activeTab,
                     currentUserGym,
                     hasGym: !!currentUserGym,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
                   });
-                  
+
                   const gymContent = getGymContent();
-                  
+
                   console.log('🔍 [DEBUG] My Gym Tab: Gym content details', {
                     gymContentLength: gymContent.length,
-                    contentTypes: gymContent.map(item => item.type),
-                    timestamp: new Date().toISOString()
+                    contentTypes: gymContent.map((item) => item.type),
+                    timestamp: new Date().toISOString(),
                   });
-                  
+
                   return gymContent.length > 0 ? (
                     <>
-                      {gymContent.map((item) => (
+                      {gymContent.map((item) =>
                         item.type === 'post' ? (
                           <GymstaPost
                             key={`post-${item.id}`}
@@ -1402,11 +1573,16 @@ function HomeScreenContent() {
                             onCommentCountChange={handleCommentCountChange}
                           />
                         )
-                      ))}
+                      )}
                     </>
                   ) : (
                     <View style={styles.emptyGymContainer}>
-                      <Text style={[styles.emptyGymText, { color: colors.textSecondary }]}>
+                      <Text
+                        style={[
+                          styles.emptyGymText,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
                         No posts or workouts from your gym yet
                       </Text>
                     </View>
@@ -1420,12 +1596,17 @@ function HomeScreenContent() {
                 renderItem={renderPost}
                 estimatedItemSize={400}
                 keyExtractor={(item) => item.id}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                  />
+                }
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
-                contentContainerStyle={{ 
+                contentContainerStyle={{
                   paddingTop: headerHeight + 30, // Increased padding for better spacing from header
-                  paddingBottom: 100 
+                  paddingBottom: 100,
                 }}
                 showsVerticalScrollIndicator={false}
               />
@@ -1445,8 +1626,6 @@ function HomeScreenContent() {
           onComplete={() => setShowingStories(false)}
         />
       </Modal>
-
-
     </View>
   );
 }
@@ -1703,7 +1882,7 @@ const styles = StyleSheet.create({
   },
   videoWrapper: {
     width: Dimensions.get('window').width,
-    aspectRatio: 16/9,
+    aspectRatio: 16 / 9,
     maxHeight: 400,
     backgroundColor: '#000',
     borderRadius: 8,
@@ -1807,7 +1986,6 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
-
 
   centered: {
     flex: 1,
