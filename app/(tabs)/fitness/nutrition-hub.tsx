@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
 import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
@@ -7,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { goBack } from '@/lib/goBack';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/hooks/useAuth';
 import type { MealType, NutritionEntry, NutritionGoals } from '@/types/nutrition';
 
@@ -56,6 +57,13 @@ export default function NutritionHubScreen() {
   const [goals, setGoals] = useState<NutritionGoals | null>(null);
   const [entries, setEntries] = useState<NutritionEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalInput, setGoalInput] = useState('2000');
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickCalories, setQuickCalories] = useState('');
+  const [quickMeal, setQuickMeal] = useState<MealType>('breakfast');
+  const [savingQuick, setSavingQuick] = useState(false);
 
   const totals = useMemo(() => {
     const base = { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
@@ -68,18 +76,54 @@ export default function NutritionHubScreen() {
     return base;
   }, [entries]);
 
-  const caloriesGoal = goals?.daily_calories ?? 0;
-  const caloriesLeft = Math.max(0, (caloriesGoal || 0) - totals.calories);
+  const caloriesGoal = goals?.daily_calories ?? null;
+  const caloriesLeft = caloriesGoal != null ? Math.max(0, caloriesGoal - totals.calories) : null;
 
   const loadGoals = useCallback(async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from('nutrition_goals')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!error && data) setGoals(data as unknown as NutritionGoals);
-    if (!data) setGoals(null);
+    try {
+      const { data, error } = await supabase
+        .from('nutrition_goals')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!error && data) {
+        setGoals(data as unknown as NutritionGoals);
+        await AsyncStorage.setItem('nutrition_daily_calories', String((data as any).daily_calories ?? ''));
+      } else if (!data) {
+        // Fallback to local cache
+        const cached = await AsyncStorage.getItem('nutrition_daily_calories');
+        if (cached) {
+          setGoals({
+            id: 'local',
+            user_id: user.id,
+            daily_calories: parseInt(cached, 10),
+            protein_g: null,
+            carbs_g: null,
+            fat_g: null,
+            fiber_g: null,
+            sodium_mg: null,
+          } as unknown as NutritionGoals);
+        } else {
+          setGoals(null);
+        }
+      }
+    } catch (e) {
+      // In case the table doesn't exist yet, use local cache
+      const cached = await AsyncStorage.getItem('nutrition_daily_calories');
+      if (cached) {
+        setGoals({
+          id: 'local',
+          user_id: user.id,
+          daily_calories: parseInt(cached, 10),
+          protein_g: null,
+          carbs_g: null,
+          fat_g: null,
+          fiber_g: null,
+          sodium_mg: null,
+        } as unknown as NutritionGoals);
+      }
+    }
   }, [user]);
 
   const loadEntries = useCallback(async () => {
@@ -112,18 +156,49 @@ export default function NutritionHubScreen() {
   useFocusEffect(
     useCallback(() => {
       loadEntries();
-    }, [loadEntries])
+      loadGoals();
+    }, [loadEntries, loadGoals])
   );
 
-  const setCalorieGoal = async () => {
-    if (!user) return;
-    // Simple prompt replacement for RN: quick presets
-    const presets = [1800, 2000, 2200, 2500];
-    const chosen = presets[1];
-    const { error } = await supabase
-      .from('nutrition_goals')
-      .upsert({ user_id: user.id, daily_calories: chosen }, { onConflict: 'user_id' });
-    if (!error) await loadGoals();
+  const openGoalModal = () => {
+    const current = goals?.daily_calories ? String(goals.daily_calories) : '2000';
+    setGoalInput(current);
+    setShowGoalModal(true);
+  };
+
+  const saveCalorieGoal = async () => {
+    try {
+      setSavingGoal(true);
+      if (!user) return;
+      const parsed = parseInt(goalInput.trim(), 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        Alert.alert('Invalid value', 'Please enter a positive number.');
+        return; 
+      }
+      const { error } = await supabase
+        .from('nutrition_goals')
+        .upsert({ user_id: user.id, daily_calories: parsed }, { onConflict: 'user_id' });
+      if (error) throw error;
+      // Immediate UI update; also refresh from server
+      setGoals(prev => ({
+        id: (prev && prev.id) ? prev.id : 'local',
+        user_id: user.id,
+        daily_calories: parsed,
+        protein_g: prev?.protein_g ?? null,
+        carbs_g: prev?.carbs_g ?? null,
+        fat_g: prev?.fat_g ?? null,
+        fiber_g: prev?.fiber_g ?? null,
+        sodium_mg: prev?.sodium_mg ?? null,
+      } as unknown as NutritionGoals));
+      await AsyncStorage.setItem('nutrition_daily_calories', String(parsed));
+      await loadGoals();
+      setShowGoalModal(false);
+      Alert.alert('Saved', 'Daily goal updated.');
+    } catch (e) {
+      Alert.alert('Error', 'Could not save goal.');
+    } finally {
+      setSavingGoal(false);
+    }
   };
 
   const onDeleteEntry = async (id: string) => {
@@ -140,6 +215,42 @@ export default function NutritionHubScreen() {
     router.push({ pathname: '/(tabs)/fitness/nutrition-search', params: { date: entryDate, meal } });
   };
 
+  const saveQuickAdd = async () => {
+    try {
+      if (!user) return;
+      const kcal = parseInt(quickCalories.trim(), 10);
+      if (!Number.isFinite(kcal) || kcal <= 0) {
+        Alert.alert('Invalid value', 'Enter calories greater than 0');
+        return;
+      }
+      setSavingQuick(true);
+      const { error } = await supabase.from('nutrition_entries').insert({
+        user_id: user.id,
+        entry_date: entryDate,
+        meal: quickMeal,
+        source: 'quick_add',
+        food_name: 'Quick Add',
+        serving_grams: 1,
+        servings: 1,
+        calories: kcal,
+        protein_g: 0,
+        carbs_g: 0,
+        fat_g: 0,
+        fiber_g: 0,
+        sugar_g: 0,
+        sodium_mg: 0,
+      });
+      if (error) throw error;
+      setShowQuickAdd(false);
+      setQuickCalories('');
+      await loadEntries();
+    } catch (e) {
+      Alert.alert('Error', 'Could not add quick calories');
+    } finally {
+      setSavingQuick(false);
+    }
+  };
+
   const byMeal = useMemo(() => {
     const map: Record<MealType, NutritionEntry[]> = { breakfast: [], lunch: [], dinner: [], snack: [] };
     for (const e of entries) map[e.meal].push(e);
@@ -154,7 +265,13 @@ export default function NutritionHubScreen() {
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Nutrition</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          style={styles.headerAddBtn}
+          onPress={() => { setQuickMeal('breakfast'); setQuickCalories(''); setShowQuickAdd(true); }}
+          activeOpacity={0.8}
+        >
+          <Plus size={22} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       {/* Date Selector */}
@@ -169,6 +286,9 @@ export default function NutritionHubScreen() {
         <TouchableOpacity onPress={() => setEntryDate(today)} style={[styles.todayBtn, { borderColor: colors.border }]}>
           <Text style={{ color: colors.textSecondary }}>Today</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={openGoalModal} style={[styles.goalChip, { borderColor: colors.border, backgroundColor: colors.card }]}> 
+          <Text style={[styles.goalChipText, { color: colors.textSecondary }]}>Goal {caloriesGoal ?? '—'} kcal</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Summary */}
@@ -176,7 +296,7 @@ export default function NutritionHubScreen() {
         <View style={styles.summaryRow}>
           <View style={styles.summaryCol}>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Goal</Text>
-            <Text style={[styles.summaryValue, { color: colors.text }]}>{caloriesGoal || '—'}</Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{caloriesGoal ?? '—'}</Text>
           </View>
           <View style={styles.summaryCol}>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Food</Text>
@@ -184,7 +304,7 @@ export default function NutritionHubScreen() {
           </View>
           <View style={styles.summaryCol}>
             <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Remaining</Text>
-            <Text style={[styles.summaryValue, { color: colors.tint }]}>{Math.round(caloriesLeft)}</Text>
+            <Text style={[styles.summaryValue, { color: colors.tint }]}>{caloriesLeft != null ? Math.round(caloriesLeft) : '—'}</Text>
           </View>
         </View>
         <View style={styles.macrosRow}>
@@ -192,9 +312,13 @@ export default function NutritionHubScreen() {
           <Text style={[styles.macroItem, { color: colors.textSecondary }]}>C {Math.round(totals.carbs_g)}g</Text>
           <Text style={[styles.macroItem, { color: colors.textSecondary }]}>F {Math.round(totals.fat_g)}g</Text>
         </View>
-        {!goals && (
-          <TouchableOpacity onPress={setCalorieGoal} style={[styles.setGoalBtn, { backgroundColor: colors.tint }]}> 
+        {!goals ? (
+          <TouchableOpacity onPress={openGoalModal} style={[styles.setGoalBtn, { backgroundColor: colors.tint }]}> 
             <Text style={styles.setGoalTxt}>Set daily goal</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={openGoalModal} style={[styles.setGoalBtn, { backgroundColor: colors.tint }]}> 
+            <Text style={styles.setGoalTxt}>Edit daily goal</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -230,6 +354,63 @@ export default function NutritionHubScreen() {
           </View>
         ))}
       </ScrollView>
+
+      {/* Goal modal */}
+      <Modal visible={showGoalModal} transparent animationType="fade" onRequestClose={() => setShowGoalModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}> 
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Daily calorie goal</Text>
+            <TextInput
+              value={goalInput}
+              onChangeText={setGoalInput}
+              keyboardType="number-pad"
+              placeholder="e.g. 2000"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setShowGoalModal(false)} style={[styles.modalBtn, { borderColor: colors.border }]}> 
+                <Text style={{ color: colors.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity disabled={savingGoal} onPress={saveCalorieGoal} style={[styles.modalBtnPrimary, { backgroundColor: colors.tint, opacity: savingGoal ? 0.7 : 1 }]}> 
+                <Text style={{ color: '#fff', fontWeight: '700' }}>{savingGoal ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Quick Add modal */}
+      <Modal visible={showQuickAdd} transparent animationType="fade" onRequestClose={() => setShowQuickAdd(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}> 
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Quick add calories</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: Spacing.md }}>
+              {(['breakfast','lunch','dinner','snack'] as MealType[]).map(m => (
+                <TouchableOpacity key={m} onPress={() => setQuickMeal(m)} style={[styles.mealChip, { borderColor: colors.border, backgroundColor: quickMeal === m ? colors.tint : 'transparent' }]}> 
+                  <Text style={{ color: quickMeal === m ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>{m[0].toUpperCase() + m.slice(1)}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              value={quickCalories}
+              onChangeText={setQuickCalories}
+              keyboardType="number-pad"
+              placeholder="Calories (kcal)"
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.inputBackground, color: colors.text }]}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setShowQuickAdd(false)} style={[styles.modalBtn, { borderColor: colors.border }]}> 
+                <Text style={{ color: colors.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity disabled={savingQuick} onPress={saveQuickAdd} style={[styles.modalBtnPrimary, { backgroundColor: colors.tint, opacity: savingQuick ? 0.7 : 1 }]}> 
+                <Text style={{ color: '#fff', fontWeight: '700' }}>{savingQuick ? 'Saving...' : 'Add'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -257,6 +438,7 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 32,
   },
+  headerAddBtn: { padding: Spacing.xs, width: 32, alignItems: 'flex-end' },
   dateBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -268,6 +450,8 @@ const styles = StyleSheet.create({
   iconBtn: { padding: Spacing.xs },
   dateText: { flex: 1, textAlign: 'center', fontWeight: '600' },
   todayBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 6, borderWidth: 1, borderRadius: BorderRadius.md },
+  goalChip: { marginLeft: 8, paddingHorizontal: Spacing.sm, paddingVertical: 6, borderWidth: 1, borderRadius: BorderRadius.md },
+  goalChipText: { fontSize: 12, fontWeight: '600' },
 
   summaryCard: {
     margin: Spacing.md,
@@ -297,4 +481,12 @@ const styles = StyleSheet.create({
   trashBtn: { padding: Spacing.xs },
   comingSoonTitle: { fontSize: 22, fontWeight: '800', marginBottom: Spacing.xs },
   comingSoonDescription: { fontSize: 14, textAlign: 'center' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
+  modalCard: { width: '100%', maxWidth: 360, borderRadius: BorderRadius.lg, padding: Spacing.lg },
+  modalTitle: { fontSize: 16, fontWeight: '700', marginBottom: Spacing.md },
+  modalInput: { borderWidth: 1, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.md, paddingVertical: 10 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: Spacing.md },
+  modalBtn: { paddingHorizontal: Spacing.lg, paddingVertical: 10, borderWidth: 1, borderRadius: BorderRadius.md },
+  modalBtnPrimary: { paddingHorizontal: Spacing.lg, paddingVertical: 10, borderRadius: BorderRadius.md },
+  mealChip: { paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderRadius: 999 },
 });
