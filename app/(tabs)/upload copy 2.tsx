@@ -158,14 +158,6 @@ export default function UploadScreen() {
     mediaType: initialMediaType,
     draftId: draftIdToLoad,
   } = useLocalSearchParams();
-  
-  // Debug logging to check received parameters
-  console.log('Upload screen params:', {
-    imageUri: initialImageUri,
-    mediaType: initialMediaType,
-    draftId: draftIdToLoad
-  });
-  
   const [mediaUri, setMediaUri] = useState(initialImageUri);
   const [mediaType, setMediaType] = useState<'image' | 'video'>(
     initialMediaType === 'video' ? 'video' : 'image'
@@ -207,6 +199,13 @@ export default function UploadScreen() {
   );
   const insets = useSafeAreaInsets();
 
+  // Redirect back to tabs if no media URI is provided
+  useEffect(() => {
+    if (!mediaUri) {
+      goBack();
+    }
+  }, [mediaUri]);
+
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (userSearchQuery.length > 1 && userSearchQuery !== lastSearch) {
@@ -243,7 +242,7 @@ export default function UploadScreen() {
   // Generate video thumbnail when video is selected
   useEffect(() => {
     const generateThumbnail = async () => {
-      if (mediaType === 'video' && mediaUri && !videoThumbnail) {
+      if (mediaType === 'video' && mediaUri) {
         try {
           const { uri } = await VideoThumbnails.getThumbnailAsync(
             mediaUri as string,
@@ -261,7 +260,7 @@ export default function UploadScreen() {
     };
 
     generateThumbnail();
-  }, [mediaType, mediaUri, videoThumbnail]);
+  }, [mediaType, mediaUri]);
 
   // Load a specific draft if a draftId is passed
   useEffect(() => {
@@ -269,13 +268,6 @@ export default function UploadScreen() {
       loadDraft(draftIdToLoad as string);
     }
   }, [draftIdToLoad]);
-
-  // Redirect back to tabs if no media URI is provided
-  useEffect(() => {
-    if (!mediaUri) {
-      goBack();
-    }
-  }, [mediaUri]);
 
   const loadProducts = async () => {
     try {
@@ -309,53 +301,41 @@ export default function UploadScreen() {
 
   const compressVideo = async (videoUri: string): Promise<string> => {
     try {
-      console.log('Starting video processing...');
+      console.log('Starting video compression...');
 
-      // Get video info and validate
+      // Get video info
       const videoInfo = await FileSystem.getInfoAsync(videoUri);
-      if (!videoInfo.exists) {
-        throw new Error('Video file not found');
-      }
-
-      if ('size' in videoInfo) {
+      if (videoInfo.exists && 'size' in videoInfo) {
         const sizeInMB = videoInfo.size / (1024 * 1024);
         console.log('Original video size:', sizeInMB, 'MB');
-
+        
         // Check if video is too large (e.g., > 100MB)
         if (sizeInMB > 100) {
-          throw new Error(
-            'Video file is too large. Please choose a smaller video (max 100MB).'
-          );
-        }
-
-        if (sizeInMB === 0) {
-          throw new Error('Video file appears to be empty.');
+          throw new Error('Video file is too large. Please choose a smaller video (max 100MB).');
         }
       }
 
-      // Copy video to cache directory to ensure proper access
+      // For now, we'll copy the video to ensure it's in a proper location
+      // In the future, you could integrate with libraries like react-native-ffmpeg for actual compression
       const timestamp = Date.now();
-      const processedUri = `${FileSystem.cacheDirectory}processed_video_${timestamp}.mp4`;
-
+      const compressedUri = `${FileSystem.cacheDirectory}processed_video_${timestamp}.mp4`;
+      
       await FileSystem.copyAsync({
         from: videoUri,
-        to: processedUri,
+        to: compressedUri,
       });
 
-      // Verify the processed video exists and has content
-      const processedInfo = await FileSystem.getInfoAsync(processedUri);
-      if (
-        !processedInfo.exists ||
-        !('size' in processedInfo) ||
-        processedInfo.size === 0
-      ) {
+      // Verify the copied video exists and has content
+      const processedInfo = await FileSystem.getInfoAsync(compressedUri);
+      if (!processedInfo.exists || !('size' in processedInfo) || processedInfo.size === 0) {
         throw new Error('Failed to process video file.');
       }
 
       console.log('Video processing completed');
-      return processedUri;
+      return compressedUri;
     } catch (error) {
       console.error('Video processing failed:', error);
+      // If processing fails, throw the error instead of returning original
       throw error;
     }
   };
@@ -406,8 +386,8 @@ export default function UploadScreen() {
             contentType,
             cacheControl: '3600',
             upsert: false,
-            // @ts-ignore
-            onProgress: (event) => {
+            // @ts-ignore - Progress callback for better UX
+            onProgress: (event: any) => {
               if (event.loaded && event.total) {
                 setUploadProgress(event.loaded / event.total);
               }
@@ -415,12 +395,14 @@ export default function UploadScreen() {
           });
 
         if (uploadError) {
-          throw uploadError;
+          console.log('uploadError', uploadError);
+          // throw uploadError;
         }
       } else {
-        // For native platforms, use fetch to read file as blob
+        // For native platforms, use proper file upload
         setUploadProgress(0);
-
+        
+        // Read the file as a blob for proper upload
         const response = await fetch(uploadUri);
         const blob = await response.blob();
 
@@ -430,9 +412,15 @@ export default function UploadScreen() {
             contentType,
             cacheControl: '3600',
             upsert: false,
+            // @ts-ignore - Progress callback for better UX
+            onProgress: (event: any) => {
+              if (event.loaded && event.total) {
+                setUploadProgress(event.loaded / event.total);
+              }
+            },
           });
 
-        console.log('fileName', fileName);
+        console.log('uploadError', uploadError);
         if (uploadError) {
           throw uploadError;
         }
@@ -445,7 +433,7 @@ export default function UploadScreen() {
 
       return publicUrl;
     } catch (err) {
-      console.error('Media upload error:', err);
+      console.error('Image upload error:', err);
       throw err;
     } finally {
       setUploading(false);
@@ -473,9 +461,7 @@ export default function UploadScreen() {
           return;
         }
         if ('size' in videoInfo && videoInfo.size === 0) {
-          setError(
-            'Video file appears to be empty. Please select a different video.'
-          );
+          setError('Video file appears to be empty. Please select a different video.');
           return;
         }
       } catch (err) {
@@ -509,12 +495,9 @@ export default function UploadScreen() {
             );
           } else if (err.message.includes('Permission denied')) {
             setError('You do not have permission to upload files.');
-          } else if (
-            err.message.includes('Entity too large') ||
-            err.message.includes('too large')
-          ) {
+          } else if (err.message.includes('Entity too large') || err.message.includes('too large')) {
             setError(
-              mediaType === 'video'
+              mediaType === 'video' 
                 ? 'Video file is too large. Please choose a smaller video (max 100MB).'
                 : 'Image file is too large. Please choose a smaller image.'
             );
@@ -524,10 +507,7 @@ export default function UploadScreen() {
                 ? 'Invalid video format. Please use MP4 format.'
                 : 'Invalid image format. Please use JPG or PNG format.'
             );
-          } else if (
-            err.message.includes('Failed to process') ||
-            err.message.includes('empty')
-          ) {
+          } else if (err.message.includes('Failed to process')) {
             setError(
               mediaType === 'video'
                 ? 'Failed to process video. Please try with a different video file.'
@@ -537,7 +517,9 @@ export default function UploadScreen() {
             setError(`Upload failed: ${err.message}`);
           }
         } else {
-          setError(`Failed to upload ${mediaType}. Please try again.`);
+          setError(
+            `Failed to upload ${mediaType}. Please try again.`
+          );
         }
         return;
       }
@@ -558,12 +540,9 @@ export default function UploadScreen() {
       // --- End of new logic ---
 
       // Create post in database
-      const { data: postData, error: postError } = await supabase
-        .from('posts')
-        // @ts-ignore - Database supports these fields but types may be outdated
-        .insert({
+      console.warn('first', {
           user_id: user.id,
-          image_url: publicUrl,
+          media_url: publicUrl,
           media_type: mediaType,
           caption: captionText,
           product_id: selectedProductId,
@@ -571,10 +550,22 @@ export default function UploadScreen() {
           latitude: selectedLocation?.latitude,
           longitude: selectedLocation?.longitude,
         })
+      const { data: postData, error: postError } = await supabase
+        .from('posts')
+        // @ts-ignore - Database supports these fields but types may be outdated
+        .insert({
+          user_id: user.id,
+          media_url: publicUrl,
+          media_type: mediaType,
+          caption: captionText,
+          product_id: selectedProductId,
+          location_name: selectedLocation?.name,
+          latitude: 0.2333,
+          longitude: -2.3444,
+        })
         .select()
         .single();
 
-      console.log('postError', postError);
       if (postError) {
         if (postError.message.includes('duplicate key')) {
           setError('You have already created this post.');
@@ -794,33 +785,7 @@ export default function UploadScreen() {
   };
 
   if (!mediaUri) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity style={styles.backButton} onPress={goBack}>
-            <ArrowLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            Create Post
-          </Text>
-          <View style={{ width: 80 }} />
-        </View>
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: colors.text }]}>
-            No media selected
-          </Text>
-          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-            Please go back and select an image or video
-          </Text>
-          <TouchableOpacity
-            style={[styles.postButton, { backgroundColor: colors.tint, marginTop: 20 }]}
-            onPress={goBack}
-          >
-            <Text style={styles.postButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
+    return null;
   }
 
   return (
@@ -880,13 +845,8 @@ export default function UploadScreen() {
             </View>
           )}
 
-          {/* Media Preview */}
+          {/* Image Preview */}
           <View style={styles.imageContainer}>
-            {/* Debug info - remove in production */}
-            <Text style={[{ color: colors.textSecondary, fontSize: 12, marginBottom: 10 }]}>
-              Media Type: {mediaType} | URI: {mediaUri ? 'Present' : 'Missing'}
-            </Text>
-            
             <TouchableOpacity
               style={styles.imageWrapper}
               onPress={handleImageTap}
@@ -896,26 +856,17 @@ export default function UploadScreen() {
                 <Video
                   source={{ uri: mediaUri as string }}
                   style={styles.previewImage}
-                  useNativeControls={true}
+                  useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
-                  isLooping={false}
+                  isLooping
                   shouldPlay={false}
-                  isMuted={true}
                   onLayout={(e) => {
                     const { width, height } = e.nativeEvent.layout;
                     setImageSize({ width, height });
                   }}
                   onError={(error) => {
                     console.error('Video playback error:', error);
-                    setError(
-                      'Failed to load video preview. Please try with a different video.'
-                    );
-                  }}
-                  onLoadStart={() => {
-                    console.log('Video loading started');
-                  }}
-                  onLoad={(status) => {
-                    console.log('Video loaded successfully', status);
+                    setError('Failed to load video preview. The video file may be corrupted.');
                   }}
                 />
               ) : (
@@ -926,20 +877,13 @@ export default function UploadScreen() {
                     const { width, height } = e.nativeEvent.layout;
                     setImageSize({ width, height });
                   }}
+                  // Disable any iOS image analysis features
+                  accessible={false}
+                  accessibilityIgnoresInvertColors={true}
                   resizeMode="cover"
-                  onError={(error) => {
-                    console.error('Image load error:', error);
-                    setError(
-                      'Failed to load image preview. Please try with a different image.'
-                    );
-                  }}
-                  onLoadStart={() => {
-                    console.log('Image loading started');
-                  }}
-                  onLoad={() => {
-                    console.log('Image loaded successfully');
-                  }}
+                
                 />
+            
               )}
 
               {/* Display existing tags with drag-to-move */}
@@ -981,6 +925,8 @@ export default function UploadScreen() {
                   ),
                 }}
                 style={styles.userAvatar}
+                accessible={false}
+                accessibilityIgnoresInvertColors={true}
               />
               <Text style={[styles.username, { color: colors.text }]}>
                 {userProfile?.username ||
@@ -1052,6 +998,8 @@ export default function UploadScreen() {
                     ?.image_url,
                 }}
                 style={styles.productImage}
+                accessible={false}
+                accessibilityIgnoresInvertColors={true}
               />
               <View style={styles.productInfo}>
                 <Text style={[styles.productName, { color: colors.text }]}>
@@ -1079,10 +1027,7 @@ export default function UploadScreen() {
               <Text
                 style={[styles.progressText, { color: colors.textSecondary }]}
               >
-                {mediaType === 'video'
-                  ? 'Processing and uploading video...'
-                  : 'Uploading image...'}{' '}
-                {Math.round(uploadProgress * 100)}%
+                Uploading {mediaType}... {Math.round(uploadProgress * 100)}%
               </Text>
               <View
                 style={[styles.progressBar, { backgroundColor: colors.border }]}
@@ -1097,6 +1042,13 @@ export default function UploadScreen() {
                   ]}
                 />
               </View>
+              {mediaType === 'video' && (
+                <Text
+                  style={[styles.progressText, { color: colors.textSecondary, fontSize: 12, marginTop: 4 }]}
+                >
+                  Video uploads may take longer depending on file size
+                </Text>
+              )}
             </View>
           )}
         </ScrollView>
@@ -1187,6 +1139,8 @@ export default function UploadScreen() {
                         <Image
                           source={{ uri: product.image_url }}
                           style={styles.productImage}
+                          accessible={false}
+                          accessibilityIgnoresInvertColors={true}
                         />
                         <View style={styles.productInfo}>
                           <Text
@@ -1278,6 +1232,8 @@ export default function UploadScreen() {
                       <Image
                         source={{ uri: item.avatar_url }}
                         style={styles.modalUserAvatar}
+                        accessible={false}
+                        accessibilityIgnoresInvertColors={true}
                       />
                       <Text
                         style={[styles.modalUsername, { color: colors.text }]}

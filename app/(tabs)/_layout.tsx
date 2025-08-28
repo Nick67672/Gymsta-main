@@ -1,5 +1,12 @@
 import { Tabs, useRouter, useSegments, usePathname } from 'expo-router';
-import { House, MessageSquare, SquarePlus as PlusSquare, ShoppingBag, User, Zap } from 'lucide-react-native';
+import {
+  House,
+  MessageSquare,
+  SquarePlus as PlusSquare,
+  ShoppingBag,
+  User,
+  Zap,
+} from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { haptics } from '@/lib/haptics';
 import { router } from 'expo-router';
@@ -14,7 +21,9 @@ import { Image, View, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import GradientTabIcon, { GradientUploadButton } from '@/components/GradientTabIcon';
+import GradientTabIcon, {
+  GradientUploadButton,
+} from '@/components/GradientTabIcon';
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -26,7 +35,7 @@ export default function TabLayout() {
   const segments = useSegments();
   const pathname = usePathname();
   const [lastHomeRoute, setLastHomeRoute] = useState<string>('/');
-  
+
   // Get home screen functions for double tap
   let homeScreenFunctions: any = null;
   try {
@@ -54,13 +63,20 @@ export default function TabLayout() {
   useEffect(() => {
     if (!pathname) return;
     // segments example: ['(tabs)', 'index'] or ['(tabs)', '[username]'] or ['(tabs)', 'post', '[id]']
-    if (Array.isArray(segments) && segments.length > 0 && segments[0] === '(tabs)') {
+    if (
+      Array.isArray(segments) &&
+      segments.length > 0 &&
+      segments[0] === '(tabs)'
+    ) {
       const top = segments[1] as string | undefined;
       if (top && (top === 'index' || top === '[username]' || top === 'post')) {
         setLastHomeRoute(pathname as string);
       }
     }
-  }, [pathname, Array.isArray(segments) ? segments.join('/') : String(segments)]);
+  }, [
+    pathname,
+    Array.isArray(segments) ? segments.join('/') : String(segments),
+  ]);
 
   const handleTabPress = () => {
     haptics.tabChange();
@@ -100,14 +116,18 @@ export default function TabLayout() {
     // Show action sheet to choose between camera and gallery
     Alert.alert(
       'Create Post',
-      'Choose how you want to add a photo',
+      'Choose how you want to add media',
       [
         {
-          text: 'Camera',
-          onPress: () => openCamera(),
+          text: 'Take Photo',
+          onPress: () => openCamera('photo'),
         },
         {
-          text: 'Photo Library',
+          text: 'Record Video',
+          onPress: () => openCamera('video'),
+        },
+        {
+          text: 'Photo/Video Library',
           onPress: () => openGallery(),
         },
         {
@@ -119,26 +139,37 @@ export default function TabLayout() {
     );
   };
 
-  const openCamera = async () => {
+  const openCamera = async (type: 'photo' | 'video' = 'photo') => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      
+
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+        Alert.alert(
+          'Permission Required',
+          'Camera permission is required to take photos and videos.'
+        );
         return;
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes:
+          type === 'video'
+            ? ImagePicker.MediaTypeOptions.Videos
+            : ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [4, 3],
+        aspect: type === 'photo' ? [4, 3] : undefined,
         quality: 1,
+        videoMaxDuration: type === 'video' ? 60 : undefined, // 60 seconds max for videos
       });
 
       if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
         router.push({
-          pathname: "/upload",
-          params: { imageUri: result.assets[0].uri }
+          pathname: '/upload',
+          params: {
+            imageUri: asset.uri,
+            mediaType: type === 'video' ? 'video' : 'image',
+          },
         });
       }
     } catch (err) {
@@ -149,29 +180,55 @@ export default function TabLayout() {
 
   const openGallery = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Gallery permission is required to select photos.');
+        Alert.alert(
+          'Permission Required',
+          'Gallery permission is required to select photos or videos.'
+        );
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: false, // Disable editing for videos
         quality: 1,
+        videoMaxDuration: 60, // 60 seconds max for videos
       });
 
       if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+
+        // Determine media type from asset
+        let mediaType = 'image';
+        if (
+          asset.type === 'video' ||
+          (asset.uri && asset.uri.toLowerCase().includes('.mp4')) ||
+          (asset.fileName && asset.fileName.toLowerCase().includes('.mp4'))
+        ) {
+          mediaType = 'video';
+        }
+
+        console.log('Gallery selection:', {
+          uri: asset.uri,
+          type: asset.type,
+          fileName: asset.fileName,
+          detectedMediaType: mediaType,
+        });
+
         router.push({
-          pathname: "/upload",
-          params: { imageUri: result.assets[0].uri }
+          pathname: '/upload',
+          params: {
+            imageUri: asset.uri,
+            mediaType: mediaType,
+          },
         });
       }
     } catch (err) {
-      console.error('Error picking image:', err);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      console.error('Error picking media:', err);
+      Alert.alert('Error', 'Failed to pick image or video. Please try again.');
     }
   };
 
@@ -186,7 +243,8 @@ export default function TabLayout() {
           backgroundColor: colors.background,
           borderTopWidth: 1,
           borderTopColor: 'rgba(0,0,0,0.05)',
-          paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 0) + Spacing.md,
+          paddingBottom:
+            Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 0) + Spacing.md,
           paddingTop: Spacing.sm,
           paddingHorizontal: Spacing.sm,
         },
@@ -201,7 +259,8 @@ export default function TabLayout() {
           borderRadius: BorderRadius.lg,
           marginHorizontal: 2,
         },
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
@@ -298,9 +357,9 @@ export default function TabLayout() {
               {avatarUrl ? (
                 <Image
                   source={{ uri: avatarUrl }}
-                  style={{ 
-                    width: focused ? 28 : 24, 
-                    height: focused ? 28 : 24, 
+                  style={{
+                    width: focused ? 28 : 24,
+                    height: focused ? 28 : 24,
                     borderRadius: focused ? 14 : 12,
                   }}
                 />

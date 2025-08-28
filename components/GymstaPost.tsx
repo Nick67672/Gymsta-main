@@ -116,7 +116,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const [achievementScale] = useState(new Animated.Value(0));
   const [engagementPulse] = useState(new Animated.Value(0));
   const [socialProofOpacity] = useState(new Animated.Value(0));
-
+  console.log('post', post);
   const [revealAnimation] = useState(new Animated.Value(0));
 
   // State management
@@ -589,6 +589,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
         >
           {post.media_type === 'video' ? (
             <View style={styles.videoContainer}>
+              <Text>{'post.image_url'}</Text>
               <Video
                 ref={(ref: any) => {
                   videoRefs.current[post.id] = ref;
@@ -598,7 +599,6 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
                 useNativeControls={false}
                 isLooping
                 shouldPlay={false}
-                resizeMode="cover"
               />
               <View style={styles.videoOverlay}>
                 <TouchableOpacity
@@ -965,7 +965,6 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: 0,
     marginBottom: Spacing.md,
-    
   },
   floatingCard: {
     borderRadius: BorderRadius.xl,
@@ -982,9 +981,7 @@ const styles = StyleSheet.create({
         elevation: 12,
       },
       default: {},
-      
     }),
-    
   },
   backgroundGradient: {
     position: 'absolute',
