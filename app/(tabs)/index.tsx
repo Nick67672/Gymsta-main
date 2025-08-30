@@ -379,7 +379,34 @@ function HomeScreenContent() {
         comments_count: commentCounts[post.id] || 0
       }));
       
-      setPosts(postsWithMediaType as Post[]);
+      // Filter out video posts from home page
+      const videoPosts = postsWithMediaType.filter((post: any) => post.media_type === 'video');
+      const filteredPosts = postsWithMediaType.filter((post: any) => 
+        post.media_type !== 'video' && 
+        post.id && 
+        post.image_url && 
+        post.profiles
+      );
+      
+      console.log('🎥 [DEBUG] Video posts filtered out:', videoPosts.length);
+      console.log('📱 [DEBUG] Non-video posts kept:', filteredPosts.length);
+      console.log('📊 [DEBUG] Total posts before filter:', postsWithMediaType.length);
+      
+      // Ensure any playing video is stopped when posts are updated
+      if (playingVideo) {
+        setPlayingVideo(null);
+      }
+      
+      // Clear video refs for filtered posts to prevent ghost components
+      if (videoPosts.length > 0) {
+        videoPosts.forEach((videoPost: any) => {
+          if (videoRefs.current[videoPost.id]) {
+            delete videoRefs.current[videoPost.id];
+          }
+        });
+      }
+      
+      setPosts(filteredPosts as Post[]);
     } catch (err) {
       // Capture Supabase PostgrestError details if available for easier debugging
       if (typeof err === 'object' && err !== null) {

@@ -26,6 +26,29 @@ function addDays(iso: string, delta: number) {
 export default function NutritionHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+
+  // Temporary lock: show Coming Soon screen and block access
+  const SHOW_COMING_SOON = true;
+  if (SHOW_COMING_SOON) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack} activeOpacity={0.7}>
+            <ArrowLeft size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Nutrition Hub</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        {/* Coming soon content */}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg }}>
+          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>Coming soon</Text>
+          <Text style={[styles.comingSoonDescription, { color: colors.textSecondary }]}>We’re building this feature. Check back soon.</Text>
+        </View>
+      </View>
+    );
+  }
   const { user } = useAuth();
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -272,4 +295,6 @@ const styles = StyleSheet.create({
   entryName: { fontSize: 14, fontWeight: '600' },
   entrySub: { fontSize: 12 },
   trashBtn: { padding: Spacing.xs },
+  comingSoonTitle: { fontSize: 22, fontWeight: '800', marginBottom: Spacing.xs },
+  comingSoonDescription: { fontSize: 14, textAlign: 'center' },
 });

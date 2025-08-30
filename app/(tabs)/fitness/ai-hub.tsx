@@ -13,6 +13,29 @@ import { analyzeExerciseFormFromVideo } from '@/lib/geminiFormAnalyzer';
 export default function AiHubScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  
+  // Temporary lock: show Coming Soon screen and block access
+  const SHOW_COMING_SOON = true;
+  if (SHOW_COMING_SOON) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack} activeOpacity={0.7}>
+            <ArrowLeft size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>AI Hub</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        {/* Coming soon content */}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg }}>
+          <Text style={[styles.comingSoonTitle, { color: colors.text }]}>Coming soon</Text>
+          <Text style={[styles.comingSoonDescription, { color: colors.textSecondary }]}>We’re building this feature. Check back soon.</Text>
+        </View>
+      </View>
+    );
+  }
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -273,5 +296,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
 

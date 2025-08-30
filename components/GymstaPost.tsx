@@ -105,6 +105,17 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   onCommentCountChange,
   isMyGymTab = false,
 }) => {
+  // Early return if post data is invalid or is a video (extra safety check)
+  if (!post || !post.id || !post.image_url || !post.profiles || post.media_type === 'video') {
+    console.log('🚫 [DEBUG] GymstaPost: Invalid post data or video post, skipping render:', { 
+      hasPost: !!post, 
+      hasId: !!post?.id, 
+      hasImageUrl: !!post?.image_url, 
+      hasProfiles: !!post?.profiles,
+      mediaType: post?.media_type 
+    });
+    return null;
+  }
   // Animation values for the new design
   const [cardScale] = useState(new Animated.Value(1));
   const [cardRotation] = useState(new Animated.Value(0));
