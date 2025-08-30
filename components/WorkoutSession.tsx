@@ -12,6 +12,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
@@ -37,6 +38,7 @@ import { LiveWorkoutTimer } from './LiveWorkoutTimer';
 import { SmartRestTimer } from './SmartRestTimer';
 import { WorkoutContext } from '@/hooks/useSmartRestTimer';
 import { ExercisePicker } from './ExercisePicker';
+import { Spacing } from '@/constants/Spacing';
 
 const { width: screenWidth } = Dimensions.get('window');
 const SWIPE_THRESHOLD = screenWidth * 0.2;
@@ -51,6 +53,8 @@ interface SwipeableSetRowProps {
   onDeleteSet: (exerciseIndex: number, setIndex: number) => void;
   onUpdateSetValue: (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight', value: number) => void;
   formatWeight: (weight: number, fromUnit?: 'lbs' | 'kg', toUnit?: 'lbs' | 'kg') => string;
+  isEditingPlan: boolean;
+  getWeightIncrement: (size: 'small' | 'medium' | 'large') => number;
 }
 
 const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
@@ -62,6 +66,8 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
   onDeleteSet,
   onUpdateSetValue,
   formatWeight,
+  isEditingPlan,
+  getWeightIncrement,
 }) => {
   const [isEditingWeight, setIsEditingWeight] = useState(false);
   const [weightInput, setWeightInput] = useState(set.weight.toString());
@@ -208,11 +214,11 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
       </Animated.View>
 
       {/* Main set row */}
-      <PanGestureHandler
-        onGestureEvent={handlePanGestureEvent}
-        onHandlerStateChange={handlePanStateChange}
-        enabled={!set.completed}
-      >
+             <PanGestureHandler
+         onGestureEvent={handlePanGestureEvent}
+         onHandlerStateChange={handlePanStateChange}
+         enabled={!set.completed && !isEditingPlan}
+       >
         <Animated.View
           style={[
             styles.setRow,
@@ -253,7 +259,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
               <View style={styles.inputWithButtons}>
                 <TouchableOpacity
                   style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', Math.max(0, set.weight - 5))}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', Math.max(0, set.weight - getWeightIncrement('large')))}
                 >
                   <Minus size={16} color="white" />
                 </TouchableOpacity>
@@ -289,7 +295,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
                 )}
                 <TouchableOpacity
                   style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', set.weight + 5)}
+                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', set.weight + getWeightIncrement('large'))}
                 >
                   <Plus size={16} color="white" />
                 </TouchableOpacity>
@@ -341,13 +347,14 @@ interface WorkoutSessionProps {
   onWorkoutComplete: (completedWorkout: Workout) => void;
   defaultRestTime?: number; // in seconds
   onClose: () => void;
+  plannedWorkoutId?: string | null;
 }
 
-export default function WorkoutSession({ workout, onWorkoutComplete, onClose, defaultRestTime = 90 }: WorkoutSessionProps) {
+export default function WorkoutSession({ workout, onWorkoutComplete, onClose, defaultRestTime = 90, plannedWorkoutId = null }: WorkoutSessionProps) {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const { units, formatWeight } = useUnits();
+  const { units, formatWeight, getWeightIncrement } = useUnits();
 
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(workout);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -362,6 +369,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   const [timerResetKey, setTimerResetKey] = useState(0); // Key to force timer reset
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showExerciseDropdown, setShowExerciseDropdown] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [workoutNameInput, setWorkoutNameInput] = useState(currentWorkout.name);
   
   // Smart timer context
   const [workoutContext, setWorkoutContext] = useState<WorkoutContext>({
@@ -621,7 +630,76 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
     setIsResting(false);
   };
 
+  const handleNameSubmit = () => {
+    const trimmedName = workoutNameInput.trim();
+    if (trimmedName) {
+      setCurrentWorkout(prev => ({
+        ...prev,
+        name: trimmedName
+      }));
+    } else {
+      setWorkoutNameInput(currentWorkout.name); // Reset to original if empty
+    }
+    setIsEditingName(false);
+  };
+
+  const handleNameCancel = () => {
+    setWorkoutNameInput(currentWorkout.name);
+    setIsEditingName(false);
+  };
+
   const finishWorkout = async () => {
+    // Check if we're editing a planned workout (not starting from a plan)
+    const isEditingPlan = plannedWorkoutId === null && currentWorkout.id && !currentWorkout.id.startsWith('temp-');
+    
+    if (isEditingPlan) {
+      // We're editing a workout plan - save to planned_workouts table
+      try {
+        // Format exercises for planned workout storage
+        const formattedExercises = currentWorkout.exercises.map(exercise => ({
+          id: exercise.id,
+          name: exercise.name,
+          sets: exercise.sets.map(set => ({
+            id: set.id,
+            reps: set.reps,
+            weight: set.weight,
+            completed: false // Reset completed status for planned workout
+          })),
+          targetSets: exercise.targetSets,
+          targetReps: exercise.targetReps,
+          targetWeight: exercise.targetWeight,
+          notes: exercise.notes || null
+        }));
+
+        // Update the planned workout
+        const { error: updateError } = await supabase
+          .from('planned_workouts')
+          .update({
+            name: currentWorkout.name,
+            exercises: formattedExercises,
+            notes: currentWorkout.notes,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentWorkout.id)
+          .eq('user_id', user?.id);
+
+        if (updateError) {
+          throw new Error(`Failed to update workout plan: ${updateError.message}`);
+        }
+
+        Alert.alert(
+          'Plan Updated!', 
+          'Your workout plan has been saved successfully.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } catch (error) {
+        console.error('Error updating workout plan:', error);
+        Alert.alert('Error', `Failed to update workout plan: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+      return;
+    }
+
+    // Original logic for completing a workout
     // Stop the workout timer
     setIsWorkoutActive(false);
     
@@ -691,7 +769,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
           total_volume: totalVolume,
           notes: completedWorkout.notes,
           is_completed: true,
-          duration_minutes: durationMinutes
+          duration_minutes: durationMinutes,
+          planned_workout_id: plannedWorkoutId
         })
         .select()
         .single();
@@ -729,7 +808,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   const totalSets = currentExercise?.sets.length || 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.border }] }>
         <TouchableOpacity onPress={() => {
@@ -738,34 +817,67 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
         }}>
           <X size={24} color={colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={[styles.workoutName, { color: colors.text }]}>
-            {currentWorkout.name}
-          </Text>
-          <Text style={[styles.elapsedTime, { color: colors.tint }]}>
-            {getElapsedTime()}
-          </Text>
-        </View>
+                 <View style={styles.headerInfo}>
+           {isEditingName ? (
+             <View style={styles.nameEditContainer}>
+               <TextInput
+                 style={[styles.nameInput, { 
+                   color: colors.text,
+                   backgroundColor: colors.inputBackground || colors.card,
+                   borderColor: colors.tint,
+                 }]}
+                 value={workoutNameInput}
+                 onChangeText={setWorkoutNameInput}
+                 onSubmitEditing={handleNameSubmit}
+                 onBlur={handleNameSubmit}
+                 autoFocus
+                 selectTextOnFocus
+                 maxLength={50}
+                 placeholder="Workout name"
+                 placeholderTextColor={colors.textSecondary}
+               />
+               <View style={styles.nameEditActions}>
+                 <TouchableOpacity onPress={handleNameCancel}>
+                   <Text style={[styles.nameEditButton, { color: colors.textSecondary }]}>Cancel</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={handleNameSubmit}>
+                   <Text style={[styles.nameEditButton, { color: colors.tint }]}>Save</Text>
+                 </TouchableOpacity>
+               </View>
+             </View>
+           ) : (
+             <TouchableOpacity onPress={() => setIsEditingName(true)}>
+               <Text style={[styles.workoutName, { color: colors.text }]}>
+                 {currentWorkout.name}
+               </Text>
+             </TouchableOpacity>
+           )}
+           <Text style={[styles.elapsedTime, { color: colors.tint }]}>
+             {plannedWorkoutId === null && currentWorkout.id && !currentWorkout.id.startsWith('temp-') ? 'Editing Plan' : getElapsedTime()}
+           </Text>
+         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={[styles.restTimeButton, { 
-              backgroundColor: colors.tint + '20',
-              borderColor: colors.tint + '40',
-              borderWidth: 1,
-            }]}
-            onPress={() => setShowRestTimeSelector(true)}
-          >
-            <View style={[styles.restTimeIcon, { backgroundColor: colors.tint }]}>
-              <Clock size={14} color="white" />
-            </View>
-            <Text style={[styles.restTimeButtonText, { color: colors.tint }]}>
-              {selectedRestTime < 60 ? `${selectedRestTime}s` : 
-               `${Math.floor(selectedRestTime / 60)}:${(selectedRestTime % 60).toString().padStart(2, '0')}`}
-            </Text>
-          </TouchableOpacity>
+          {!(plannedWorkoutId === null && currentWorkout.id && !currentWorkout.id.startsWith('temp-')) && (
+            <TouchableOpacity 
+              style={[styles.restTimeButton, { 
+                backgroundColor: colors.tint + '20',
+                borderColor: colors.tint + '40',
+                borderWidth: 1,
+              }]}
+              onPress={() => setShowRestTimeSelector(true)}
+            >
+              <View style={[styles.restTimeIcon, { backgroundColor: colors.tint }]}>
+                <Clock size={14} color="white" />
+              </View>
+              <Text style={[styles.restTimeButtonText, { color: colors.tint }]}>
+                {selectedRestTime < 60 ? `${selectedRestTime}s` : 
+                 `${Math.floor(selectedRestTime / 60)}:${(selectedRestTime % 60).toString().padStart(2, '0')}`}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={finishWorkout}>
             <Text style={[styles.finishButton, { color: colors.tint }]}>
-              Finish
+              {plannedWorkoutId === null && currentWorkout.id && !currentWorkout.id.startsWith('temp-') ? 'Save Plan' : 'Finish'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -883,8 +995,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
               </Text>
             </View>
 
-            {/* 🎨 Enhanced Smart Rest Timer - Always visible when resting */}
-            {isResting && (
+            {/* 🎨 Enhanced Smart Rest Timer - Only show when not editing a plan */}
+            {isResting && !(plannedWorkoutId === null && currentWorkout.id && !currentWorkout.id.startsWith('temp-')) && (
               <SmartRestTimer
                 key={`timer-${timerResetKey}-${selectedRestTime}`} // Force reset when key changes
                 context={workoutContext}
@@ -903,17 +1015,19 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
 
             <View style={styles.setsContainer}>
               {currentExercise.sets.map((set, setIndex) => (
-                <SwipeableSetRow
-                  key={set.id}
-                  set={set}
-                  setIndex={setIndex}
-                  exerciseIndex={currentExerciseIndex}
-                  colors={colors}
-                  onCompleteSet={completeSet}
-                  onDeleteSet={deleteSet}
-                  onUpdateSetValue={updateSetValue}
-                  formatWeight={formatWeight}
-                />
+                                 <SwipeableSetRow
+                   key={set.id}
+                   set={set}
+                   setIndex={setIndex}
+                   exerciseIndex={currentExerciseIndex}
+                   colors={colors}
+                   onCompleteSet={completeSet}
+                   onDeleteSet={deleteSet}
+                   onUpdateSetValue={updateSetValue}
+                   formatWeight={formatWeight}
+                   isEditingPlan={plannedWorkoutId === null && Boolean(currentWorkout.id) && !currentWorkout.id.startsWith('temp-')}
+                   getWeightIncrement={getWeightIncrement}
+                 />
               ))}
             </View>
 
@@ -1093,7 +1207,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
         onSelectExercise={addNewExercise}
       />
 
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -1105,8 +1219,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    paddingTop: Spacing.xl,
     borderBottomWidth: 1,
     // themed border color applied inline
   },
@@ -1153,8 +1268,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   exerciseNav: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   exerciseTab: {
     paddingHorizontal: 16,
@@ -1266,7 +1381,9 @@ const styles = StyleSheet.create({
 
   content: {
     flex: 1,
-    padding: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
   exerciseContainer: {
     borderRadius: 16,
@@ -1677,8 +1794,34 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingLeft: 20,
   },
-  completeIndicator: {
-    justifyContent: 'flex-end',
-    paddingRight: 20,
-  },
-}); 
+     completeIndicator: {
+     justifyContent: 'flex-end',
+     paddingRight: 20,
+   },
+   // Name editing styles
+   nameEditContainer: {
+     alignItems: 'center',
+     marginBottom: 4,
+   },
+   nameInput: {
+     fontSize: 18,
+     fontWeight: 'bold',
+     textAlign: 'center',
+     borderWidth: 1,
+     borderRadius: 8,
+     paddingHorizontal: 12,
+     paddingVertical: 6,
+     marginBottom: 8,
+     minWidth: 150,
+   },
+   nameEditActions: {
+     flexDirection: 'row',
+     gap: 16,
+   },
+   nameEditButton: {
+     fontSize: 14,
+     fontWeight: '600',
+     paddingHorizontal: 8,
+     paddingVertical: 4,
+   },
+ }); 
