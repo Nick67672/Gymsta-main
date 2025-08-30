@@ -312,6 +312,10 @@ export default function OnboardingScreen() {
     experienceYears: undefined,
   });
 
+  const [username, setUsername] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+
   const steps = [
     { title: 'Quick Setup', subtitle: 'Just a few details to personalize' },
   ];
@@ -324,6 +328,30 @@ export default function OnboardingScreen() {
 
   const updateData = (field: keyof OnboardingData, value: string) => {
     setData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateUsernameFormat = (name: string) => /^[_A-Za-z0-9]{3,30}$/.test(name);
+
+  const checkUsername = async (candidate: string) => {
+    const name = candidate.trim();
+    if (!name || !validateUsernameFormat(name)) {
+      setUsernameAvailable(null);
+      return;
+    }
+    setCheckingUsername(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', name)
+        .maybeSingle();
+      if (error) throw error;
+      setUsernameAvailable(!data);
+    } catch (_e) {
+      setUsernameAvailable(null);
+    } finally {
+      setCheckingUsername(false);
+    }
   };
 
   const nextStep = () => {
@@ -339,11 +367,10 @@ export default function OnboardingScreen() {
   };
 
   const canProceed = () => {
-    const ageValid = !!data.age.trim();
-    const locationValid = !!data.location.trim();
+    const usernameValid = !!username.trim() && validateUsernameFormat(username) && usernameAvailable === true;
     const unitsValid = data.measurementSystem === 'imperial' || data.measurementSystem === 'metric';
     const frequencyValid = !!data.workoutFrequency;
-    return ageValid && locationValid && unitsValid && frequencyValid;
+    return usernameValid && unitsValid && frequencyValid;
   };
 
   const handleComplete = async () => {
@@ -362,19 +389,19 @@ export default function OnboardingScreen() {
       // Update profile with simplified data (avoid non-existent columns)
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
-          age: parseInt(data.age),
-          location: data.location,
+        .upsert({
+          id: user.id,
+          username: username.trim(),
+          age: data.age ? parseInt(data.age) : null,
+          location: data.location || null,
           primary_goal: (data as any).goals?.[0] || null,
           goals: (data as any).goals && (data as any).goals.length ? (data as any).goals : null,
           workout_frequency: data.workoutFrequency,
-          // body_weight_kg removed to prevent PGRST204 when column isn't present
           preferred_workout_duration: data.preferredDuration || null,
           experience_years: data.experienceYears ? parseInt(data.experienceYears) : null,
           has_completed_onboarding: true,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+        }, { onConflict: 'id' });
 
       if (profileError) throw profileError;
 
@@ -420,11 +447,48 @@ export default function OnboardingScreen() {
     }
   };
 
+  const handleSkip = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from('profiles')
+        .upsert({ id: user.id, has_completed_onboarding: true, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+
+      router.replace('/(tabs)');
+    } catch (_e) {
+      router.replace('/(tabs)');
+    }
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
         return (
           <View style={styles.stepContainer}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Username</Text>
+              <TextInput
+                style={[styles.textInput, { 
+                  borderColor: colors.border,
+                  backgroundColor: colors.inputBackground,
+                  color: colors.text
+                }]}
+                placeholder="Pick a unique handle"
+                placeholderTextColor={colors.textSecondary}
+                value={username}
+                onChangeText={(t) => { setUsername(t); checkUsername(t); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={30}
+              />
+              {username.length > 0 && (
+                <Text style={{ marginTop: 6, color: colors.textSecondary, fontSize: 12 }}>
+                  {checkingUsername ? 'Checking availability...' : usernameAvailable === true ? 'Available' : usernameAvailable === false ? 'Unavailable or invalid' : 'Use letters, numbers, underscores (3-30)'}
+                </Text>
+              )}
+            </View>
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>Age</Text>
               <TextInput
@@ -677,8 +741,8 @@ export default function OnboardingScreen() {
         style={styles.header}
       >
         <View style={styles.headerContent}>
-          {/* Single-step flow: no back button */}
-          
+          {/* Single-step flow: add Skip for low friction */}
+
           <View style={styles.headerText}>
             <Text style={[styles.stepTitle, { color: colors.text }]}>
               Quick Setup
@@ -688,20 +752,9 @@ export default function OnboardingScreen() {
             </Text>
           </View>
 
-          <View style={styles.progressContainer}>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>Quick</Text>
-            <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    width: `100%`,
-                    backgroundColor: colors.tint
-                  }
-                ]} 
-              />
-            </View>
-          </View>
+          <TouchableOpacity onPress={handleSkip} accessibilityRole="button">
+            <Text style={[styles.progressText, { color: colors.textSecondary }]}>Skip</Text>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 

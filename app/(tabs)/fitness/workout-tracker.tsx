@@ -1,2123 +1,215 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Modal,
-  TextInput,
-  ActivityIndicator,
-  SafeAreaView,
-  Dimensions,
-  Platform,
-  FlatList,
-} from 'react-native';
-import { router } from 'expo-router';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/context/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, router } from 'expo-router';
 import { useTheme } from '@/context/ThemeContext';
-import { useUnits } from '@/context/UnitContext';
+import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ThemedButton } from '@/components/ThemedButton';
-import { ThemedInput } from '@/components/ThemedInput';
-import WorkoutCalendar from '@/components/WorkoutCalendar';
+import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
+import { supabase } from '@/lib/supabase';
+import { ChevronLeft, Plus, Zap, Play } from 'lucide-react-native';
 import WorkoutSession from '@/components/WorkoutSession';
-import ProgressCharts from '@/components/ProgressCharts';
-import { ActivityRings } from '@/components/ActivityRings';
-import { 
-  Plus, 
-  Play, 
-  Calendar,
-  TrendingUp,
-  Dumbbell,
-  Target,
-  Clock,
-  ChevronDown,
-  ChevronLeft,
-  Edit3,
-  Trash2,
-  CheckCircle,
-  X,
-  Minus,
-  Search,
-} from 'lucide-react-native';
-import { LineChart } from 'react-native-chart-kit';
-import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
-import { ExercisePicker } from '@/components/ExercisePicker';
-import DateTimePicker from '@react-native-community/datetimepicker';
 
-
-const { width: screenWidth } = Dimensions.get('window');
-
-// Types
-interface WorkoutSet {
-  id: string;
-  reps: number;
-  weight: number;
-  completed: boolean;
-}
-
-interface Exercise {
-  id: string;
-  name: string;
-  sets: WorkoutSet[];
-  targetSets: number;
-  targetReps: number;
-  targetWeight: number;
-  notes?: string;
-}
-
-interface Workout {
+type Workout = {
   id: string;
   name: string;
   date: string;
-  exercises: Exercise[];
-  status: 'planned' | 'in_progress' | 'completed';
-  startTime?: Date;
-  endTime?: Date;
+  exercises: any[];
   notes?: string;
-}
-
-interface ProgressData {
-  volume: { date: string; value: number }[];
-  weight: { date: string; exercise: string; value: number }[];
-  streak: number;
-  oneRM: { exercise: string; value: number }[];
-}
-
-type TimeScale = '7d' | '30d' | '3m' | '1y';
+};
 
 export default function WorkoutTrackerScreen() {
+  const { action, planId } = useLocalSearchParams<{ action?: string; planId?: string }>();
   const { theme } = useTheme();
-  const { formatWeight, convertWeight } = useUnits();
   const colors = Colors[theme];
   const { user } = useAuth();
 
-  // Main state
-  const [currentView, setCurrentView] = useState<'main' | 'create' | 'calendar' | 'session'>('main');
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [currentWorkout, setCurrentWorkout] = useState<Workout | null>(null);
-  const [progressData, setProgressData] = useState<ProgressData>({
-    volume: [],
-    weight: [],
-    streak: 0,
-    oneRM: []
-  });
-  const [timeScale, setTimeScale] = useState<TimeScale>('30d');
   const [loading, setLoading] = useState(false);
-  const [selectedWorkoutFilter, setSelectedWorkoutFilter] = useState<string | null>(null);
+  const [workout, setWorkout] = useState<Workout | null>(null);
+  const [showWorkoutSession, setShowWorkoutSession] = useState(false);
 
-  // Modals
-  const [showTimeScaleModal, setShowTimeScaleModal] = useState(false);
-  const [showExerciseModal, setShowExerciseModal] = useState(false);
-  const [showExercisePickerModal, setShowExercisePickerModal] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
-  const [showInlineExerciseForm, setShowInlineExerciseForm] = useState(false);
-
-  const [parentModalToReopen, setParentModalToReopen] = useState<'inline' | 'exercise' | null>(null);
-
-  // Form states
-  const [workoutName, setWorkoutName] = useState('');
-  const [workoutDate, setWorkoutDate] = useState(new Date().toISOString().split('T')[0]);
-  const [exerciseName, setExerciseName] = useState('');
-  const [setsList, setSetsList] = useState<{ reps: string; weight: string }[]>([{ reps: '0', weight: '0' }]);
-
-  // Load data on mount
   useEffect(() => {
-    if (user) {
-      loadWorkouts();
-      loadProgressData();
-    }
-  }, [user, timeScale, selectedWorkoutFilter]);
-
-  // Load workouts
-  const loadWorkouts = async () => {
     if (!user) return;
+    
+    if (action === 'fromPlan' && planId) {
+      loadPlanAsWorkout();
+    } else if (action === 'create') {
+      createNewWorkout();
+    } else if (action === 'quickStart') {
+      createQuickStartWorkout();
+    } else if (action === 'editPlan' && planId) {
+      loadPlanForEditing();
+    } else {
+      // Default: redirect to hub
+      router.replace('/fitness/workout-hub');
+    }
+  }, [user?.id, action, planId]);
+
+  const loadPlanAsWorkout = async () => {
+    if (!user || !planId) return;
     setLoading(true);
     try {
-      // Load planned workouts for main screen display
-      const { data: plannedData, error: plannedError } = await supabase
+      const { data, error } = await supabase
         .from('planned_workouts')
         .select('*')
+        .eq('id', planId)
         .eq('user_id', user.id)
-        .order('date', { ascending: true });
+        .single();
       
-      if (plannedError) throw plannedError;
+      if (error) throw error;
       
-      const transformedPlannedWorkouts = plannedData?.map(w => ({
-        id: w.id,
-        name: w.name || 'Planned Workout',
-        date: w.date,
-        exercises: (w.exercises || []).map((e: any) => ({
-          id: e.id || Date.now().toString(),
-          name: e.name,
-          sets: (e.sets || []).map((s: any) => ({
-            id: s.id || Date.now().toString(),
-            reps: s.reps || 0,
-            weight: s.weight || 0,
-            completed: s.completed || false
-          })),
-          targetSets: e.targetSets || e.sets?.length || 3,
-          targetReps: e.targetReps || 10,
-          targetWeight: e.targetWeight || 0,
-          notes: e.notes
-        })),
-        status: 'planned' as 'planned' | 'in_progress' | 'completed',
-        notes: w.notes
-      })) || [];
+      const workoutData: Workout = {
+        id: `temp-${Date.now()}`,
+        name: data.name || 'Workout',
+        date: new Date().toISOString().split('T')[0],
+        exercises: data.exercises || [],
+        notes: data.notes || '',
+      };
       
-      setWorkouts(transformedPlannedWorkouts);
-      
-      console.log('Loaded planned workouts:', transformedPlannedWorkouts.length);
-      
-    } catch (error) {
-      console.error('Error loading planned workouts:', error);
+      setWorkout(workoutData);
+      setShowWorkoutSession(true);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to load workout plan');
+      router.back();
     } finally {
       setLoading(false);
     }
   };
 
-  // Load progress data
-  const loadProgressData = async () => {
+  const createNewWorkout = async () => {
     if (!user) return;
     
     try {
-      const days = timeScale === '7d' ? 7 : timeScale === '30d' ? 30 : timeScale === '3m' ? 90 : 365;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-      
-      // Load COMPLETED workout data for progress using the workouts table
-      const { data, error } = await supabase
-        .from('workouts')
-        .select('date, exercises, total_volume, duration_minutes, name')
-        .eq('user_id', user.id)
-        .eq('is_completed', true)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .order('date', { ascending: true });
-      
-      if (error) throw error;
-      
-      // Filter by selected workout if a filter is applied
-      let filteredData = data || [];
-      if (selectedWorkoutFilter) {
-        const selectedWorkout = workouts.find(w => w.id === selectedWorkoutFilter);
-        if (selectedWorkout) {
-          filteredData = filteredData.filter(workout => 
-            workout.name === selectedWorkout.name
-          );
-        }
-      }
-      
-      console.log('Loaded completed workouts for progress:', filteredData.length);
-      
-      // Process data for charts
-      const volumeData: { date: string; value: number }[] = [];
-      const weightData: { date: string; exercise: string; value: number }[] = [];
-      const oneRMData: { exercise: string; value: number }[] = [];
-      
-      filteredData.forEach(workout => {
-        // Calculate total volume from exercises JSONB
-        let totalVolume = 0;
-        
-        if (workout.exercises && Array.isArray(workout.exercises)) {
-          workout.exercises.forEach((exercise: any) => {
-            if (exercise.sets && Array.isArray(exercise.sets)) {
-              exercise.sets.forEach((set: any) => {
-                if (set.completed) { // Only count completed sets
-                  const volume = (set.reps || 0) * (set.weight || 0);
-                  totalVolume += volume;
-                }
-              });
-            }
-          });
-        }
-        
-        // Use calculated volume or stored total_volume
-        const volume = workout.total_volume || totalVolume;
-        
-        volumeData.push({
-          date: workout.date,
-          value: volume
-        });
-      });
-      
-      // Calculate workout streak
-      const streak = calculateWorkoutStreak(filteredData || []);
-      
-      setProgressData({
-        volume: volumeData,
-        weight: weightData,
-        streak,
-        oneRM: oneRMData
-      });
-      
-    } catch (error) {
-      console.error('Error loading progress data:', error);
-    }
-  };
-
-  // Helpers
-  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-  const getTodayISO = () => new Date().toISOString().split('T')[0];
-
-  // Derived metrics for engagement UI
-  const todayISO = useMemo(() => getTodayISO(), []);
-  const todayPlannedWorkout = useMemo(() => workouts.find(w => w.date === todayISO), [workouts, todayISO]);
-
-  const volumeByDate = useMemo(() => {
-    const map: Record<string, number> = {};
-    progressData.volume.forEach(v => {
-      map[v.date] = (map[v.date] || 0) + (v.value || 0);
-    });
-    return map;
-  }, [progressData.volume]);
-
-  const todayVolume = volumeByDate[todayISO] || 0;
-  const daysActive7 = useMemo(() => {
-    const d = new Date(todayISO);
-    let count = 0;
-    for (let i = 0; i < 7; i++) {
-      const iso = d.toISOString().split('T')[0];
-      if ((volumeByDate[iso] || 0) > 0) count++;
-      d.setDate(d.getDate() - 1);
-    }
-    return count;
-  }, [todayISO, volumeByDate]);
-
-  const totalVolume30d = useMemo(() => {
-    const d = new Date(todayISO);
-    d.setDate(d.getDate() - 29);
-    const start = d.toISOString().split('T')[0];
-    return progressData.volume
-      .filter(v => v.date >= start && v.date <= todayISO)
-      .reduce((sum, v) => sum + (v.value || 0), 0);
-  }, [progressData.volume, todayISO]);
-
-  const moveProgress = clamp(todayVolume / 10000, 0, 1);
-  const exerciseProgress = clamp((todayPlannedWorkout ? 1 : 0), 0, 1);
-  const standProgress = clamp(progressData.streak / 10, 0, 1);
-
-  const quickStartWorkout = () => {
-    const newWorkout: Workout = {
-      id: `qs-${Date.now()}`,
-      name: 'Quick Session',
-      date: todayISO,
-      exercises: [],
-      status: 'in_progress',
-      startTime: new Date()
-    };
-    setCurrentWorkout(newWorkout);
-    setCurrentView('session');
-  };
-
-  const startTemplate = (template: 'Push' | 'Pull' | 'Legs') => {
-    const baseSets = [{ id: `${Date.now()}-s1`, reps: 10, weight: 0, completed: false }];
-    const makeExercise = (name: string) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name,
-      sets: baseSets,
-      targetSets: 1,
-      targetReps: 10,
-      targetWeight: 0,
-    });
-    const templates: Record<string, string[]> = {
-      Push: ['Bench Press', 'Overhead Press', 'Tricep Pushdown'],
-      Pull: ['Barbell Row', 'Lat Pulldown', 'Bicep Curl'],
-      Legs: ['Back Squat', 'Romanian Deadlift', 'Leg Press'],
-    };
-    const exercises = (templates[template] || []).map(makeExercise);
-    const newWorkout: Workout = {
-      id: `tpl-${Date.now()}`,
-      name: `${template} Day`,
-      date: todayISO,
-      exercises,
-      status: 'planned'
-    };
-    setCurrentWorkout(newWorkout);
-    setCurrentView('create');
-  };
-
-  // Calculate 1RM using Epley formula
-  const calculateOneRM = (weight: number, reps: number): number => {
-    if (reps === 1) return weight;
-    return weight * (1 + reps / 30);
-  };
-
-  // Calculate workout streak
-  const calculateWorkoutStreak = (workouts: any[]): number => {
-    if (!workouts.length) return 0;
-    
-    let streak = 0;
-    const today = new Date();
-    let currentDate = new Date(today);
-    
-    for (let i = 0; i < 365; i++) {
-      const dateStr = currentDate.toISOString().split('T')[0];
-      const hasWorkout = workouts.some(w => w.date === dateStr);
-      
-      if (hasWorkout) {
-        streak++;
-      } else if (streak > 0) {
-        break;
-      }
-      
-      currentDate.setDate(currentDate.getDate() - 1);
-    }
-    
-    return streak;
-  };
-
-  // Create new workout
-  const createNewWorkout = () => {
-    const newWorkout: Workout = {
-      id: Date.now().toString(),
-      name: workoutName || `Workout ${new Date(workoutDate).toLocaleDateString()}`,
-      date: workoutDate,
-      exercises: [],
-      status: 'planned'
-    };
-    
-    setCurrentWorkout(newWorkout);
-    setWorkoutName('');
-    setCurrentView('create');
-    setShowDatePicker(false);
-  };
-
-  // Add exercise to current workout
-  const addExerciseToWorkout = () => {
-    console.log('addExerciseToWorkout called');
-    console.log('currentWorkout:', currentWorkout);
-    console.log('exerciseName:', exerciseName);
-    console.log('setsList:', setsList);
-    console.log('exerciseName.trim():', exerciseName.trim());
-    
-    if (!currentWorkout) {
-      console.log('currentWorkout is null, cannot add exercise');
-      Alert.alert('Error', 'No workout selected. Please create a workout first.');
-      return;
-    }
-    
-    if (!exerciseName.trim()) {
-      console.log('exerciseName is empty, cannot add exercise');
-      Alert.alert('Error', 'Please enter an exercise name.');
-      return;
-    }
-    
-    const setsArr = setsList.map((s, idx) => ({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${idx}`,
-      reps: parseInt(s.reps) || 0,
-      weight: parseFloat(s.weight) || 0,
-      completed: false,
-    }));
-
-    const newExercise: Exercise = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: exerciseName.trim(),
-      sets: setsArr,
-      targetSets: setsArr.length,
-      targetReps: setsArr[0]?.reps || 0,
-      targetWeight: setsArr[0]?.weight || 0,
-    };
-    
-    console.log('Adding new exercise:', newExercise);
-    
-    setCurrentWorkout(prev => prev ? {
-      ...prev,
-      exercises: [...prev.exercises, newExercise]
-    } : null);
-    
-    // Reset form
-    setExerciseName('');
-    setSetsList([{ reps: '0', weight: '0' }]);
-    setShowExerciseModal(false);
-  };
-
-  // Add another identical set to a planned exercise (clone last set)
-  const addSetToExercise = (exerciseId: string) => {
-    setCurrentWorkout(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        exercises: prev.exercises.map(ex => {
-          if (ex.id !== exerciseId) return ex;
-          const last = ex.sets[ex.sets.length - 1];
-          const newSet = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            reps: last?.reps || 0,
-            weight: last?.weight || 0,
-            completed: false,
-          };
-          return { ...ex, sets: [...ex.sets, newSet], targetSets: ex.sets.length + 1 };
-        })
-      };
-    });
-  };
-
-  // Save workout to database
-  const saveWorkout = async () => {
-    if (!currentWorkout || !user) return;
-    
-    setLoading(true);
-    try {
-      // Format exercises for JSONB storage
-      const formattedExercises = currentWorkout.exercises.map(exercise => ({
-        id: exercise.id,
-        name: exercise.name,
-        sets: exercise.sets.map(set => ({
-          id: set.id,
-          reps: set.reps,
-          weight: set.weight,
-          completed: set.completed
-        })),
-        targetSets: exercise.targetSets,
-        targetReps: exercise.targetReps,
-        targetWeight: exercise.targetWeight,
-        notes: exercise.notes || null
-      }));
-
-      console.log('Saving planned workout with data:', {
-        user_id: user.id,
-        name: currentWorkout.name || 'Planned Workout',
-        date: currentWorkout.date,
-        exerciseCount: formattedExercises.length
-      });
-
-      // Save workout to the planned_workouts table
-      const { data: workoutData, error: workoutError } = await supabase
+      // Create a new planned workout in the database
+      const { data: newPlan, error } = await supabase
         .from('planned_workouts')
         .insert({
           user_id: user.id,
-          name: currentWorkout.name || 'Planned Workout',
-          date: currentWorkout.date,
-          exercises: formattedExercises,
-          notes: currentWorkout.notes || null
+          name: 'New Workout',
+          date: new Date().toISOString().split('T')[0],
+          exercises: [],
+          notes: '',
         })
         .select()
         .single();
       
-      console.log('Planned workout save result:', { workoutData, workoutError });
+      if (error) throw error;
       
-      if (workoutError) throw workoutError;
-      
-      setCurrentWorkout(null);
-      setCurrentView('main');
-      loadWorkouts();
-      Alert.alert('Success', 'Planned workout saved successfully!');
-      
-    } catch (error) {
-      console.error('Error saving planned workout:', error);
-      Alert.alert('Error', 'Failed to save planned workout. Please try again.');
-    } finally {
-      setLoading(false);
+      // Navigate directly to the workout creation/editing interface
+      router.push({ pathname: '/fitness/workout-tracker', params: { action: 'editPlan', planId: newPlan.id } });
+    } catch (e) {
+      Alert.alert('Error', 'Failed to create new workout plan');
+      router.back();
     }
   };
 
-  // Start workout session
-  const startWorkoutSession = async (workout: Workout) => {
-    if (!user) {
-      Alert.alert('Error', 'Please sign in to start a workout.');
-      return;
-    }
-
-    console.log('Starting workout session for workout:', workout.id);
-    console.log('User ID:', user.id);
-
-    try {
-      setLoading(true);
-      
-      // Don't save to database yet - just start the session
-      // The workout will be saved when they press "Finish"
-      console.log('Starting workout session locally (not saving to DB yet)...');
-      
-      // Generate a new unique ID for this workout session
-      const sessionId = `workout-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Start the workout session with a new ID
-      setCurrentWorkout({
-        ...workout,
-        id: sessionId, // Use new unique ID for this session
-        status: 'in_progress',
-        startTime: new Date()
-      });
-      setCurrentView('session');
-      
-    } catch (error) {
-      console.error('Error starting workout session:', error);
-      Alert.alert('Error', `Failed to start workout: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // update a planned set value
-  const updatePlannedSet = (
-    exerciseId: string,
-    setIndex: number,
-    field: 'reps' | 'weight',
-    value: number
-  ) => {
-    setCurrentWorkout(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        exercises: prev.exercises.map(ex => {
-          if (ex.id !== exerciseId) return ex;
-          return {
-            ...ex,
-            sets: ex.sets.map((s, idx) => idx === setIndex ? { ...s, [field]: value } : s)
-          };
-        })
-      };
-    });
-  };
-
-  const removePlannedSet = (exerciseId: string, setIndex: number) => {
-    setCurrentWorkout(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        exercises: prev.exercises.map(ex => {
-          if (ex.id !== exerciseId) return ex;
-          const newSets = ex.sets.filter((_, idx) => idx !== setIndex);
-          return { ...ex, sets: newSets, targetSets: newSets.length };
-        })
-      };
-    });
-  };
-
-  // plus: define startNewWorkoutCreation before renderMainScreen
-  const startNewWorkoutCreation = () => {
-    console.log('startNewWorkoutCreation called');
-    const todayIso = new Date().toISOString().split('T')[0];
-    setWorkoutName('');
-    setWorkoutDate(todayIso);
-    const newWorkout: Workout = {
-      id: Date.now().toString(),
-      name: '',
-      date: todayIso,
+  const createQuickStartWorkout = () => {
+    const workoutData: Workout = {
+      id: `temp-${Date.now()}`,
+      name: 'Quick Workout',
+      date: new Date().toISOString().split('T')[0],
       exercises: [],
-      status: 'planned'
+      notes: '',
     };
-    console.log('Creating new workout:', newWorkout);
-    setCurrentWorkout(newWorkout);
-    setCurrentView('create');
+    setWorkout(workoutData);
+    setShowWorkoutSession(true);
   };
 
-  // Edit workout functions
-  const addExerciseToEditingWorkout = () => {
-    console.log('addExerciseToEditingWorkout called');
-    console.log('editingWorkout:', editingWorkout);
-    console.log('exerciseName:', exerciseName);
-    console.log('exerciseName.trim():', exerciseName.trim());
-    
-    if (!editingWorkout) {
-      Alert.alert('Error', 'No workout selected for editing.');
-      return;
-    }
-    
-    if (!exerciseName.trim()) {
-      Alert.alert('Error', 'Please enter an exercise name.');
-      return;
-    }
-    
-    const setsArr = setsList.map((s, idx) => ({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${idx}`,
-      reps: parseInt(s.reps) || 0,
-      weight: parseFloat(s.weight) || 0,
-      completed: false,
-    }));
-
-    const newExercise: Exercise = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: exerciseName.trim(),
-      sets: setsArr,
-      targetSets: setsArr.length,
-      targetReps: setsArr[0]?.reps || 0,
-      targetWeight: setsArr[0]?.weight || 0,
-    };
-    
-    console.log('Adding exercise to editingWorkout:', newExercise.name);
-    
-    setEditingWorkout(prev => prev ? {
-      ...prev,
-      exercises: [...prev.exercises, newExercise]
-    } : null);
-    
-    // Reset form and hide inline form
-    setExerciseName('');
-    setSetsList([{ reps: '0', weight: '0' }]);
-    setShowInlineExerciseForm(false);
-  };
-
-  const removeExerciseFromEditingWorkout = (exerciseId: string) => {
-    setEditingWorkout(prev => prev ? {
-      ...prev,
-      exercises: prev.exercises.filter(e => e.id !== exerciseId)
-    } : null);
-  };
-
-  const saveEditedWorkout = async () => {
-    if (!editingWorkout || !user) return;
-    
+  const loadPlanForEditing = async () => {
+    if (!user || !planId) return;
     setLoading(true);
     try {
-      // Format exercises for JSONB storage
-      const formattedExercises = editingWorkout.exercises.map(exercise => ({
-        id: exercise.id,
-        name: exercise.name,
-        sets: exercise.sets.map(set => ({
-          id: set.id,
-          reps: set.reps,
-          weight: set.weight,
-          completed: set.completed
-        })),
-        targetSets: exercise.targetSets,
-        targetReps: exercise.targetReps,
-        targetWeight: exercise.targetWeight,
-        notes: exercise.notes || null
-      }));
-
-      console.log('Updating planned workout with data:', {
-        id: editingWorkout.id,
-        name: editingWorkout.name,
-        exerciseCount: formattedExercises.length
-      });
-
-      // Update workout in the planned_workouts table
-      const { error: workoutError } = await supabase
+      const { data, error } = await supabase
         .from('planned_workouts')
-        .update({
-          name: editingWorkout.name,
-          exercises: formattedExercises,
-          notes: editingWorkout.notes || null
-        })
-        .eq('id', editingWorkout.id);
+        .select('*')
+        .eq('id', planId)
+        .eq('user_id', user.id)
+        .single();
       
-      if (workoutError) throw workoutError;
+      if (error) throw error;
       
-      setEditingWorkout(null);
-      setShowEditWorkoutModal(false);
-      setShowInlineExerciseForm(false);
-      loadWorkouts();
-      Alert.alert('Success', 'Workout updated successfully!');
+      const workoutData: Workout = {
+        id: data.id, // Use the actual plan ID
+        name: data.name || 'Workout',
+        date: new Date().toISOString().split('T')[0],
+        exercises: data.exercises || [],
+        notes: data.notes || '',
+      };
       
-    } catch (error) {
-      console.error('Error updating planned workout:', error);
-      Alert.alert('Error', 'Failed to update workout. Please try again.');
+      setWorkout(workoutData);
+      setShowWorkoutSession(true);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to load workout plan for editing');
+      router.back();
     } finally {
       setLoading(false);
     }
   };
 
+  const handleWorkoutComplete = async (completedWorkout: Workout) => {
+    // Navigate to summary
+    router.push('/fitness/workout-summary');
+  };
 
+  const handleClose = () => {
+    setShowWorkoutSession(false);
+    router.back();
+  };
 
-  // Render main tracker screen
-  const renderMainScreen = () => (
-    <View style={styles.container}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.push('/fitness')}
-          >
-            <ChevronLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.title, { color: colors.text }]}>Workout Tracker</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: colors.card }]}
-            onPress={() => setShowCalendar(true)}
-          >
-            <Calendar size={24} color={colors.tint} />
-          </TouchableOpacity>
-
-          <ThemedButton title="Plan workout" onPress={startNewWorkoutCreation} variant="primary" size="small" />
-        </View>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-        {/* Hero with Activity Rings and Streak */}
-        <LinearGradient
-          colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          <View style={styles.heroContent}>
-            <View style={styles.ringsContainer}>
-              <ActivityRings
-                moveProgress={moveProgress}
-                exerciseProgress={exerciseProgress}
-                standProgress={standProgress}
-              />
-            </View>
-            <View style={styles.heroRight}>
-              <Text style={styles.heroTitle}>Keep the streak alive</Text>
-              <Text style={styles.heroSubtitle}>{progressData.streak} day streak • {daysActive7}/7 active</Text>
-              <View style={styles.heroActionsRow}>
-                <TouchableOpacity style={[styles.ctaPrimary]} onPress={quickStartWorkout}>
-                  <Play size={16} color={'white'} />
-                  <Text style={styles.ctaPrimaryText}>Quick start</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.ctaSecondary, { borderColor: 'rgba(255,255,255,0.6)' }]} onPress={startNewWorkoutCreation}>
-                  <Plus size={16} color={'white'} />
-                  <Text style={styles.ctaSecondaryText}>Plan</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Summary Tiles */}
-        <View style={styles.tilesRow}>
-          <LinearGradient
-            colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.tileGradient}
-          >
-            <Text style={styles.tileLabel}>Streak</Text>
-            <Text style={styles.tileValue}>{progressData.streak} days</Text>
-          </LinearGradient>
-          <LinearGradient
-            colors={[colors.primaryGradientEnd, colors.primaryGradientStart]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.tileGradient}
-          >
-            <Text style={styles.tileLabel}>Active (7d)</Text>
-            <Text style={styles.tileValue}>{daysActive7} days</Text>
-          </LinearGradient>
-          <LinearGradient
-            colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.tileGradient}
-          >
-            <Text style={styles.tileLabel}>Volume (30d)</Text>
-            <Text style={styles.tileValue}>{Math.round(totalVolume30d)}</Text>
-          </LinearGradient>
-        </View>
-
-        {/* Today's plan highlight */}
-        {todayPlannedWorkout && (
-          <View style={[styles.todayCard, { backgroundColor: colors.card }]}>
-            <View style={styles.todayLeft}>
-              <Text style={[styles.todayLabel, { color: colors.textSecondary }]}>Today's plan</Text>
-              <Text style={[styles.todayTitle, { color: colors.text }]} numberOfLines={1}>{todayPlannedWorkout.name}</Text>
-              <Text style={[styles.todayMeta, { color: colors.textSecondary }]}>{todayPlannedWorkout.exercises.length} exercises</Text>
-            </View>
-            <TouchableOpacity style={[styles.beginWorkoutButton, { backgroundColor: colors.tint }]} onPress={() => startWorkoutSession(todayPlannedWorkout)}>
-              <Play size={16} color={'white'} />
-              <Text style={styles.beginWorkoutButtonText}>Start</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Action Tiles */}
-        <View style={styles.tilesRow}>
-          <LinearGradient colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
-            <TouchableOpacity style={styles.tileAction} onPress={quickStartWorkout}>
-              <Play size={18} color={'#fff'} />
-              <Text style={styles.tileActionText}>Quick start</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-          <LinearGradient colors={[colors.primaryGradientEnd, colors.primaryGradientStart]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
-            <TouchableOpacity style={styles.tileAction} onPress={startNewWorkoutCreation}>
-              <Plus size={18} color={'#fff'} />
-              <Text style={styles.tileActionText}>Plan</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-          <LinearGradient colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.tileGradient}>
-            <TouchableOpacity style={styles.tileAction} onPress={() => setShowCalendar(true)}>
-              <Calendar size={18} color={'#fff'} />
-              <Text style={styles.tileActionText}>Calendar</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-        </View>
-        <View style={styles.tilesRow}>
-          <LinearGradient colors={[colors.primaryGradientEnd, colors.primaryGradientStart]} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.tileGradient, { flex: 1 }] }>
-            <TouchableOpacity style={styles.tileAction} onPress={() => setTimeScale('30d')}>
-              <TrendingUp size={18} color={'#fff'} />
-              <Text style={styles.tileActionText}>Insights</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-          <View style={{ flex: 1, gap: 8 }}>
-            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Push')}>
-              <Text style={styles.templatePillText}>Push</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Pull')}>
-              <Text style={styles.templatePillText}>Pull</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.templatePill]} onPress={() => startTemplate('Legs')}>
-              <Text style={styles.templatePillText}>Legs</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Planned Workouts Cards */}
-        {workouts.length > 0 ? (
-          <>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              Planned Workouts
-            </Text>
-            <View style={styles.workoutGrid}>
-              {workouts.map((workout) => (
-                <LinearGradient key={workout.id} colors={[colors.primaryGradientStart, colors.primaryGradientEnd]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.workoutGridGradient}>
-                  <View style={styles.workoutCardHeader}>
-                    <TouchableOpacity
-                      style={styles.editIconButton}
-                      onPress={() => {
-                        setEditingWorkout(workout);
-                        setShowEditWorkoutModal(true);
-                      }}
-                    >
-                      <Edit3 size={16} color={'#ffffffcc'} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={[styles.workoutGridTitle, { color: '#fff' }]}>
-                    {workout.name}
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.beginWorkoutButton, { backgroundColor: 'rgba(0,0,0,0.25)' }]}
-                    onPress={() => startWorkoutSession(workout)}
-                  >
-                    <Play size={16} color="white" />
-                    <Text style={styles.beginWorkoutButtonText}>Begin Workout</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-              ))}
-            </View>
-          </>
-        ) : (
-          <View style={[styles.emptyStateCard, { backgroundColor: colors.card }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>
-              No workouts planned
-            </Text>
-            <Text style={[styles.cardSubtitle, { color: colors.text }]}>
-              Ready to get started?
-            </Text>
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.tint }]}
-              onPress={startNewWorkoutCreation}
-            >
-              <Plus size={20} color="white" />
-              <Text style={styles.primaryButtonText}>Plan Your First Workout</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Progress Section */}
-        <ProgressCharts
-          data={progressData}
-          timeScale={timeScale}
-          onTimeScalePress={() => setShowTimeScaleModal(true)}
-          plannedWorkouts={workouts.map(w => ({ id: w.id, name: w.name }))}
-          selectedWorkoutFilter={selectedWorkoutFilter}
-          onWorkoutFilterChange={setSelectedWorkoutFilter}
-        />
-      </ScrollView>
-    </View>
-  );
-
-  // Render workout creation screen
-  const renderCreateScreen = () => (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setCurrentView('main')}>
-          <X size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Create Workout</Text>
-        <View style={{width:24}} />
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, marginBottom:8 }]}>Workout Details</Text>
-          <ThemedInput
-            placeholder="Workout name"
-            value={workoutName}
-            onChangeText={(text)=>{
-              setWorkoutName(text);
-              setCurrentWorkout(prev=> prev?{...prev, name:text}:prev);
-            }}
-            style={styles.modalInput}
-          />
-
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: colors.tint, marginTop:16 }]}
-            onPress={() => {
-              if (!currentWorkout) {
-                Alert.alert('No workout in progress', 'Please start a new workout before adding exercises.');
-                return;
-              }
-              setExerciseName('');
-              setSetsList([{ reps: '0', weight: '0' }]);
-              setShowExerciseModal(true);
-            }}
-          >
-            <Plus size={20} color="white" />
-            <Text style={styles.addButtonText}>Add Exercise</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Exercises List */}
-        {currentWorkout?.exercises.map((exercise) => (
-          <View key={exercise.id} style={[styles.exerciseCard, { backgroundColor: colors.card }]}>
-            {/* Header with delete */}
-            <View style={styles.exerciseHeader}>
-              <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">{exercise.name}</Text>
-              <TouchableOpacity onPress={() => {
-                setCurrentWorkout(prev => prev ? { ...prev, exercises: prev.exercises.filter(e => e.id !== exercise.id) } : null);
-              }}>
-                <Trash2 size={18} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Sets table */}
-            <View style={styles.setTableHeader}>
-              <Text style={[styles.setColHeader, { color: colors.text, width: 40 }]}>Set</Text>
-              <Text style={[styles.setColHeader, { color: colors.text, width: 90 }]}>Reps</Text>
-              <Text style={[styles.setColHeader, { color: colors.text, width: 90 }]}>Weight</Text>
-              <View style={{ width: 24 }} />
-            </View>
-            {exercise.sets.map((s, idx) => (
-              <View key={s.id} style={styles.setRowPlan}>
-                <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                <TextInput
-                  keyboardType="numeric"
-                  value={String(s.reps)}
-                  onChangeText={v => updatePlannedSet(exercise.id, idx, 'reps', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                />
-                <TextInput
-                  keyboardType="numeric"
-                  value={String(s.weight)}
-                  onChangeText={v => updatePlannedSet(exercise.id, idx, 'weight', Number(v))}
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                />
-                <View style={{ width: 24, alignItems: 'center' }}>
-                  {exercise.sets.length > 1 && (
-                    <TouchableOpacity onPress={() => removePlannedSet(exercise.id, idx)}>
-                      <Minus size={16} color={colors.tint} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ))}
-
-            {/* Add set link */}
-            <TouchableOpacity style={[styles.addSetInline, { backgroundColor: colors.border }]} onPress={() => addSetToExercise(exercise.id)}>
-              <Plus size={16} color={colors.tint} />
-              <Text style={styles.addSetInlineText}>Add Set</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-
-        <View style={styles.createWorkoutActions}>
-          <ThemedButton
-            title="Save Workout"
-            onPress={saveWorkout}
-            variant="primary"
-            size="large"
-            disabled={!currentWorkout?.exercises.length}
-            icon={<CheckCircle size={18} color="#fff" />}
-          />
-        </View>
-      </ScrollView>
-    </View>
-  );
-
-  // Render modals
-  const renderModals = () => (
-    <>
-      {/* Time Scale Modal */}
-      <Modal visible={showTimeScaleModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Select Time Range</Text>
-            
-            {(['7d', '30d', '3m', '1y'] as TimeScale[]).map(scale => (
-              <TouchableOpacity
-                key={scale}
-                style={[styles.timeScaleOption, timeScale === scale && { backgroundColor: colors.tint }]}
-                onPress={() => {
-                  setTimeScale(scale);
-                  setShowTimeScaleModal(false);
-                }}
-              >
-                <Text style={[styles.timeScaleOptionText, { 
-                  color: timeScale === scale ? 'white' : colors.text 
-                }]}>
-                  {scale === '7d' ? '7 Days' : scale === '30d' ? '30 Days' : scale === '3m' ? '3 Months' : '1 Year'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit Workout Modal */}
-      <Modal 
-        visible={showEditWorkoutModal} 
-        animationType="slide" 
-        transparent
-        key={`edit-${editingWorkout?.id || 'none'}`}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card, maxHeight: '80%' }]}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => {
-                setShowEditWorkoutModal(false);
-                setShowInlineExerciseForm(false);
-              }}>
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Edit: {editingWorkout?.name}
-              </Text>
-              <View style={{ width: 24 }} />
-            </View>
-
-            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-              {!showInlineExerciseForm ? (
-                // Exercise List View
-                <>
-                  {/* Exercises List */}
-                  {editingWorkout?.exercises.map((exercise) => (
-                    <View key={exercise.id} style={[styles.editExerciseCard, { backgroundColor: colors.background }]}>
-                      <View style={styles.exerciseHeader}>
-                        <Text style={[styles.exerciseName, { color: colors.text }]} numberOfLines={2} ellipsizeMode="tail">
-                          {exercise.name}
-                        </Text>
-                        <TouchableOpacity onPress={() => removeExerciseFromEditingWorkout(exercise.id)}>
-                          <Trash2 size={18} color={colors.text} />
-                        </TouchableOpacity>
-                      </View>
-                      <Text style={[styles.exerciseDetails, { color: colors.text }]} numberOfLines={1} ellipsizeMode="tail">
-                        {exercise.sets.length} sets • {exercise.targetReps} reps • {formatWeight(exercise.targetWeight, 'kg')}
-                      </Text>
-                    </View>
-                  ))}
-
-                  {/* Add Exercise Button */}
-                  <TouchableOpacity
-                    style={[styles.addButton, { backgroundColor: colors.tint, marginTop: 16 }]}
-                    onPress={() => {
-                      // Reset exercise form and show inline form
-                      setExerciseName('');
-                      setSetsList([{ reps: '0', weight: '0' }]);
-                      setShowInlineExerciseForm(true);
-                    }}
-                  >
-                    <Plus size={20} color="white" />
-                    <Text style={styles.addButtonText}>Add Exercise</Text>
-                  </TouchableOpacity>
-
-                  {/* Modal Actions for Exercise List View */}
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: colors.background }]}
-                      onPress={() => {
-                        setShowEditWorkoutModal(false);
-                        setShowInlineExerciseForm(false);
-                      }}
-                    >
-                      <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: colors.tint }]}
-                      onPress={() => {
-                        saveEditedWorkout();
-                      }}
-                    >
-                      <Text style={[styles.modalButtonText, { color: 'white' }]}>Save Changes</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                // Inline Exercise Form View
-                <>
-                  <View style={styles.modalHeader}>
-                    <TouchableOpacity onPress={() => setShowInlineExerciseForm(false)}>
-                      <X size={24} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
-                    <View style={{ width: 24 }} />
-                  </View>
-
-                  {/* Exercise Name Input */}
-                  <TouchableOpacity
-                    style={[styles.exerciseInput, { backgroundColor: colors.background }]}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    onPress={() => {
-                      console.log('Inline exercise input pressed!'); // Debug log
-                      // Close the parent modal and open exercise picker
-                      setShowInlineExerciseForm(false);
-                      setParentModalToReopen('inline');
-                      setShowExercisePickerModal(true);
-                      console.log('showExercisePickerModal should now be true');
-                    }}
-                  >
-                    <Text style={[styles.exerciseInputText, { color: exerciseName ? colors.text : colors.text + '80' }]}>
-                      {exerciseName || 'Select exercise...'}
-                    </Text>
-                    <ChevronDown size={20} color={colors.text + '80'} />
-                  </TouchableOpacity>
-
-                  {/* Table Header */}
-                  <View style={styles.modalLabelRow}>
-                    <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
-                    <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight</Text>
-                    <View style={{ width: 24 }} />
-                  </View>
-
-                  {setsList.map((s, idx) => (
-                    <View key={idx.toString()} style={styles.modalSetRow}>
-                      <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                      <TextInput
-                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={s.reps}
-                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
-                      />
-                      <TextInput
-                        style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                        keyboardType="numeric"
-                        value={s.weight}
-                        onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
-                      />
-                      <View style={{ width: 24, alignItems: 'center' }}>
-                        {setsList.length > 1 && (
-                          <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                            <Minus size={16} color={colors.tint} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  ))}
-
-                  <TouchableOpacity style={styles.addSetInline} onPress={()=> {
-                    const last=setsList[setsList.length-1];
-                    setSetsList(prev=>[...prev,{ reps:last.reps, weight:last.weight }]);
-                  }}>
-                    <Plus size={16} color={colors.tint}/>
-                    <Text style={[styles.addSetInlineText,{color:colors.tint}]}> Add Set</Text>
-                  </TouchableOpacity>
-
-                  {/* Action buttons */}
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: colors.background }]}
-                      onPress={() => {
-                        setShowInlineExerciseForm(false);
-                      }}
-                    >
-                      <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: colors.tint }]}
-                      onPress={() => {
-                        addExerciseToEditingWorkout();
-                        setShowInlineExerciseForm(false);
-                      }}
-                    >
-                      <Text style={[styles.modalButtonText, { color: 'white' }]}>Add Exercise</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </ScrollView>
-
-          </View>
-        </View>
-      </Modal>
-      
-            {/* Exercise Creation Modal - For creating new workouts */}
-      <Modal 
-        visible={showExerciseModal}
-        animationType="slide" 
-        transparent
-        onRequestClose={() => setShowExerciseModal(false)}
-        supportedOrientations={['portrait']}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay} 
-          activeOpacity={1}
-          onPress={() => setShowExerciseModal(false)}
-        >
-          <TouchableOpacity 
-            activeOpacity={1} 
-            onPress={(e) => e.stopPropagation()}
-            style={[styles.modalContent, { backgroundColor: colors.card }]}
-          >
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Add Exercise</Text>
-            
-            {/* Exercise Name Input */}
-            <TouchableOpacity
-              style={[styles.exerciseInput, { backgroundColor: colors.background }]}
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              onPress={() => {
-                console.log('Exercise input pressed!'); // Debug log
-                // Close the parent modal and open exercise picker
-                setShowExerciseModal(false);
-                setParentModalToReopen('exercise');
-                setShowExercisePickerModal(true);
-                console.log('showExercisePickerModal should now be true');
-              }}
-            >
-              <Text style={[styles.exerciseInputText, { color: exerciseName ? colors.text : colors.text + '80' }]}>
-                {exerciseName || 'Select exercise...'}
-              </Text>
-              <ChevronDown size={20} color={colors.text + '80'} />
-            </TouchableOpacity>
-
-            {/* Table Header */}
-            <View style={styles.modalLabelRow}>
-              <Text style={[styles.modalLabel, { color: colors.text, width: 40 }]}>Sets</Text>
-              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Reps</Text>
-                              <Text style={[styles.modalLabel, { color: colors.text, width: 90 }]}>Weight</Text>
-              <View style={{ width: 24 }} />
-            </View>
-
-            {setsList.map((s, idx) => (
-              <View key={idx.toString()} style={styles.modalSetRow}>
-                <Text style={[styles.setCellIndex, { color: colors.text }]}>{idx + 1}</Text>
-                <TextInput
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  value={s.reps}
-                  onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,reps:v}:row))}
-                />
-                <TextInput
-                  style={[styles.setInputBox, { backgroundColor: colors.background, color: colors.text }]}
-                  keyboardType="numeric"
-                  value={s.weight}
-                  onChangeText={v => setSetsList(prev => prev.map((row,i)=> i===idx?{...row,weight:v}:row))}
-                />
-                <View style={{ width: 24, alignItems: 'center' }}>
-                  {setsList.length > 1 && (
-                    <TouchableOpacity onPress={()=> setSetsList(prev=> prev.filter((_,i)=> i!==idx))}>
-                      <Minus size={16} color={colors.tint} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ))}
-
-            <TouchableOpacity style={styles.addSetInline} onPress={()=> {
-              const last=setsList[setsList.length-1];
-              setSetsList(prev=>[...prev,{ reps:last.reps, weight:last.weight }]);
-            }}>
-              <Plus size={16} color={colors.tint}/>
-              <Text style={[styles.addSetInlineText,{color:colors.tint}]}> Add Set</Text>
-            </TouchableOpacity>
-
-            {/* Action buttons */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.background }]}
-                onPress={() => {
-                  setShowExerciseModal(false);
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: colors.tint }]}
-                onPress={() => {
-                  addExerciseToWorkout();
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: 'white' }]}>Add Exercise</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Exercise Picker Modal */}
-      <ExercisePicker
-        visible={showExercisePickerModal}
-        onClose={() => {
-          setShowExercisePickerModal(false);
-          // Reopen the appropriate parent modal when cancelled
-          if (parentModalToReopen === 'inline') {
-            setShowInlineExerciseForm(true);
-          } else if (parentModalToReopen === 'exercise') {
-            setShowExerciseModal(true);
-          }
-          setParentModalToReopen(null);
-        }}
-        onSelectExercise={(item) => {
-          console.log('Exercise selected:', item);
-          setExerciseName(item);
-          console.log('Exercise name set to:', item);
-          setShowExercisePickerModal(false);
-          
-          // Automatically add the exercise to the workout with default values
-          if (parentModalToReopen === 'inline') {
-            // We're in the edit workout context
-            console.log('Adding exercise to editingWorkout');
-            const newExercise: Exercise = {
-              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: item,
-              sets: [{
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                reps: 10,
-                weight: 0,
-                completed: false,
-              }],
-              targetSets: 1,
-              targetReps: 10,
-              targetWeight: 0,
-            };
-            
-            setEditingWorkout(prev => prev ? {
-              ...prev,
-              exercises: [...prev.exercises, newExercise]
-            } : null);
-            
-            // Keep the form view open so user can edit reps and sets
-            setExerciseName(item); // Set the exercise name in the input
-            setSetsList([{ reps: '10', weight: '0' }]); // Set default values
-            setShowInlineExerciseForm(true); // Keep form view open
-          } else if (parentModalToReopen === 'exercise') {
-            // We're in the create workout context
-            console.log('Adding exercise to currentWorkout');
-            const newExercise: Exercise = {
-              id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              name: item,
-              sets: [{
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                reps: 10,
-                weight: 0,
-                completed: false,
-              }],
-              targetSets: 1,
-              targetReps: 10,
-              targetWeight: 0,
-            };
-            
-            setCurrentWorkout(prev => prev ? {
-              ...prev,
-              exercises: [...prev.exercises, newExercise]
-            } : null);
-            
-            // Keep the modal open with the selected exercise and default values
-            setExerciseName(item); // Set the exercise name in the input
-            setSetsList([{ reps: '10', weight: '0' }]); // Set default values
-            setShowExerciseModal(true); // Keep modal open
-          }
-          setParentModalToReopen(null);
-        }}
-      />
-      
-
-    </>
-  );
-
-  // Main render
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.text }]}>Loading...</Text>
-      </View>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.tint} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading workout...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (showWorkoutSession && workout) {
+    return (
+      <WorkoutSession
+        workout={workout}
+        onWorkoutComplete={handleWorkoutComplete}
+        onClose={handleClose}
+        plannedWorkoutId={action === 'fromPlan' ? planId : null}
+      />
     );
   }
 
   return (
-    <>
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-        {currentView === 'main' && renderMainScreen()}
-        {currentView === 'create' && renderCreateScreen()}
-        {currentView === 'session' && currentWorkout && (
-          <WorkoutSession
-            workout={currentWorkout}
-            onWorkoutComplete={(completedWorkout) => {
-              setWorkouts(prev => prev.map(w => w.id === completedWorkout.id ? completedWorkout : w));
-              setCurrentWorkout(null);
-              setCurrentView('main');
-              loadWorkouts();
-            }}
-            onClose={() => {
-              setCurrentWorkout(null);
-              setCurrentView('main');
-            }}
-          />
-        )}
-        
-        <WorkoutCalendar
-          visible={showCalendar}
-          onClose={() => setShowCalendar(false)}
-          onWorkoutSelect={(workout) => {
-            const transformedWorkout: Workout = {
-              id: workout.id,
-              name: workout.name,
-              date: workout.date,
-              exercises: workout.exercises.map(e => ({
-                id: e.id,
-                name: e.name,
-                sets: [],
-                targetSets: e.sets || 3,
-                targetReps: e.reps || 10,
-                targetWeight: e.weight || 0,
-                notes: e.notes
-              })),
-              status: workout.is_completed ? 'completed' : 'planned',
-              notes: workout.notes
-            };
-            setCurrentWorkout(transformedWorkout);
-            setCurrentView('create');
-            setShowCalendar(false);
-          }}
-        />
-        
-        {renderModals()}
-      </SafeAreaView>
-    </>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={[styles.backButton, { backgroundColor: colors.card }]}
+          onPress={() => router.back()}
+        >
+          <ChevronLeft size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.title, { color: colors.text }]}>Workout Tracker</Text>
+        <View style={{ width: 44 }} />
+      </View>
+      
+      <View style={styles.content}>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Preparing your workout...
+        </Text>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    // border color set inline with theme
-  },
-  headerLeft: {
-    width: 44, // Fixed width for back button
-    alignItems: 'center',
-  },
-  headerCenter: {
-    flex: 1, // Center the title
-    alignItems: 'center',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  heroCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  heroContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  ringsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroRight: {
-    flex: 1,
-    gap: 8,
-  },
-  heroTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  heroSubtitle: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 13,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  heroActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  ctaPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  ctaPrimaryText: {
-    color: 'white',
-    fontWeight: '700',
-  },
-  ctaSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  ctaSecondaryText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  tilesRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
-  tileGradient: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-  },
-  tileLabel: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  tileValue: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 6,
-  },
-  tileAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tileActionText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  templatePill: {
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  templatePillText: {
-    fontWeight: '700',
-    fontSize: 12,
-    color: '#fff',
-  },
-  badgeCard: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  badgeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  badgeValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  todayCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  todayLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  todayLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  todayTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  todayMeta: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  quickRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  quickAction: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  quickActionText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  templatesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  templateChip: {
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  templateText: {
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  mainCard: {
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  card: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  cardTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  cardSubtitle: {
-    fontSize: 16,
-    opacity: 0.7,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  primaryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  timeScaleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  timeScaleText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  chartsContainer: {
-    alignItems: 'center',
-  },
-  chartTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 12,
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 8,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  addButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  exerciseCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  exerciseName: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-    flexShrink: 1,
-  },
-  exerciseDetails: {
-    fontSize: 14,
-    opacity: 0.7,
-    flex: 1,
-    flexShrink: 1,
-  },
-  saveText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  emptyText: {
-    fontSize: 16,
-    textAlign: 'center',
-    opacity: 0.7,
-    paddingVertical: 20,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: screenWidth * 0.9,
-    borderRadius: 16,
-    padding: 24,
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  modalInput: {
-    marginBottom: 16,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  timeScaleOption: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  timeScaleOptionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  modalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  modalInputSmall: {
-    flexGrow: 1,
-    minWidth: '30%',
-  },
-  addSetInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    alignSelf: 'stretch',
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#E0E0E0',
-  },
-  addSetInlineText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  modalLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 4,
-    gap: 8,
-  },
-  modalLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    minWidth: 40,
-  },
-  /* --- Plan view table styles --- */
-  setTableHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingHorizontal: 4,
-  },
-  setColHeader: {
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    minWidth: 40,
-  },
-  setRowPlan: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    gap: 12,
-    justifyContent: 'flex-start',
-  },
-  setCellIndex: {
-    width: 40,
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  setInputBox: {
-    width: 90,
-    height: 40,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '500',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-    minWidth: 90,
-    maxWidth: 100,
-  },
-  modalSetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  datePickerField: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  planWorkoutButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  planWorkoutButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  workoutGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
-  },
-  workoutGridCard: {
-    width: '48%',
-    minWidth: 150,
-    borderRadius: 12,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    alignItems: 'center',
-  },
-  workoutGridGradient: {
-    width: '48%',
-    minWidth: 150,
-    borderRadius: 12,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    alignItems: 'center',
-  },
-  workoutGridTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  beginWorkoutButton: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  beginWorkoutButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  emptyStateCard: {
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  workoutCardHeader: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  editIconButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-  },
-  modalScrollContent: {
-    flex: 1,
-  },
-  editExerciseCard: {
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
   },
   backButton: {
     width: 44,
@@ -2125,46 +217,29 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Shadows.light,
   },
-
-  exerciseInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    marginBottom: 16,
-    minHeight: 50,
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
-  exerciseInputText: {
-    fontSize: 16,
+  content: {
     flex: 1,
-  },
-  createWorkoutActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    gap: 12,
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 8,
-    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
   },
-  secondaryButtonText: {
+  subtitle: {
     fontSize: 16,
-    fontWeight: '600',
+    textAlign: 'center',
   },
-
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: Spacing.md,
+    fontSize: 16,
+  },
 });

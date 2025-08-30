@@ -7,7 +7,15 @@ export type AnalyticsEvent =
   | 'faq_viewed'
   | 'contact_form_opened'
   | 'ticket_submitted'
-  | 'live_chat_started';
+  | 'live_chat_started'
+  // Workout Hub events
+  | 'hub_viewed'
+  | 'workout_started'
+  | 'workout_finished'
+  | 'template_created'
+  | 'goal_created'
+  | 'goal_completed'
+  | 'pr_achieved';
 
 export interface AnalyticsParams {
   [key: string]: string | number | boolean | undefined | null;
