@@ -1,541 +1,587 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Image, useWindowDimensions, Animated, Dimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Modal, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlashList } from '@shopify/flash-list';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Calendar, 
-  TrendingUp, 
-  Target, 
-  Dumbbell, 
-  ChevronRight, 
-  ChevronLeft,
-  Play,
-  BarChart3, 
-  Clock,
-  Award,
-  Trophy,
-  Users,
-  Globe,
-  MapPin,
-  ChevronDown,
-  Zap,
-  Flame,
-  Star,
-  Heart,
-  Activity,
-  Target as TargetIcon,
-  Medal,
-  Crown,
-  Sparkles,
-  Plus,
-  History,
-  Settings
-} from 'lucide-react-native';
+import { ChevronRight, ChevronLeft, Play, Zap, Plus, Trash2, Edit3, TrendingUp, Flame, Dumbbell } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { goBack } from '@/lib/goBack';
 import { useTheme } from '@/context/ThemeContext';
+import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
-import { useWorkoutStats } from '@/hooks/useWorkoutStats';
-import { useLeaderboard } from '@/hooks/useLeaderboard';
-
-const { width: screenWidth } = Dimensions.get('window');
+import { supabase } from '@/lib/supabase';
+import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LineChart } from 'react-native-chart-kit';
 
 export default function WorkoutHubScreen() {
-  const { width: windowWidth } = useWindowDimensions();
   const { theme } = useTheme();
   const colors = Colors[theme];
-  
-  // Animation values
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
-  const [scaleAnim] = useState(new Animated.Value(0.9));
-  const [pulseAnim] = useState(new Animated.Value(1));
-  
-  // Add error handling for stats
-  const { stats, loading: statsLoading, error: statsError } = useWorkoutStats();
-  
-  // Leaderboard state with error handling
-  const [leaderboardScope, setLeaderboardScope] = useState<'global' | 'friends' | 'my-gym'>('global');
-  const [leaderboardType, setLeaderboardType] = useState('Weekly Volume');
-  const [showDropdown, setShowDropdown] = useState(false);
-  
-  const { data: leaderboardData, loading: leaderboardLoading, error: leaderboardError } = useLeaderboard(leaderboardScope, leaderboardType as any);
+  const { user } = useAuth();
 
-  const leaderboardTypes = [
-    'Weekly Volume',
-    'Bench Press',
-    'Squat',
-    'Deadlift',
-    'Highest Streak'
-  ];
+  const [loading, setLoading] = useState(false);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recent, setRecent] = useState<any[]>([]);
+  const [progress, setProgress] = useState<{ workoutsThisWeek: number; avgWorkoutTime: number; totalSteps: number }>({ workoutsThisWeek: 0, avgWorkoutTime: 0, totalSteps: 0 });
+  const [lastCompletedMap, setLastCompletedMap] = useState<Record<string, string>>({});
+  const [sortMode, setSortMode] = useState<'updated' | 'name' | 'exercises'>('updated');
+  // Tags removed per request
+  const [snackbar, setSnackbar] = useState<{ visible: boolean; text: string; plan?: any } | null>(null);
+  const snackTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Add error logging for debugging
-  React.useEffect(() => {
-    if (statsError) {
-      console.warn('Workout stats error:', statsError);
-    }
-    if (leaderboardError) {
-      console.warn('Leaderboard error:', leaderboardError);
-    }
-  }, [statsError, leaderboardError]);
+  // Exercise 1RM progress tracker state
+  const [exerciseIndex, setExerciseIndex] = useState<Record<string, { date: string; oneRM: number }[]>>({});
+  const [exerciseList, setExerciseList] = useState<string[]>([]);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [exerciseFilterQuery, setExerciseFilterQuery] = useState('');
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [loadingExercises, setLoadingExercises] = useState(false);
 
-  // Start animations
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 50,
-        friction: 7,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Start pulse animation for main CTA
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseAnimation.start();
+    (async () => {
+      try {
+        const savedSort = await AsyncStorage.getItem('hub:sort');
+        if (savedSort === 'updated' || savedSort === 'name' || savedSort === 'exercises') setSortMode(savedSort);
+      } catch {}
+    })();
   }, []);
 
-  // Example usage: router.push(`/profile/${userId}`)
-  const handleProfilePress = (userId: string) => {
-    if (userId) {
-      router.push(`/profile/${userId}`);
+  useEffect(() => {
+    AsyncStorage.setItem('hub:sort', sortMode).catch(() => {});
+  }, [sortMode]);
+
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const fetchPlans = async (reset: boolean) => {
+    if (!user) return;
+    if (reset) {
+      setLoading(true);
+      setHasMore(true);
+      setPage(0);
+      setPlans([]);
+    } else {
+      setLoadingMore(true);
+    }
+    try {
+      const currentPage = reset ? 0 : page + 1;
+      const from = currentPage * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data: plansData } = await supabase
+        .from('planned_workouts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .range(from, to);
+      const chunk = plansData || [];
+      setPlans((prev) => reset ? chunk : [...prev, ...chunk]);
+      setPage(currentPage);
+      setHasMore(chunk.length === PAGE_SIZE);
+
+      // Tags removed
+
+      // Last completed for this chunk
+      const planIds = chunk.map((p: any) => p.id);
+      if (planIds.length) {
+        const { data: byPlan } = await supabase
+          .from('workouts')
+          .select('planned_workout_id,date')
+          .eq('user_id', user.id)
+          .eq('is_completed', true)
+          .in('planned_workout_id', planIds)
+          .order('date', { ascending: false });
+        setLastCompletedMap((prev) => {
+          const next = { ...prev } as Record<string, string>;
+          (byPlan || []).forEach((w: any) => {
+            if (!next[w.planned_workout_id]) next[w.planned_workout_id] = w.date;
+          });
+          return next;
+        });
+      }
+
+      // Initial load also refresh recent/progress
+      if (reset) {
+        const since30 = new Date();
+        since30.setDate(since30.getDate() - 30);
+        const { data: completed } = await supabase
+          .from('workouts')
+          .select('id,name,date,exercises,total_volume,is_completed')
+          .eq('user_id', user.id)
+          .eq('is_completed', true)
+          .gte('date', since30.toISOString().split('T')[0])
+          .order('date', { ascending: false })
+          .limit(5);
+        setRecent(completed || []);
+
+        const nowISO = new Date().toISOString().split('T')[0];
+        const last30 = (completed || []).filter((w: any) => w.date >= since30.toISOString().split('T')[0] && w.date <= nowISO);
+        let streak = 0;
+        const day = new Date();
+        for (let i = 0; i < 365; i++) {
+          const iso = day.toISOString().split('T')[0];
+          const has = last30.some((w: any) => w.date === iso);
+          if (has) streak++; else if (streak > 0) break;
+          day.setDate(day.getDate() - 1);
+        }
+        const d7 = new Date();
+        let active7 = 0;
+        for (let i = 0; i < 7; i++) {
+          const iso = d7.toISOString().split('T')[0];
+          if ((completed || []).some((w: any) => w.date === iso)) active7++;
+          d7.setDate(d7.getDate() - 1);
+        }
+        // Calculate workouts this week
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - 7);
+        const workoutsThisWeek = (completed || []).filter((w: any) => w.date >= weekStart.toISOString().split('T')[0]).length;
+        
+        // Calculate average workout time
+        const totalTime = (completed || []).reduce((sum: number, w: any) => sum + (w.duration_minutes || 0), 0);
+        const avgWorkoutTime = completed && completed.length > 0 ? Math.round(totalTime / completed.length) : 0;
+        
+        // For now, set total steps to 0 (would need step tracking integration)
+        const totalSteps = 0;
+        
+        setProgress({ workoutsThisWeek, avgWorkoutTime, totalSteps });
+      }
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const navigateToWorkoutTracker = () => {
-    router.push('/fitness/workout-tracker');
+  useEffect(() => {
+    if (!user) return;
+    fetchPlans(true);
+  }, [user?.id]);
+
+  // --- Progress Tracker: per-exercise 1RM history ---
+  const calculateOneRM = (weight: number, reps: number) => {
+    if (!weight || !reps) return 0;
+    return reps === 1 ? weight : weight * (1 + reps / 30);
   };
 
-  // Responsive size helpers
-  const dropdownModalWidth = Math.min(windowWidth * 0.9, 300);
+  const loadExerciseHistory = async () => {
+    if (!user) return;
+    setLoadingExercises(true);
+    try {
+      const { data, error } = await supabase
+        .from('workouts')
+        .select('date,exercises')
+        .eq('user_id', user.id)
+        .eq('is_completed', true)
+        .order('date', { ascending: true });
+      if (error) throw error;
+
+      const index: Record<string, { date: string; oneRM: number }[]> = {};
+      (data || []).forEach((w: any) => {
+        const date = w.date;
+        const exercises = Array.isArray(w.exercises) ? w.exercises : [];
+        exercises.forEach((ex: any) => {
+          const name = String(ex?.name || '').trim();
+          if (!name) return;
+          let best = 0;
+          const sets = Array.isArray(ex.sets) ? ex.sets : [];
+          sets.forEach((s: any) => {
+            if (s?.completed && (s.weight ?? null) !== null && (s.reps ?? null) !== null) {
+              const est = calculateOneRM(Number(s.weight) || 0, Number(s.reps) || 0);
+              if (est > best) best = est;
+            }
+          });
+          if (!index[name]) index[name] = [];
+          if (best > 0) index[name].push({ date, oneRM: best });
+        });
+      });
+
+      Object.keys(index).forEach((k) => {
+        index[k] = index[k].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      });
+
+      const names = Object.keys(index).sort((a, b) => a.localeCompare(b));
+      setExerciseIndex(index);
+      setExerciseList(names);
+      if (!selectedExercise && names.length) setSelectedExercise(names[0]);
+    } catch (e) {
+      // non-fatal
+    } finally {
+      setLoadingExercises(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadExerciseHistory();
+    }
+  }, [user?.id]);
+
+  const startFromPlan = (plan: any) => {
+    router.push({ pathname: '/fitness/workout-tracker', params: { action: 'fromPlan', planId: plan.id } });
+  };
+
+  const deletePlan = async (plan: any) => {
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const { error } = await supabase
+        .from('planned_workouts')
+        .delete()
+        .eq('id', plan.id)
+        .eq('user_id', user?.id || '');
+      if (error) throw error;
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id));
+      // Show snackbar with Undo
+      if (snackTimeoutRef.current) clearTimeout(snackTimeoutRef.current);
+      setSnackbar({ visible: true, text: `Deleted "${plan?.name || 'Workout'}"`, plan });
+      snackTimeoutRef.current = setTimeout(() => {
+        setSnackbar(null);
+        snackTimeoutRef.current = null;
+      }, 5000);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to delete workout. Please try again.');
+    }
+  };
+
+  const confirmDelete = (plan: any) => {
+    Alert.alert(
+      'Delete workout',
+      `Delete "${plan?.name || 'Workout'}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deletePlan(plan) },
+      ]
+    );
+  };
+
+  const duplicatePlan = async (plan: any) => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const { data, error } = await supabase
+        .from('planned_workouts')
+        .insert({
+          user_id: user?.id,
+          name: `${plan.name || 'Planned Workout'} (Copy)`,
+          date: plan.date || new Date().toISOString().split('T')[0],
+          exercises: plan.exercises || [],
+          notes: plan.notes || null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setPlans((prev) => [data, ...prev]);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to duplicate workout. Please try again.');
+    }
+  };
+
+  const repeatFromHistory = async (workout: any) => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const mappedExercises = (Array.isArray(workout.exercises) ? workout.exercises : []).map((e: any) => ({
+        id: e.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: e.name,
+        sets: (e.sets || []).map((s: any) => ({ id: s.id || `${Date.now()}`, reps: s.reps || 10, weight: s.weight || 0, completed: false })),
+        targetSets: e.targetSets || (e.sets?.length || 1),
+        targetReps: e.targetReps || 10,
+        targetWeight: e.targetWeight || 0,
+        notes: e.notes,
+      }));
+      const { data, error } = await supabase
+        .from('planned_workouts')
+        .insert({
+          user_id: user?.id,
+          name: workout.name || 'Workout',
+          date: new Date().toISOString().split('T')[0],
+          exercises: mappedExercises,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      router.push({ pathname: '/fitness/workout-tracker', params: { action: 'fromPlan', planId: data.id } });
+    } catch (e) {
+      Alert.alert('Error', 'Could not repeat workout.');
+    }
+  };
+
+  const handleBeginFromPlan = async (plan: any) => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+    startFromPlan(plan);
+  };
+
+  const openPlanDetail = (plan: any) => {
+    router.push({ pathname: '/fitness/workout-plan/[id]', params: { id: plan.id } });
+  };
+
+  // insights now navigates to a dedicated page
+
+  const filteredPlans = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let base = !q ? plans : plans.filter((p) => (p.name || 'Planned Workout').toLowerCase().includes(q));
+    const sorted = [...base];
+    if (sortMode === 'name') {
+      sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    } else if (sortMode === 'exercises') {
+      sorted.sort((a, b) => (Array.isArray(b.exercises) ? b.exercises.length : 0) - (Array.isArray(a.exercises) ? a.exercises.length : 0));
+    } else {
+      // updated
+      sorted.sort((a, b) => new Date(b.updated_at || b.date || 0).getTime() - new Date(a.updated_at || a.date || 0).getTime());
+    }
+    return sorted;
+  }, [plans, searchQuery, sortMode]);
+
+  // Tag editing removed
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <Animated.View 
-        style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }]
-          }
-        ]}
-      >
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            style={[styles.backButton, { backgroundColor: colors.card }]}
-            onPress={goBack}
-          >
-            <ChevronLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.title, { color: colors.text }]}>Workout Hub</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Your fitness command center
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={[styles.levelBadge, { backgroundColor: colors.tint + '15' }]}>
-            <Star size={16} color={colors.tint} />
-            <Text style={[styles.levelText, { color: colors.tint }]}>Lv. 8</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}> 
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: colors.card }]}
+              onPress={goBack}
+            >
+              <ChevronLeft size={24} color={colors.text} />
+            </TouchableOpacity>
           </View>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.title, { color: colors.text }]}>Workout Hub</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Quick start your session</Text>
+          </View>
+          <View style={styles.headerRight} />
         </View>
-      </Animated.View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Spacing.xl }}>
-        {/* Main CTA Card */}
-        <Animated.View 
-          style={[
-            styles.mainCTAContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }, { scale: pulseAnim }]
-            }
-          ]}
-        >
-          <TouchableOpacity
-            style={[styles.mainCTA, { borderRadius: BorderRadius.xl }]}
-            onPress={navigateToWorkoutTracker}
-            activeOpacity={0.9}
-          >
+        <ScrollView style={[styles.content, { paddingBottom: Spacing.xl }]} showsVerticalScrollIndicator={false}>
+          {/* Progress Snapshot */}
+          <View style={styles.snapshotRow}>
             <LinearGradient
               colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
-              style={[styles.mainCTAGradient, { borderRadius: BorderRadius.xl }]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.snapshotTile}
             >
-              <View style={styles.mainCTAContent}>
-                <View style={styles.mainCTAHeader}>
-                  <View style={styles.mainCTAIconContainer}>
-                    <Zap size={32} color="#fff" />
-                    <View style={styles.sparkleContainer}>
-                      <Sparkles size={12} color="#FFD700" />
-                    </View>
-                  </View>
-                </View>
-                
-                <Text style={styles.mainCTATitle}>Start Your Workout</Text>
-                <Text style={styles.mainCTADescription}>
-                  Ready to crush your fitness goals? Let's get moving!
-                </Text>
-                
-                <View style={styles.mainCTAFeatures}>
-                  <View style={styles.mainCTAFeatureItem}>
-                    <TargetIcon size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.mainCTAFeatureText}>Track Progress</Text>
-                  </View>
-                  <View style={styles.mainCTAFeatureItem}>
-                    <TrendingUp size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.mainCTAFeatureText}>Set Records</Text>
-                  </View>
-                  <View style={styles.mainCTAFeatureItem}>
-                    <Flame size={14} color="rgba(255,255,255,0.9)" />
-                    <Text style={styles.mainCTAFeatureText}>Build Strength</Text>
-                  </View>
-                </View>
+              <Text style={styles.snapshotLabel}>This week</Text>
+              <Text style={styles.snapshotValue}>{progress.workoutsThisWeek}</Text>
+            </LinearGradient>
+            <LinearGradient
+              colors={[colors.primaryGradientEnd, colors.primaryGradientStart]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.snapshotTile}
+            >
+              <Text style={styles.snapshotLabel}>Avg time</Text>
+              <Text style={styles.snapshotValue}>{progress.avgWorkoutTime}m</Text>
+            </LinearGradient>
+            <LinearGradient
+              colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.snapshotTile}
+            >
+              <Text style={styles.snapshotLabel}>Total steps</Text>
+              <Text style={styles.snapshotValue}>{progress.totalSteps.toLocaleString()}</Text>
+            </LinearGradient>
+          </View>
 
-                <View style={[styles.mainCTAButton, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <Play size={20} color="#fff" />
-                  <Text style={styles.mainCTAButtonText}>Start Now</Text>
-                  <ChevronRight size={16} color="#fff" />
+          {/* Quick Start card (below quick stats, above Saved Workouts) */}
+          <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/fitness/workout-tracker?action=quickStart')}>
+            <LinearGradient
+              colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.quickStartGradient}
+            >
+              <View style={styles.quickStartContent}>
+                <View style={styles.quickStartIconCircle}>
+                  <Zap size={18} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quickStartTitleAlt}>Quick start</Text>
+                  <Text style={styles.quickStartSubtitleAlt}>No plan needed — add exercises on the fly.</Text>
+                </View>
+                <View style={styles.quickStartPill}>
+                  <Play size={14} color="#fff" />
+                  <Text style={styles.quickStartPillText}>Start</Text>
                 </View>
               </View>
             </LinearGradient>
           </TouchableOpacity>
-        </Animated.View>
 
-        {/* Quick Stats Section */}
-        <Animated.View 
-          style={[
-            styles.statsSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>This Week's Progress</Text>
-          
-          <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
-              <LinearGradient
-                colors={['rgba(16, 185, 129, 0.1)', 'rgba(5, 150, 105, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <View style={[styles.statIconContainer, { backgroundColor: '#10B981' + '15' }]}>
-                  <Play size={20} color="#10B981" />
-                </View>
-                <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.weeklyWorkouts ?? 0}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Workouts</Text>
-                <View style={styles.statProgress}>
-                  <View style={[styles.statProgressBar, { backgroundColor: colors.border }]}>
-                    <View style={[styles.statProgressFill, { width: '75%', backgroundColor: '#10B981' }]} />
-                  </View>
-                  <Text style={[styles.statProgressText, { color: colors.textSecondary }]}>75%</Text>
-                </View>
-              </LinearGradient>
-            </View>
-            
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
-              <LinearGradient
-                colors={['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <View style={[styles.statIconContainer, { backgroundColor: '#3B82F6' + '15' }]}>
-                  <BarChart3 size={20} color="#3B82F6" />
-                </View>
-                <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${(stats?.weeklyVolume ?? 0).toFixed(0)}kg`}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Volume</Text>
-                <View style={styles.statProgress}>
-                  <View style={[styles.statProgressBar, { backgroundColor: colors.border }]}>
-                    <View style={[styles.statProgressFill, { width: '60%', backgroundColor: '#3B82F6' }]} />
-                  </View>
-                  <Text style={[styles.statProgressText, { color: colors.textSecondary }]}>60%</Text>
-                </View>
-              </LinearGradient>
-            </View>
-            
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
-              <LinearGradient
-                colors={['rgba(245, 158, 11, 0.1)', 'rgba(217, 119, 6, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <View style={[styles.statIconContainer, { backgroundColor: '#F59E0B' + '15' }]}>
-                  <Clock size={20} color="#F59E0B" />
-                </View>
-                <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : `${stats?.weeklyAvgDuration ?? 0}min`}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg Time</Text>
-                <View style={styles.statProgress}>
-                  <View style={[styles.statProgressBar, { backgroundColor: colors.border }]}>
-                    <View style={[styles.statProgressFill, { width: '85%', backgroundColor: '#F59E0B' }]} />
-                  </View>
-                  <Text style={[styles.statProgressText, { color: colors.textSecondary }]}>85%</Text>
-                </View>
-              </LinearGradient>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }] }>
-              <LinearGradient
-                colors={['rgba(168, 85, 247, 0.1)', 'rgba(147, 51, 234, 0.05)']}
-                style={styles.statCardGradient}
-              >
-                <View style={[styles.statIconContainer, { backgroundColor: '#A855F7' + '15' }]}>
-                  <Award size={20} color="#A855F7" />
-                </View>
-                <Text style={[styles.statValue, { color: colors.text }]}>{statsLoading ? '...' : stats?.weeklyPersonalRecords ?? 0}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>PRs</Text>
-                <View style={styles.statProgress}>
-                  <View style={[styles.statProgressBar, { backgroundColor: colors.border }]}>
-                    <View style={[styles.statProgressFill, { width: '40%', backgroundColor: '#A855F7' }]} />
-                  </View>
-                  <Text style={[styles.statProgressText, { color: colors.textSecondary }]}>40%</Text>
-                </View>
-              </LinearGradient>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Action Cards */}
-        <Animated.View 
-          style={[
-            styles.actionCardsSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Access</Text>
-          
-          <View style={styles.actionCardsGrid}>
+          {/* Saved Workouts - prioritized */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Saved Workouts</Text>
             <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-              onPress={() => router.push('/fitness/workout-history')}
-              activeOpacity={0.8}
+              style={[styles.addPlanButton, { backgroundColor: colors.tint }]}
+              onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}
             >
-              <LinearGradient
-                colors={['rgba(16, 185, 129, 0.1)', 'rgba(5, 150, 105, 0.05)']}
-                style={styles.actionCardGradient}
-              >
-                <View style={[styles.actionCardIcon, { backgroundColor: '#10B981' + '15' }]}>
-                  <History size={24} color="#10B981" />
-                </View>
-                <Text style={[styles.actionCardTitle, { color: colors.text }]}>Workout History</Text>
-                <Text style={[styles.actionCardSubtitle, { color: colors.textSecondary }]}>View past workouts</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionCard, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-              onPress={() => router.push('/fitness/workout-tracker')}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)']}
-                style={styles.actionCardGradient}
-              >
-                <View style={[styles.actionCardIcon, { backgroundColor: '#3B82F6' + '15' }]}>
-                  <Target size={24} color="#3B82F6" />
-                </View>
-                <Text style={[styles.actionCardTitle, { color: colors.text }]}>Set Goals</Text>
-                <Text style={[styles.actionCardSubtitle, { color: colors.textSecondary }]}>Create workout plans</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-
-        {/* Leaderboards Section */}
-        <Animated.View 
-          style={[
-            styles.leaderboardSection,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={styles.leaderboardHeader}>
-            <View style={styles.leaderboardTitleContainer}>
-              <Crown size={24} color={colors.tint} />
-              <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Leaderboards</Text>
-            </View>
-            
-            {/* Dropdown for leaderboard type */}
-            <TouchableOpacity
-              style={[styles.dropdownButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => setShowDropdown(true)}
-            >
-              <Text style={[styles.dropdownText, { color: colors.text }]}>{leaderboardType}</Text>
-              <ChevronDown size={16} color={colors.textSecondary} />
+              <Plus size={16} color={'#fff'} />
+              <Text style={styles.addPlanText}>Add New</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Scope Toggle */}
-          <View style={styles.scopeToggle}>
-            <TouchableOpacity
-              style={[
-                styles.scopeButton,
-                leaderboardScope === 'global' && styles.activeScopeButton,
-                { backgroundColor: leaderboardScope === 'global' ? colors.tint : colors.card }
-              ]}
-              onPress={() => setLeaderboardScope('global')}
-            >
-              <Globe size={16} color={leaderboardScope === 'global' ? '#fff' : colors.textSecondary} />
-              <Text style={[
-                styles.scopeButtonText,
-                { color: leaderboardScope === 'global' ? '#fff' : colors.textSecondary }
-              ]}>Global</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.scopeButton,
-                leaderboardScope === 'friends' && styles.activeScopeButton,
-                { backgroundColor: leaderboardScope === 'friends' ? colors.tint : colors.card }
-              ]}
-              onPress={() => setLeaderboardScope('friends')}
-            >
-              <Users size={16} color={leaderboardScope === 'friends' ? '#fff' : colors.textSecondary} />
-              <Text style={[
-                styles.scopeButtonText,
-                { color: leaderboardScope === 'friends' ? '#fff' : colors.textSecondary }
-              ]}>Friends</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.scopeButton,
-                leaderboardScope === 'my-gym' && styles.activeScopeButton,
-                { backgroundColor: leaderboardScope === 'my-gym' ? colors.tint : colors.card }
-              ]}
-              onPress={() => setLeaderboardScope('my-gym')}
-            >
-              <MapPin size={16} color={leaderboardScope === 'my-gym' ? '#fff' : colors.textSecondary} />
-              <Text style={[
-                styles.scopeButtonText,
-                { color: leaderboardScope === 'my-gym' ? '#fff' : colors.textSecondary }
-              ]}>My Gym</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Search */}
+          <TextInput
+            placeholder="Search workouts..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+          />
 
-          {/* Leaderboard List */}
-          <View style={styles.leaderboardList}>
-            {leaderboardData.length === 0 ? (
-              <View style={styles.leaderboardEmpty}>
-                <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>No leaderboard data available.</Text>
-              </View>
-            ) : (
-              leaderboardData.map((item, index) => {
-                const isTop3 = item.rank <= 3;
-                return (
-                  <TouchableOpacity
-                    key={item.userId || index}
-                    style={[
-                      styles.leaderboardItem,
-                      { backgroundColor: isTop3 ? colors.tint + '10' : colors.card, borderWidth: isTop3 ? 2 : 1, borderColor: isTop3 ? colors.tint : colors.border },
-                      item.rank === 1 && styles.leaderboardFirst,
-                      item.rank === 2 && styles.leaderboardSecond,
-                      item.rank === 3 && styles.leaderboardThird,
-                    ]}
-                    activeOpacity={0.8}
-                    onPress={() => handleProfilePress(item.userId)}
+          {/* Quick Templates */}
+          <View style={{ flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md }}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}>
+              <Dumbbell size={14} color={colors.text} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>New Plan</Text>
+            </TouchableOpacity>
+            {['Push', 'Pull', 'Legs'].map((tpl) => (
+              <TouchableOpacity key={tpl} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}>
+                <Flame size={14} color={colors.text} />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>{tpl}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {/* Tags removed */}
+
+          {loading ? (
+            <View style={{ paddingVertical: Spacing.lg }}>
+              <ActivityIndicator color={colors.tint} />
+            </View>
+          ) : filteredPlans.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>{searchQuery ? 'No matches found' : 'No saved workouts yet'}</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>{searchQuery ? 'Try a different search term' : 'Create a plan to get started'}</Text>
+            </View>
+          ) : (
+            <>
+              <FlashList
+                scrollEnabled={false}
+                data={filteredPlans}
+                keyExtractor={(item) => item.id}
+                estimatedItemSize={140}
+                numColumns={1}
+                renderItem={({ item: p }) => (
+                  <View style={[styles.planCardListRow, { backgroundColor: colors.card }]}
                   >
-                    <View style={styles.leaderboardRank}>
-                      {item.rank === 1 && <Crown size={16} color="#FFD700" />}
-                      {item.rank === 2 && <Medal size={16} color="#C0C0C0" />}
-                      {item.rank === 3 && <Medal size={16} color="#CD7F32" />}
-                      {item.rank > 3 && (
-                        <Text style={[
-                          styles.rankNumber,
-                          { color: isTop3 ? colors.tint : colors.textSecondary, fontSize: isTop3 ? 18 : 16 }
-                        ]}>#{item.rank}</Text>
-                      )}
+                    <View style={styles.planCardHeader}>
+                      <TouchableOpacity style={styles.deleteIconButton} onPress={() => confirmDelete(p)}>
+                        <Trash2 size={16} color={colors.text} />
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.leaderboardAvatarWrap}>
-                      {item.avatarUrl ? (
-                        <View style={[styles.leaderboardAvatar, { borderColor: isTop3 ? colors.tint : colors.border }]}> 
-                          <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
-                        </View>
-                      ) : (
-                        <View style={[styles.leaderboardAvatar, { borderColor: isTop3 ? colors.tint : colors.border }]}> 
-                          <Text style={styles.avatarInitials}>{item.name ? item.name.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase() : '?'}</Text>
-                        </View>
-                      )}
+                    <Text style={[styles.planName, { color: colors.text }]} numberOfLines={1}>{p.name || 'Planned Workout'}</Text>
+                    {/* Tags removed */}
+                    <Text style={[styles.planMeta, { color: colors.textSecondary }]}>{Array.isArray(p.exercises) ? p.exercises.length : 0} exercises</Text>
+                    {lastCompletedMap[p.id] && (
+                      <Text style={[styles.planLastDone, { color: colors.textSecondary }]}>Last done {lastCompletedMap[p.id]}</Text>
+                    )}
+                    <View style={styles.cardActionsRow}>
+                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'editPlan', planId: p.id } })}>
+                        <Edit3 size={14} color={colors.text} />
+                        <Text style={[styles.smallBtnText, { color: colors.text }]}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} onPress={() => router.push({ pathname: '/fitness/workout-insights/[id]', params: { id: p.id } })}>
+                        <TrendingUp size={14} color={colors.text} />
+                        <Text style={[styles.smallBtnText, { color: colors.text }]}>Insights</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.beginBtn, { backgroundColor: colors.tint }]} onPress={() => handleBeginFromPlan(p)}>
+                        <Play size={14} color={'#fff'} />
+                        <Text style={styles.beginBtnText}>Begin</Text>
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.leaderboardInfo}>
-                      <Text style={[styles.leaderboardName, { color: isTop3 ? colors.tint : colors.text }]} numberOfLines={1}>{item.name}</Text>
-                      <Text style={[styles.leaderboardValue, { color: isTop3 ? colors.tint : colors.textSecondary }]}>{item.value}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Dropdown Modal */}
-        <Modal
-          visible={showDropdown}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowDropdown(false)}
-        >
-          <TouchableOpacity
-            style={styles.dropdownOverlay}
-            activeOpacity={1}
-            onPress={() => setShowDropdown(false)}
-          >
-            <View style={[styles.dropdownModal, { backgroundColor: colors.card, borderColor: colors.border, width: dropdownModalWidth }]}
-            >
-              {leaderboardTypes.map((type, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.dropdownOption,
-                    index === leaderboardTypes.length - 1 && styles.lastDropdownOption,
-                    { borderBottomColor: colors.border }
-                  ]}
-                  onPress={() => {
-                    setLeaderboardType(type);
-                    setShowDropdown(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.dropdownOptionText,
-                    { color: leaderboardType === type ? colors.tint : colors.text }
-                  ]}>
-                    {type}
-                  </Text>
+                  </View>
+                )}
+              />
+              {hasMore && (
+                <TouchableOpacity disabled={loadingMore} style={[styles.loadMoreBtn, { borderColor: colors.border }]} onPress={() => fetchPlans(false)}>
+                  <Text style={[styles.smallBtnText, { color: colors.text }]}>{loadingMore ? 'Loading…' : 'Load more'}</Text>
                 </TouchableOpacity>
-              ))}
+              )}
+
+              {/* Quick Start card moved above, removed duplicate */}
+            </>
+          )}
+
+          {/* Stats Tracker */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stats Tracker</Text>
+          </View>
+
+          <View style={[styles.emptyCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Coming Soon</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>Exercise progress tracking and 1RM charts</Text>
+          </View>
+
+          {/* Workout History */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>History & Analytics</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.historyButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            activeOpacity={0.8}
+            onPress={() => router.push('/fitness/workout-history')}
+          >
+            <View style={styles.historyButtonContent}>
+              <View style={[styles.historyIconContainer, { backgroundColor: colors.tint + '15' }]}>
+                <TrendingUp size={24} color={colors.tint} />
+              </View>
+              <View style={styles.historyTextContainer}>
+                <Text style={[styles.historyButtonTitle, { color: colors.text }]}>Workout History</Text>
+                <Text style={[styles.historyButtonSubtitle, { color: colors.textSecondary }]}>
+                  View your complete workout timeline and progress
+                </Text>
+              </View>
+              <ChevronRight size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
-        </Modal>
-      </ScrollView>
-    </SafeAreaView>
+
+          {/* CTA and Recent Activity removed; quick start moved to header */}
+
+          
+        </ScrollView>
+
+        {/* Undo Snackbar */}
+        {snackbar?.visible && (
+          <View style={[styles.snackbar, { backgroundColor: colors.card, borderColor: colors.border }] }>
+            <Text style={[styles.snackbarText, { color: colors.text }]} numberOfLines={1}>{snackbar.text}</Text>
+            <TouchableOpacity onPress={async () => {
+              if (!snackbar?.plan) return;
+              const plan = snackbar.plan;
+              try {
+                const { data, error } = await supabase
+                  .from('planned_workouts')
+                  .insert({
+                    user_id: user?.id,
+                    name: plan.name,
+                    date: plan.date || new Date().toISOString().split('T')[0],
+                    exercises: plan.exercises || [],
+                    notes: plan.notes || null,
+                  })
+                  .select()
+                  .single();
+                if (!error && data) {
+                  setPlans((prev) => [data, ...prev]);
+                  setSnackbar(null);
+                  if (snackTimeoutRef.current) { clearTimeout(snackTimeoutRef.current); snackTimeoutRef.current = null; }
+                }
+              } catch {}
+            }}>
+              <Text style={[styles.snackbarAction, { color: colors.tint }]}>Undo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Insights modal removed; insights now navigates to dedicated page */}
+
+        {/* Tag modal removed */}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -570,18 +616,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Shadows.light,
   },
-  levelBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    gap: Spacing.xs,
-  },
-  levelText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -597,17 +631,67 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Spacing.lg,
   },
-  mainCTAContainer: {
-    marginBottom: Spacing.xl,
+  snapshotRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  snapshotTile: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  snapshotLabel: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  snapshotValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  sectionHeader: {
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  addPlanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  addPlanText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  searchInput: {
+    marginBottom: Spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   mainCTA: {
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
-    ...Shadows.heavy,
+    ...Shadows.light,
   },
   mainCTAGradient: {
-    padding: Spacing.xl,
-    minHeight: 200,
+    padding: Spacing.lg,
+    minHeight: 120,
   },
   mainCTAContent: {
     flex: 1,
@@ -619,313 +703,354 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   mainCTAIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-  },
-  sparkleContainer: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-  },
-  mainCTAStats: {
-    alignItems: 'center',
-  },
-  mainCTAStatNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  mainCTAStatLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
   },
   mainCTATitle: {
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   mainCTADescription: {
-    fontSize: 16,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.9)',
-    lineHeight: 24,
-    marginBottom: Spacing.lg,
-  },
-  mainCTAFeatures: {
-    gap: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
-  mainCTAFeatureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  mainCTAFeatureText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#fff',
+    lineHeight: 18,
+    marginBottom: Spacing.sm,
   },
   mainCTAButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.lg,
     gap: Spacing.sm,
   },
   mainCTAButtonText: {
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: '600',
     color: '#fff',
   },
-  statsSection: {
-    marginBottom: Spacing.xl,
+  
+  emptyCard: {
+    borderRadius: 12,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    marginTop: Spacing.md,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  progressCard: {
+    borderRadius: 12,
+    padding: Spacing.lg,
+    ...Shadows.light,
+    marginTop: Spacing.sm,
     marginBottom: Spacing.lg,
-    letterSpacing: -0.3,
   },
-  statsGrid: {
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: Spacing.md,
+  },
+  chart: {
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    minWidth: '45%',
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.light,
-  },
-  statCardGradient: {
-    padding: Spacing.lg,
-    alignItems: 'center',
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: Spacing.xs,
-  },
-  statLabel: {
-    fontSize: 12,
-    textAlign: 'center',
-    fontWeight: '500',
-    marginBottom: Spacing.sm,
-  },
-  statProgress: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    width: '100%',
-  },
-  statProgressBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-  },
-  statProgressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  statProgressText: {
-    fontSize: 10,
-    fontWeight: '600',
-    minWidth: 25,
-  },
-  actionCardsSection: {
+    marginTop: Spacing.sm,
     marginBottom: Spacing.xl,
   },
-  actionCardsGrid: {
+  list: {
     gap: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
-  actionCard: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
+  planCard: {
+    width: '48%',
+    borderRadius: 12,
+    padding: Spacing.lg,
     ...Shadows.light,
   },
-  actionCardGradient: {
+  planCardList: {
+    width: '100%',
+  },
+  planCardListRow: {
+    width: '100%',
+    borderRadius: 12,
     padding: Spacing.lg,
+    ...Shadows.light,
+    marginBottom: Spacing.md,
+  },
+  planCardHeader: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  deleteIconButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  planName: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  planMeta: {
+    fontSize: 13,
+    marginBottom: Spacing.md,
+  },
+  planLastDone: {
+    fontSize: 12,
+    marginBottom: Spacing.sm,
+  },
+  cardActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  smallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  smallBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  beginBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  beginBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1,
+  },
+  recentTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  recentMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xl,
+    marginTop: Spacing.md,
+  },
+  sortBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  sortText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quickStartCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  quickStartGradient: {
+    borderRadius: 12,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  quickStartContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
   },
-  actionCardIcon: {
+  quickStartIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickStartTitleAlt: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  quickStartSubtitleAlt: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  quickStartPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  quickStartPillText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quickStartTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  quickStartSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  loadMoreBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  cardTagsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  snackbar: {
+    position: 'absolute',
+    left: Spacing.lg,
+    right: Spacing.lg,
+    bottom: Spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...Shadows.light,
+  },
+  snackbarText: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  snackbarAction: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSheet: {
+    width: '90%',
+    borderRadius: 16,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: Spacing.sm,
+  },
+  modalButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  historyButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  historyButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  historyIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionCardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: Spacing.xs,
-  },
-  actionCardSubtitle: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  leaderboardSection: {
-    marginBottom: Spacing.xl,
-  },
-  leaderboardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
   },
-  leaderboardTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    gap: Spacing.sm,
-    minWidth: 140,
-  },
-  dropdownText: {
-    fontSize: 14,
-    fontWeight: '500',
+  historyTextContainer: {
     flex: 1,
   },
-  scopeToggle: {
-    flexDirection: 'row',
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    overflow: 'hidden',
-    gap: 2,
-  },
-  scopeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    gap: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-  },
-  activeScopeButton: {
-    // Additional styles for active state handled by backgroundColor
-  },
-  scopeButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  leaderboardList: {
-    gap: Spacing.sm,
-  },
-  leaderboardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    ...Shadows.light,
-  },
-  leaderboardRank: {
-    width: 40,
-    alignItems: 'center',
-  },
-  rankNumber: {
+  historyButtonTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  leaderboardAvatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: Spacing.md,
-  },
-  leaderboardAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 20,
-  },
-  avatarInitials: {
-    fontSize: 20,
-  },
-  leaderboardInfo: {
-    flex: 1,
-  },
-  leaderboardName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 2,
   },
-  leaderboardValue: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  leaderboardEmpty: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  leaderboardFirst: {
-    borderTopWidth: 2,
-  },
-  leaderboardSecond: {
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-  },
-  leaderboardThird: {
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-  },
-  dropdownOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  dropdownModal: {
-    borderRadius: BorderRadius.lg,
-    ...Shadows.heavy,
-  },
-  dropdownOption: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1,
-  },
-  lastDropdownOption: {
-    borderBottomWidth: 0,
-  },
-  dropdownOptionText: {
-    fontSize: 16,
-    fontWeight: '500',
+  historyButtonSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
+
+
+
+

@@ -135,6 +135,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState(false);
+  const [saveAnimation] = useState(new Animated.Value(1));
 
   // Unit system
   const { formatWeight } = useUnits();
@@ -251,6 +252,23 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
       console.log('🔍 [DEBUG] No currentUserId');
       return;
     }
+
+    // Haptic feedback + bounce animation for responsiveness
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    Animated.sequence([
+      Animated.timing(saveAnimation, {
+        toValue: 1.2,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.spring(saveAnimation, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     setSaving(true);
     console.log('🔍 [DEBUG] Starting save/unsave operation, current isSaved:', isSaved);
@@ -771,12 +789,14 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
             onPress={handleSavePost}
             disabled={saving}
           >
-            <Bookmark 
-              size={28} 
-              color={isSaved ? colors.tint : colors.textSecondary} 
-              strokeWidth={2}
-              fill={isSaved ? colors.tint : 'none'}
-            />
+            <Animated.View style={{ transform: [{ scale: saveAnimation }] }}>
+              <Bookmark 
+                size={28} 
+                color={isSaved ? colors.tint : colors.textSecondary} 
+                strokeWidth={2}
+                fill={isSaved ? colors.tint : 'none'}
+              />
+            </Animated.View>
           </TouchableOpacity>
           </Animated.View>
         </Animated.View>

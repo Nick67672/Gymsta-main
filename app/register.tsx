@@ -27,6 +27,9 @@ export default function RegisterScreen() {
       if (error || !user) {
         setError('Please sign in to continue');
         setTimeout(() => router.replace('/auth?mode=signin'), 2000);
+      } else {
+        // Streamlined flow: send authenticated users directly to onboarding
+        router.replace('/onboarding');
       }
     };
     

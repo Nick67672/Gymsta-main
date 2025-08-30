@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
@@ -178,10 +178,20 @@ export default function AuthScreen() {
       });
 
       if (signUpError) throw signUpError;
-      
+
+      const ensureProfile = async (uid: string) => {
+        try {
+          await supabase
+            .from('profiles')
+            .upsert({ id: uid, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+        } catch (_e) {
+          // ignore
+        }
+      };
+
       if (user && session) {
-        // Session is established, redirect to register page
-        router.replace('/register');
+        await ensureProfile(user.id);
+        router.replace('/onboarding');
       } else if (user && !session) {
         // User created but no session, try to sign them in
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
@@ -192,7 +202,8 @@ export default function AuthScreen() {
         if (signInError) throw signInError;
         
         if (signInData.user) {
-          router.replace('/register');
+          await ensureProfile(signInData.user.id);
+          router.replace('/onboarding');
         }
       }
     } catch (error) {
@@ -314,6 +325,23 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
         
+        {/* Hero */}
+        <LinearGradient
+          colors={theme === 'dark' 
+            ? ['rgba(99, 102, 241, 0.25)', 'rgba(168, 85, 247, 0.2)', 'transparent']
+            : ['rgba(99, 102, 241, 0.15)', 'rgba(168, 85, 247, 0.1)', 'transparent']
+          }
+          style={styles.hero}
+        >
+          <Image
+            source={require('../assets/images/logo_arete.png')}
+            style={styles.heroLogo}
+            resizeMode="contain"
+          />
+          <Text style={[styles.heroTitle, { color: colors.text }]}>Gymsta</Text>
+          <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Train together. Progress faster.</Text>
+        </LinearGradient>
+
         <ScrollView contentContainerStyle={styles.formContainer} keyboardShouldPersistTaps="handled">
           <Text style={[styles.headerText, { color: colors.tint }]}>
             {getHeaderText()}
@@ -588,6 +616,26 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
+  },
+  hero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  heroLogo: {
+    width: 64,
+    height: 64,
+    marginBottom: 8,
+  },
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  heroSubtitle: {
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: 8,
   },
   headerText: {
     fontSize: 24,
