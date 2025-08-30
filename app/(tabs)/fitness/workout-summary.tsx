@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Alert, Platform, useWindowDimensions, Modal, TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { goBack } from '@/lib/goBack';
@@ -26,6 +26,8 @@ export default function WorkoutSummaryScreen() {
   const [shareToFeed, setShareToFeed] = useState<boolean>(false);
   const [justForMe, setJustForMe] = useState<boolean>(true);
   const [hasSavedShareInfo, setHasSavedShareInfo] = useState<boolean>(false);
+  const [titleText, setTitleText] = useState<string>('');
+  const [captionText, setCaptionText] = useState<string>('');
 
   // Track saving state & grab params / auth
   const [saving, setSaving] = useState(false);
@@ -156,13 +158,19 @@ export default function WorkoutSummaryScreen() {
 
       // Save sharing preferences once
       if (!hasSavedShareInfo && currentUserId) {
+        const dateStr = new Date().toISOString().split('T')[0];
+        const defaultTitle = titleText.trim() || 'Workout Summary';
+        const defaultCaption = (captionText.trim().length > 0)
+          ? captionText.trim()
+          : `Crushed a workout on ${dateStr} 💪`;
+
         const { error } = await supabase
           .from('workout_sharing_information')
           .insert({
             workout_id: workoutId,
             user_id: currentUserId,
-            title: null,
-            caption: null,
+            title: defaultTitle,
+            caption: defaultCaption,
             private_notes: null,
             photo_url: photoUrl,
             is_my_gym: !!shareToFeed,
@@ -306,6 +314,34 @@ export default function WorkoutSummaryScreen() {
               <Text style={[styles.toggleHint, { color: colors.textSecondary }]}>No photo required</Text>
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Details */}
+        <View style={styles.detailsSection}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Details</Text>
+          <Text style={[styles.stepDescription, { color: colors.textSecondary, marginBottom: Spacing.md }]}>Add a title and caption for your workout. Captions help your friends understand your session.</Text>
+
+          <Text style={[styles.inputLabel, { color: colors.text }]}>Title (optional)</Text>
+          <TextInput
+            value={titleText}
+            onChangeText={setTitleText}
+            placeholder="e.g., Push Day PRs"
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.textInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            maxLength={80}
+          />
+
+          <Text style={[styles.inputLabel, { color: colors.text }]}>Caption {shareToFeed ? '(required)' : '(optional)'}</Text>
+          <TextInput
+            value={captionText}
+            onChangeText={setCaptionText}
+            placeholder="How did it go? Highlights, lifts, or how you felt."
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+            multiline
+            numberOfLines={4}
+            maxLength={300}
+          />
         </View>
 
         {/* Action Buttons */}
@@ -494,5 +530,27 @@ const styles = StyleSheet.create({
   toggleHint: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  detailsSection: {
+    marginBottom: Spacing.xl,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    minHeight: 100,
   },
 }); 
