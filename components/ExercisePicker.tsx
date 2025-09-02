@@ -17,7 +17,6 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { EXERCISE_OPTIONS } from '@/constants/ExerciseOptions';
 
-
 const { width: screenWidth } = Dimensions.get('window');
 
 interface ExercisePickerProps {
@@ -40,9 +39,11 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = useMemo(() => Colors[theme], [theme]);
-  
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredCategories, setFilteredCategories] = useState<ExerciseCategory[]>([]);
+  const [filteredCategories, setFilteredCategories] = useState<
+    ExerciseCategory[]
+  >([]);
 
   // Parse exercises into categories
   const parseExerciseCategories = (): ExerciseCategory[] => {
@@ -51,59 +52,59 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
         name: 'CHEST',
         exercises: EXERCISE_OPTIONS.slice(0, 24),
         icon: '',
-        color: '#FF6B6B'
+        color: '#FF6B6B',
       },
       {
         name: 'BACK',
         exercises: EXERCISE_OPTIONS.slice(24, 45),
         icon: '',
-        color: '#4ECDC4'
+        color: '#4ECDC4',
       },
       {
         name: 'SHOULDERS',
         exercises: EXERCISE_OPTIONS.slice(45, 65),
         icon: '',
-        color: '#45B7D1'
+        color: '#45B7D1',
       },
       {
         name: 'ARMS',
         exercises: EXERCISE_OPTIONS.slice(65, 85),
         icon: '',
-        color: '#96CEB4'
+        color: '#96CEB4',
       },
       {
         name: 'LEGS',
         exercises: EXERCISE_OPTIONS.slice(85, 105),
         icon: '',
-        color: '#FFEAA7'
+        color: '#FFEAA7',
       },
       {
         name: 'CORE',
         exercises: EXERCISE_OPTIONS.slice(105, 125),
         icon: '',
-        color: '#DDA0DD'
+        color: '#DDA0DD',
       },
       {
         name: 'CARDIO',
         exercises: EXERCISE_OPTIONS.slice(125, 145),
         icon: '',
-        color: '#FF8A80'
+        color: '#FF8A80',
       },
       {
         name: 'FUNCTIONAL',
         exercises: EXERCISE_OPTIONS.slice(145, 165),
         icon: '',
-        color: '#FFD93D'
+        color: '#FFD93D',
       },
       {
         name: 'SPECIALTY',
         exercises: EXERCISE_OPTIONS.slice(165, 196),
         icon: '',
-        color: '#3B82F6'
-      }
+        color: '#3B82F6',
+      },
     ];
 
-    return categories.filter(cat => cat.exercises.length > 0);
+    return categories.filter((cat) => cat.exercises.length > 0);
   };
 
   // Use useMemo to memoize the categories so they don't change on every render
@@ -116,22 +117,27 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
       return;
     }
 
-    const filtered = allCategories.map(category => ({
-      ...category,
-      exercises: category.exercises.filter(exercise =>
-        exercise.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    })).filter(category => category.exercises.length > 0);
+    const filtered = allCategories
+      .map((category) => ({
+        ...category,
+        exercises: category.exercises.filter((exercise) =>
+          exercise.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+      }))
+      .filter((category) => category.exercises.length > 0);
 
     setFilteredCategories(filtered);
   }, [searchQuery, allCategories]);
 
-  const handleExerciseSelect = useCallback((exercise: string) => {
-    onSelectExercise(exercise);
-    setSearchQuery('');
-    setFilteredCategories(allCategories);
-    onClose();
-  }, [onSelectExercise, onClose, allCategories]);
+  const handleExerciseSelect = useCallback(
+    (exercise: string) => {
+      onSelectExercise(exercise);
+      setSearchQuery('');
+      setFilteredCategories(allCategories);
+      onClose();
+    },
+    [onSelectExercise, onClose, allCategories]
+  );
 
   const handleClose = useCallback(() => {
     setSearchQuery('');
@@ -139,35 +145,47 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
     onClose();
   }, [onClose, allCategories]);
 
-
-
-  const renderCategory = useCallback(({ item }: { item: ExerciseCategory }) => {
-    return (
-      <View style={styles.categoryContainer}>
-        <View style={[styles.categoryHeader, { backgroundColor: colors.card }]}>
-          <View style={styles.categoryHeaderLeft}>
-            <Text style={[styles.categoryTitle, { color: colors.text }]}>{item.name}</Text>
-          </View>
-          <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-            {item.exercises.length} exercises
-          </Text>
-        </View>
-        
-        <View style={styles.listContainer}>
-          {item.exercises.map((exercise, index) => (
-            <TouchableOpacity
-              key={`${item.name}-${index}`}
-              style={[styles.listExerciseItem, { backgroundColor: colors.background }]}
-              onPress={() => handleExerciseSelect(exercise)}
-              activeOpacity={0.7}
+  const renderCategory = useCallback(
+    ({ item }: { item: ExerciseCategory }) => {
+      return (
+        <View style={styles.categoryContainer}>
+          <View
+            style={[styles.categoryHeader, { backgroundColor: colors.card }]}
+          >
+            <View style={styles.categoryHeaderLeft}>
+              <Text style={[styles.categoryTitle, { color: colors.text }]}>
+                {item.name}
+              </Text>
+            </View>
+            <Text
+              style={[styles.categoryCount, { color: colors.textSecondary }]}
             >
-              <Text style={[styles.listExerciseText, { color: colors.text }]}>{exercise}</Text>
-            </TouchableOpacity>
-          ))}
+              {item.exercises.length} exercises
+            </Text>
+          </View>
+
+          <View style={styles.categoryListContainer}>
+            {item.exercises.map((exercise, index) => (
+              <TouchableOpacity
+                key={`${item.name}-${index}`}
+                style={[
+                  styles.listExerciseItem,
+                  { backgroundColor: colors.background },
+                ]}
+                onPress={() => handleExerciseSelect(exercise)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.listExerciseText, { color: colors.text }]}>
+                  {exercise}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-      </View>
-    );
-  }, [colors, handleExerciseSelect]);
+      );
+    },
+    [colors, handleExerciseSelect]
+  );
 
   return (
     <Modal
@@ -176,24 +194,37 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <StatusBar 
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <StatusBar
           barStyle={theme === 'dark' ? 'light-content' : 'dark-content'}
           backgroundColor={colors.background}
         />
-        
+
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Select Exercise</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            Select Exercise
+          </Text>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-            <Text style={[styles.closeButtonText, { color: colors.text }]}>✕</Text>
+            <Text style={[styles.closeButtonText, { color: colors.text }]}>
+              ✕
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Search Input */}
         <View style={styles.searchContainer}>
-          <View style={[styles.searchInputContainer, { backgroundColor: colors.card }]}>
-            <Text style={[styles.searchIcon, { color: colors.textSecondary }]}>🔍</Text>
+          <View
+            style={[
+              styles.searchInputContainer,
+              { backgroundColor: colors.card },
+            ]}
+          >
+            <Text style={[styles.searchIcon, { color: colors.textSecondary }]}>
+              🔍
+            </Text>
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search exercises..."
@@ -210,21 +241,30 @@ export const ExercisePicker: React.FC<ExercisePickerProps> = ({
                 onPress={() => setSearchQuery('')}
                 style={styles.clearButton}
               >
-                <Text style={[styles.clearButtonText, { color: colors.textSecondary }]}>✕</Text>
+                <Text
+                  style={[
+                    styles.clearButtonText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  ✕
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
         {/* Exercise List */}
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           style={styles.listContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           {filteredCategories.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.emptyStateText, { color: colors.textSecondary }]}
+              >
                 No exercises found
               </Text>
             </View>
@@ -352,7 +392,7 @@ const styles = StyleSheet.create({
   categoryCount: {
     fontSize: 14,
   },
-  listContainer: {
+  categoryListContainer: {
     gap: 4,
     paddingHorizontal: 4,
   },

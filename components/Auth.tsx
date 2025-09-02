@@ -128,7 +128,7 @@ export default function Auth() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.formContainer}>
         <Text style={[styles.header, { color: colors.tint }]}>
-          {mode === 'signin' ? 'Welcome Back' : 'Create Account'}
+          {mode === 'signin' ? 'Welcome Back' : 'Create account'}
         </Text>
         
         {error && <Text style={styles.error}>{error}</Text>}

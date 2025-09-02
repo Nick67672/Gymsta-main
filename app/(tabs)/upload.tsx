@@ -158,14 +158,6 @@ export default function UploadScreen() {
     mediaType: initialMediaType,
     draftId: draftIdToLoad,
   } = useLocalSearchParams();
-  
-  // Debug logging to check received parameters
-  console.log('Upload screen params:', {
-    imageUri: initialImageUri,
-    mediaType: initialMediaType,
-    draftId: draftIdToLoad
-  });
-  
   const [mediaUri, setMediaUri] = useState(initialImageUri);
   const [mediaType, setMediaType] = useState<'image' | 'video'>(
     initialMediaType === 'video' ? 'video' : 'image'
@@ -794,33 +786,7 @@ export default function UploadScreen() {
   };
 
   if (!mediaUri) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity style={styles.backButton} onPress={goBack}>
-            <ArrowLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            Create Post
-          </Text>
-          <View style={{ width: 80 }} />
-        </View>
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: colors.text }]}>
-            No media selected
-          </Text>
-          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-            Please go back and select an image or video
-          </Text>
-          <TouchableOpacity
-            style={[styles.postButton, { backgroundColor: colors.tint, marginTop: 20 }]}
-            onPress={goBack}
-          >
-            <Text style={styles.postButtonText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
+    return null;
   }
 
   return (
@@ -880,13 +846,8 @@ export default function UploadScreen() {
             </View>
           )}
 
-          {/* Media Preview */}
+          {/* Image Preview */}
           <View style={styles.imageContainer}>
-            {/* Debug info - remove in production */}
-            <Text style={[{ color: colors.textSecondary, fontSize: 12, marginBottom: 10 }]}>
-              Media Type: {mediaType} | URI: {mediaUri ? 'Present' : 'Missing'}
-            </Text>
-            
             <TouchableOpacity
               style={styles.imageWrapper}
               onPress={handleImageTap}
@@ -896,11 +857,10 @@ export default function UploadScreen() {
                 <Video
                   source={{ uri: mediaUri as string }}
                   style={styles.previewImage}
-                  useNativeControls={true}
+                  useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
                   isLooping={false}
                   shouldPlay={false}
-                  isMuted={true}
                   onLayout={(e) => {
                     const { width, height } = e.nativeEvent.layout;
                     setImageSize({ width, height });
@@ -908,15 +868,11 @@ export default function UploadScreen() {
                   onError={(error) => {
                     console.error('Video playback error:', error);
                     setError(
-                      'Failed to load video preview. Please try with a different video.'
+                      'Failed to load video preview. The video file may be corrupted.'
                     );
                   }}
-                  onLoadStart={() => {
-                    console.log('Video loading started');
-                  }}
-                  onLoad={(status) => {
-                    console.log('Video loaded successfully', status);
-                  }}
+                  // Disable iOS analysis features to prevent XPC errors
+                  accessibilityIgnoresInvertColors={true}
                 />
               ) : (
                 <Image
@@ -926,18 +882,15 @@ export default function UploadScreen() {
                     const { width, height } = e.nativeEvent.layout;
                     setImageSize({ width, height });
                   }}
+                  // Disable any iOS analysis features to prevent XPC errors
+                  accessible={false}
+                  accessibilityIgnoresInvertColors={true}
                   resizeMode="cover"
                   onError={(error) => {
                     console.error('Image load error:', error);
                     setError(
                       'Failed to load image preview. Please try with a different image.'
                     );
-                  }}
-                  onLoadStart={() => {
-                    console.log('Image loading started');
-                  }}
-                  onLoad={() => {
-                    console.log('Image loaded successfully');
                   }}
                 />
               )}

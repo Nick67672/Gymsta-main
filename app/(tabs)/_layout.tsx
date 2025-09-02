@@ -211,13 +211,6 @@ export default function TabLayout() {
           mediaType = 'video';
         }
 
-        console.log('Gallery selection:', {
-          uri: asset.uri,
-          type: asset.type,
-          fileName: asset.fileName,
-          detectedMediaType: mediaType,
-        });
-
         router.push({
           pathname: '/upload',
           params: {
