@@ -599,9 +599,9 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
                 activeOpacity={0.8}
               >
                 {playingVideo === post.id ? (
-                  <Pause size={24} color="#a7a7a71c" />
+                  <Pause size={27} strokeWidth={1} color="#b3b2b2ef" />
                 ) : (
-                  <Play size={24} stroke={3} color="#a7a7a760" />
+                  <Play size={27} strokeWidth={1} color="#b3b2b2ef" />
                 )}
               </TouchableOpacity>
             </View>
@@ -992,14 +992,14 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
                     useNativeControls={true}
                     isLooping
                     shouldPlay={true}
-                    resizeMode={ResizeMode.CONTAIN}
+                    resizeMode={ResizeMode.COVER}
                   />
                 </View>
               ) : (
                 <Image
                   source={{ uri: post.image_url }}
                   style={styles.fullPostMedia}
-                  resizeMode="contain"
+                  resizeMode="cover"
                 />
               )}
             </View>
@@ -1685,8 +1685,8 @@ const styles = StyleSheet.create({
   Container: {
     marginBottom: 24,
     borderColor: '#cfcfcf36',
-    borderWidth: 1                      ,
-    borderRadius: 10, 
+    borderWidth: 1,
+    borderRadius: 10,
   },
   Header: {
     flexDirection: 'row',
