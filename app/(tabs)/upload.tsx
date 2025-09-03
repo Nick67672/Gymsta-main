@@ -1,6 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, ActivityIndicator, ScrollView, Modal, Alert, Platform, FlatList, SafeAreaView, PanResponder, KeyboardAvoidingView } from 'react-native';
-import { Camera, Upload, Search, X, MapPin, AtSign, Save, ArrowLeft } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  ActivityIndicator,
+  ScrollView,
+  Modal,
+  Alert,
+  Platform,
+  FlatList,
+  SafeAreaView,
+  PanResponder,
+  KeyboardAvoidingView,
+} from 'react-native';
+import { Video, ResizeMode } from 'expo-av';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as FileSystem from 'expo-file-system';
+import {
+  Camera,
+  Upload,
+  Search,
+  X,
+  MapPin,
+  AtSign,
+  Save,
+  ArrowLeft,
+} from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,7 +38,11 @@ import Colors from '@/constants/Colors';
 import { Spacing, BorderRadius } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import { ThemedView } from '@/components/ThemedView';
-import { ThemedText, ThemedH2, ThemedCaptionText } from '@/components/ThemedText';
+import {
+  ThemedText,
+  ThemedH2,
+  ThemedCaptionText,
+} from '@/components/ThemedText';
 import { ThemedButton } from '@/components/ThemedButton';
 import { useAuth } from '@/context/AuthContext';
 import { goBack } from '@/lib/goBack';
@@ -77,7 +109,8 @@ const DraggableTag: React.FC<DraggableTagProps> = ({
         if (!imageSize.width || !imageSize.height) return;
         const nextX = basePositionRef.current.x + gestureState.dx;
         const nextY = basePositionRef.current.y + gestureState.dy;
-        const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
+        const clamp = (v: number, min: number, max: number) =>
+          Math.max(min, Math.min(v, max));
         const normalizedX = clamp(nextX / imageSize.width, 0, 1);
         const normalizedY = clamp(nextY / imageSize.height, 0, 1);
         onUpdate(index, { x: normalizedX, y: normalizedY });
@@ -86,7 +119,8 @@ const DraggableTag: React.FC<DraggableTagProps> = ({
         if (!imageSize.width || !imageSize.height) return;
         const nextX = basePositionRef.current.x + gestureState.dx;
         const nextY = basePositionRef.current.y + gestureState.dy;
-        const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
+        const clamp = (v: number, min: number, max: number) =>
+          Math.max(min, Math.min(v, max));
         const normalizedX = clamp(nextX / imageSize.width, 0, 1);
         const normalizedY = clamp(nextY / imageSize.height, 0, 1);
         onUpdate(index, { x: normalizedX, y: normalizedY });
@@ -105,10 +139,13 @@ const DraggableTag: React.FC<DraggableTagProps> = ({
       ]}
       {...panResponder.panHandlers}
     >
-      <View style={[styles.tagBubble, { backgroundColor: colors.tint }]}> 
+      <View style={[styles.tagBubble, { backgroundColor: colors.tint }]}>
         <Text style={styles.tagUsername}>{tag.user.username}</Text>
       </View>
-      <TouchableOpacity style={styles.removeTagButton} onPress={() => onRemove(index)}>
+      <TouchableOpacity
+        style={styles.removeTagButton}
+        onPress={() => onRemove(index)}
+      >
         <X size={12} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -116,35 +153,50 @@ const DraggableTag: React.FC<DraggableTagProps> = ({
 };
 
 export default function UploadScreen() {
-  const { imageUri: initialImageUri, draftId: draftIdToLoad } = useLocalSearchParams();
-  const [imageUri, setImageUri] = useState(initialImageUri);
+  const {
+    imageUri: initialImageUri,
+    mediaType: initialMediaType,
+    draftId: draftIdToLoad,
+  } = useLocalSearchParams();
+  const [mediaUri, setMediaUri] = useState(initialImageUri);
+  const [mediaType, setMediaType] = useState<'image' | 'video'>(
+    initialMediaType === 'video' ? 'video' : 'image'
+  );
+  const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    null
+  );
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  
+
   // New state for tagging and location
   const [showUserSearchModal, setShowUserSearchModal] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [taggedUsers, setTaggedUsers] = useState<Tag[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(
+    null
+  );
   const [lastSearch, setLastSearch] = useState('');
   const [draftId, setDraftId] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isTaggingMode, setIsTaggingMode] = useState(false);
-  const [selectedUserForTagging, setSelectedUserForTagging] = useState<User | null>(null);
+  const [selectedUserForTagging, setSelectedUserForTagging] =
+    useState<User | null>(null);
 
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const [imageSize, setImageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [imageSize, setImageSize] = useState<{ width: number; height: number }>(
+    { width: 0, height: 0 }
+  );
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -161,14 +213,14 @@ export default function UploadScreen() {
   useEffect(() => {
     const loadUserProfile = async () => {
       if (!user) return;
-      
+
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('username, avatar_url')
           .eq('id', user.id)
           .single();
-        
+
         if (!error && data) {
           setUserProfile(data);
         }
@@ -180,6 +232,29 @@ export default function UploadScreen() {
     loadUserProfile();
   }, [user]);
 
+  // Generate video thumbnail when video is selected
+  useEffect(() => {
+    const generateThumbnail = async () => {
+      if (mediaType === 'video' && mediaUri && !videoThumbnail) {
+        try {
+          const { uri } = await VideoThumbnails.getThumbnailAsync(
+            mediaUri as string,
+            {
+              time: 1000, // 1 second into the video
+              quality: 0.8,
+            }
+          );
+          setVideoThumbnail(uri);
+        } catch (err) {
+          console.error('Failed to generate video thumbnail:', err);
+          // Don't show error to user, just won't have thumbnail
+        }
+      }
+    };
+
+    generateThumbnail();
+  }, [mediaType, mediaUri, videoThumbnail]);
+
   // Load a specific draft if a draftId is passed
   useEffect(() => {
     if (draftIdToLoad) {
@@ -187,17 +262,19 @@ export default function UploadScreen() {
     }
   }, [draftIdToLoad]);
 
-  // Redirect back to tabs if no image URI is provided
+  // Redirect back to tabs if no media URI is provided
   useEffect(() => {
-    if (!imageUri) {
+    if (!mediaUri) {
       goBack();
     }
-  }, [imageUri]);
+  }, [mediaUri]);
 
   const loadProducts = async () => {
     try {
       setLoadingProducts(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
@@ -222,36 +299,110 @@ export default function UploadScreen() {
     setShowProductModal(false);
   };
 
-  const uploadImage = async (uri: string, userId: string): Promise<string> => {
+  const compressVideo = async (videoUri: string): Promise<string> => {
+    try {
+      console.log('Starting video processing...');
+
+      // Get video info and validate
+      const videoInfo = await FileSystem.getInfoAsync(videoUri);
+      if (!videoInfo.exists) {
+        throw new Error('Video file not found');
+      }
+
+      if ('size' in videoInfo) {
+        const sizeInMB = videoInfo.size / (1024 * 1024);
+        console.log('Original video size:', sizeInMB, 'MB');
+
+        // Check if video is too large (e.g., > 100MB)
+        if (sizeInMB > 100) {
+          throw new Error(
+            'Video file is too large. Please choose a smaller video (max 100MB).'
+          );
+        }
+
+        if (sizeInMB === 0) {
+          throw new Error('Video file appears to be empty.');
+        }
+      }
+
+      // Copy video to cache directory to ensure proper access
+      const timestamp = Date.now();
+      const processedUri = `${FileSystem.cacheDirectory}processed_video_${timestamp}.mp4`;
+
+      await FileSystem.copyAsync({
+        from: videoUri,
+        to: processedUri,
+      });
+
+      // Verify the processed video exists and has content
+      const processedInfo = await FileSystem.getInfoAsync(processedUri);
+      if (
+        !processedInfo.exists ||
+        !('size' in processedInfo) ||
+        processedInfo.size === 0
+      ) {
+        throw new Error('Failed to process video file.');
+      }
+
+      console.log('Video processing completed');
+      return processedUri;
+    } catch (error) {
+      console.error('Video processing failed:', error);
+      throw error;
+    }
+  };
+
+  const uploadMedia = async (
+    uri: string,
+    userId: string,
+    type: 'image' | 'video'
+  ): Promise<string> => {
+    console.log('Starting media upload:', uri, userId, type);
     try {
       setUploading(true);
+      let fileName = `${userId}/${Date.now()}`;
+      let uploadUri = uri;
+      let contentType = '';
 
-      // --- Image Compression Step ---
-      console.log('Compressing image...');
-      const manipulatedImage = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1080 } }], // Resize to a standard width
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      console.log('Image compressed:', manipulatedImage.uri);
-      // --- End of Compression Step ---
+      if (type === 'image') {
+        // Only compress images
+        console.log('Compressing image...');
+        const manipulatedImage = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1080 } }],
+          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        uploadUri = manipulatedImage.uri;
+        fileName += '.jpg';
+        contentType = 'image/jpeg';
+        console.log('Image compressed:', uploadUri);
+      } else {
+        // Process video
+        console.log('Processing video...');
+        uploadUri = await compressVideo(uri);
+        fileName += '.mp4';
+        contentType = 'video/mp4';
+        console.log('Video processed:', uploadUri);
+      }
 
-      // Upload image to Supabase Storage
-      const fileName = `${userId}/${Date.now()}.jpg`;
-      
+      // Upload media to Supabase Storage
+      fileName = fileName.replace(/\s+/g, '_'); // Replace spaces with underscores
+
       if (Platform.OS === 'web') {
-        const response = await fetch(manipulatedImage.uri);
+        const response = await fetch(uploadUri);
         const blob = await response.blob();
-        
+
         const { error: uploadError } = await supabase.storage
           .from('posts')
           .upload(fileName, blob, {
-            contentType: 'image/jpeg',
+            contentType,
             cacheControl: '3600',
             upsert: false,
             // @ts-ignore
             onProgress: (event) => {
-              setUploadProgress(event.loaded / event.total);
+              if (event.loaded && event.total) {
+                setUploadProgress(event.loaded / event.total);
+              }
             },
           });
 
@@ -259,38 +410,34 @@ export default function UploadScreen() {
           throw uploadError;
         }
       } else {
-        // For native platforms, progress tracking is harder with the current setup.
-        // We'll simulate it for a better UX, but a real implementation might need
-        // a different upload method (e.g., TUS protocol) for accurate progress.
+        // For native platforms, use fetch to read file as blob
         setUploadProgress(0);
-        const formData = new FormData();
-        formData.append('file', {
-          uri: manipulatedImage.uri,
-          name: fileName,
-          type: 'image/jpeg',
-        } as any);
+
+        const response = await fetch(uploadUri);
+        const blob = await response.blob();
 
         const { error: uploadError } = await supabase.storage
           .from('posts')
-          .upload(fileName, formData, {
-            contentType: 'multipart/form-data',
+          .upload(fileName, blob, {
+            contentType,
             cacheControl: '3600',
-            upsert: false
+            upsert: false,
           });
 
+        console.log('fileName', fileName);
         if (uploadError) {
           throw uploadError;
         }
       }
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('posts')
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('posts').getPublicUrl(fileName);
 
       return publicUrl;
     } catch (err) {
-      console.error('Image upload error:', err);
+      console.error('Media upload error:', err);
       throw err;
     } finally {
       setUploading(false);
@@ -298,8 +445,8 @@ export default function UploadScreen() {
   };
 
   const handleUpload = async () => {
-    if (!imageUri) {
-      setError('No image selected');
+    if (!mediaUri) {
+      setError('No media selected');
       return;
     }
 
@@ -309,12 +456,35 @@ export default function UploadScreen() {
       return;
     }
 
+    // Additional validation for videos
+    if (mediaType === 'video') {
+      try {
+        const videoInfo = await FileSystem.getInfoAsync(mediaUri as string);
+        if (!videoInfo.exists) {
+          setError('Video file not found. Please select a different video.');
+          return;
+        }
+        if ('size' in videoInfo && videoInfo.size === 0) {
+          setError(
+            'Video file appears to be empty. Please select a different video.'
+          );
+          return;
+        }
+      } catch (err) {
+        console.error('Error checking video file:', err);
+        setError('Failed to validate video file. Please try again.');
+        return;
+      }
+    }
+
     setUploading(true);
     setLoading(true);
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         setError('You must be logged in to upload posts');
         return;
@@ -322,20 +492,44 @@ export default function UploadScreen() {
 
       let publicUrl;
       try {
-        publicUrl = await uploadImage(imageUri as string, user.id);
+        publicUrl = await uploadMedia(mediaUri as string, user.id, mediaType);
       } catch (err) {
         if (err instanceof Error) {
           if (err.message.includes('Bucket not found')) {
-            setError('Storage is not properly configured. Please contact support.');
+            setError(
+              'Storage is not properly configured. Please contact support.'
+            );
           } else if (err.message.includes('Permission denied')) {
             setError('You do not have permission to upload files.');
-          } else if (err.message.includes('Entity too large')) {
-            setError('File is too large. Please choose a smaller file.');
+          } else if (
+            err.message.includes('Entity too large') ||
+            err.message.includes('too large')
+          ) {
+            setError(
+              mediaType === 'video'
+                ? 'Video file is too large. Please choose a smaller video (max 100MB).'
+                : 'Image file is too large. Please choose a smaller image.'
+            );
+          } else if (err.message.includes('Invalid file type')) {
+            setError(
+              mediaType === 'video'
+                ? 'Invalid video format. Please use MP4 format.'
+                : 'Invalid image format. Please use JPG or PNG format.'
+            );
+          } else if (
+            err.message.includes('Failed to process') ||
+            err.message.includes('empty')
+          ) {
+            setError(
+              mediaType === 'video'
+                ? 'Failed to process video. Please try with a different video file.'
+                : 'Failed to process image. Please try with a different image.'
+            );
           } else {
             setError(`Upload failed: ${err.message}`);
           }
         } else {
-          setError('Failed to upload image. Please try again.');
+          setError(`Failed to upload ${mediaType}. Please try again.`);
         }
         return;
       }
@@ -347,10 +541,10 @@ export default function UploadScreen() {
       if (captionText) {
         const mentions = captionText.match(/@(\w+)/g);
         if (mentions) {
-          const usernames = mentions.map(m => m.substring(1));
+          const usernames = mentions.map((m) => m.substring(1));
           // In a real app, you'd fetch user IDs from usernames
           // For now, let's assume taggedUsers state holds the correct info
-          taggedUserIds = taggedUsers.map(t => t.user.id);
+          taggedUserIds = taggedUsers.map((t) => t.user.id);
         }
       }
       // --- End of new logic ---
@@ -358,9 +552,11 @@ export default function UploadScreen() {
       // Create post in database
       const { data: postData, error: postError } = await supabase
         .from('posts')
+        // @ts-ignore - Database supports these fields but types may be outdated
         .insert({
           user_id: user.id,
           image_url: publicUrl,
+          media_type: mediaType,
           caption: captionText,
           product_id: selectedProductId,
           location_name: selectedLocation?.name,
@@ -370,6 +566,7 @@ export default function UploadScreen() {
         .select()
         .single();
 
+      console.log('postError', postError);
       if (postError) {
         if (postError.message.includes('duplicate key')) {
           setError('You have already created this post.');
@@ -380,33 +577,37 @@ export default function UploadScreen() {
         }
         return;
       }
-      
+
       // --- New logic to insert tags and create notifications ---
       if (taggedUsers.length > 0 && postData) {
-        const tagsToInsert = taggedUsers.map(t => ({
-          post_id: postData.id,
+        const tagsToInsert = taggedUsers.map((t) => ({
+          post_id: (postData as any).id,
           user_id: t.user.id,
           position_x: t.position.x,
           position_y: t.position.y,
         }));
-        
+
+        // @ts-ignore - Database supports these fields but types may be outdated
         const { error: tagsError } = await supabase
           .from('post_tags')
+          // @ts-ignore
           .insert(tagsToInsert);
-          
+
         if (tagsError) {
           console.error('Error inserting tags:', tagsError);
         }
 
-        const notificationsToInsert = taggedUsers.map(t => ({
+        const notificationsToInsert = taggedUsers.map((t) => ({
           user_id: t.user.id, // The user being notified
           actor_id: user.id, // The user who created the post
           type: 'post_tag',
-          post_id: postData.id,
+          post_id: (postData as any).id,
         }));
 
+        // @ts-ignore - Database supports these fields but types may be outdated
         const { error: notificationError } = await supabase
           .from('notifications')
+          // @ts-ignore
           .insert(notificationsToInsert);
 
         if (notificationError) {
@@ -421,7 +622,7 @@ export default function UploadScreen() {
       setSelectedProductId(null);
       setTaggedUsers([]);
       setSelectedLocation(null);
-      
+
       // Show success message and navigate back to main feed
       Alert.alert('Success', 'Your post has been uploaded!');
       // Navigate away from the upload screen after a short delay to allow the user to see the success message
@@ -461,7 +662,7 @@ export default function UploadScreen() {
     // Set the user for tagging and enter tagging mode
     setSelectedUserForTagging(user);
     setIsTaggingMode(true);
-    
+
     // Reset and close modal
     setShowUserSearchModal(false);
     setUserSearchQuery('');
@@ -474,11 +675,12 @@ export default function UploadScreen() {
     const { locationX, locationY } = event.nativeEvent;
     if (imageSize.width <= 0 || imageSize.height <= 0) return;
 
-    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
+    const clamp = (value: number, min: number, max: number) =>
+      Math.max(min, Math.min(value, max));
     const relativeX = clamp(locationX / imageSize.width, 0, 1);
     const relativeY = clamp(locationY / imageSize.height, 0, 1);
 
-    setTaggedUsers(prev => [
+    setTaggedUsers((prev) => [
       ...prev,
       {
         user: selectedUserForTagging,
@@ -490,22 +692,28 @@ export default function UploadScreen() {
     setSelectedUserForTagging(null);
   };
 
-  const updateTagPosition = (index: number, newPosition: { x: number; y: number }) => {
-    setTaggedUsers(prev => prev.map((t, i) => (i === index ? { ...t, position: newPosition } : t)));
+  const updateTagPosition = (
+    index: number,
+    newPosition: { x: number; y: number }
+  ) => {
+    setTaggedUsers((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, position: newPosition } : t))
+    );
   };
 
   const removeTag = (index: number) => {
-    setTaggedUsers(prev => prev.filter((_, i) => i !== index));
+    setTaggedUsers((prev) => prev.filter((_, i) => i !== index));
   };
 
   const saveDraft = async () => {
-    if (!user || !imageUri) return;
+    if (!user || !mediaUri) return;
 
     try {
       const DRAFTS_KEY = `${DRAFTS_KEY_PREFIX}${user.id}`;
       const newDraft = {
         id: draftId || new Date().toISOString(), // Use existing ID or create a new one
-        imageUri,
+        mediaUri,
+        mediaType,
         caption,
         selectedProductId,
         taggedUsers,
@@ -514,9 +722,13 @@ export default function UploadScreen() {
       };
 
       const existingDraftsString = await AsyncStorage.getItem(DRAFTS_KEY);
-      const existingDrafts = existingDraftsString ? JSON.parse(existingDraftsString) : [];
+      const existingDrafts = existingDraftsString
+        ? JSON.parse(existingDraftsString)
+        : [];
 
-      const draftIndex = existingDrafts.findIndex((d: any) => d.id === newDraft.id);
+      const draftIndex = existingDrafts.findIndex(
+        (d: any) => d.id === newDraft.id
+      );
 
       if (draftIndex > -1) {
         // Update existing draft
@@ -525,7 +737,7 @@ export default function UploadScreen() {
         // Add new draft
         existingDrafts.push(newDraft);
       }
-      
+
       await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(existingDrafts));
       Alert.alert('Draft Saved', 'Your post has been saved to your drafts.');
       router.push('/(tabs)/profile');
@@ -545,7 +757,8 @@ export default function UploadScreen() {
         const draftToLoad = drafts.find((d: any) => d.id === id);
         if (draftToLoad) {
           setDraftId(draftToLoad.id);
-          setImageUri(draftToLoad.imageUri);
+          setMediaUri(draftToLoad.mediaUri || draftToLoad.imageUri); // Support legacy drafts
+          setMediaType(draftToLoad.mediaType || 'image'); // Default to image for legacy drafts
           setCaption(draftToLoad.caption || '');
           setSelectedProductId(draftToLoad.selectedProductId || null);
           setTaggedUsers(draftToLoad.taggedUsers || []);
@@ -572,7 +785,7 @@ export default function UploadScreen() {
     }
   };
 
-  if (!imageUri) {
+  if (!mediaUri) {
     return null;
   }
 
@@ -582,304 +795,476 @@ export default function UploadScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={insets.top}
     >
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}> 
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={goBack}
-        >
-          <ArrowLeft size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Create Post</Text>
-        <TouchableOpacity 
-          style={[styles.postButton, { backgroundColor: colors.tint, opacity: (loading || !caption.trim()) ? 0.6 : 1 }]}
-          onPress={handleUpload}
-          disabled={loading || !caption.trim()}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.postButtonText}>Post</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        keyboardShouldPersistTaps="handled"
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
       >
-        {error && (
-          <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
-            <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-          </View>
-        )}
-
-        {/* Image Preview */}
-        <View style={styles.imageContainer}>
-          <TouchableOpacity 
-            style={styles.imageWrapper}
-            onPress={handleImageTap}
-            activeOpacity={1}
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack}>
+            <ArrowLeft size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            Create Post
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.postButton,
+              {
+                backgroundColor: colors.tint,
+                opacity: loading || !caption.trim() ? 0.6 : 1,
+              },
+            ]}
+            onPress={handleUpload}
+            disabled={loading || !caption.trim()}
           >
-            <Image
-              source={{ uri: imageUri as string }}
-              style={styles.previewImage}
-              onLayout={(e) => {
-                const { width, height } = e.nativeEvent.layout;
-                setImageSize({ width, height });
-              }}
-            />
-            
-            {/* Display existing tags with drag-to-move */}
-            {taggedUsers.map((tag, index) => (
-              <DraggableTag
-                key={`${tag.user.id}-${index}`}
-                tag={tag}
-                index={index}
-                colors={colors}
-                imageSize={imageSize}
-                onUpdate={updateTagPosition}
-                onRemove={removeTag}
-              />
-            ))}
-            
-            {/* Show tagging hint when in tagging mode */}
-            {isTaggingMode && selectedUserForTagging && (
-              <View style={styles.taggingHint}>
-                <Text style={[styles.taggingHintText, { color: colors.text }]}>
-                  Tap where you want to tag @{selectedUserForTagging.username}
-                </Text>
-              </View>
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.postButtonText}>Post</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Caption Input */}
-        <View style={styles.captionSection}>
-          <View style={styles.userInfo}>
-            <Image 
-              source={{ uri: getAvatarUrl(user?.user_metadata?.avatar_url, userProfile?.username || user?.user_metadata?.username || 'default') }} 
-              style={styles.userAvatar} 
-            />
-            <Text style={[styles.username, { color: colors.text }]}>
-              {userProfile?.username || user?.user_metadata?.username || 'user'}
-            </Text>
-          </View>
-          <TextInput
-            style={[styles.captionInput, { 
-              color: colors.text,
-              backgroundColor: colors.background
-            }]}
-            placeholder="Write a caption..."
-            placeholderTextColor={colors.textSecondary}
-            value={caption}
-            onChangeText={setCaption}
-            multiline
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { borderBottomColor: colors.border }]}
-            onPress={() => {
-              if (isTaggingMode) {
-                setIsTaggingMode(false);
-                setSelectedUserForTagging(null);
-              } else {
-                setShowUserSearchModal(true);
-              }
-            }}
-          >
-            <AtSign size={20} color={colors.text} />
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>
-              {isTaggingMode ? 'Cancel Tagging' : 'Tag People'}
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.actionButton, { borderBottomColor: colors.border }]}
-            onPress={loadProducts}
-          >
-            <Search size={20} color={colors.text} />
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>Link Product</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Selected Product Display */}
-        {selectedProductId && (
-          <View style={[styles.selectedProduct, { backgroundColor: colors.card }]}>
-            <Image 
-              source={{ uri: products.find(p => p.id === selectedProductId)?.image_url }}
-              style={styles.productImage}
-            />
-            <View style={styles.productInfo}>
-              <Text style={[styles.productName, { color: colors.text }]}>
-                {products.find(p => p.id === selectedProductId)?.name}
-              </Text>
-              <Text style={[styles.productPrice, { color: colors.tint }]}>
-                ${products.find(p => p.id === selectedProductId)?.price.toFixed(2)}
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode={
+            Platform.OS === 'ios' ? 'interactive' : 'on-drag'
+          }
+          keyboardShouldPersistTaps="handled"
+        >
+          {error && (
+            <View
+              style={[
+                styles.errorContainer,
+                { backgroundColor: colors.error + '15' },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: colors.error }]}>
+                {error}
               </Text>
             </View>
-            <TouchableOpacity 
-              onPress={() => setSelectedProductId(null)} 
-              style={styles.removeProductButton}
+          )}
+
+          {/* Image Preview */}
+          <View style={styles.imageContainer}>
+            <TouchableOpacity
+              style={styles.imageWrapper}
+              onPress={handleImageTap}
+              activeOpacity={1}
             >
-              <X size={18} color={colors.textSecondary} />
+              {mediaType === 'video' ? (
+                <Video
+                  source={{ uri: mediaUri as string }}
+                  style={styles.previewImage}
+                  useNativeControls
+                  resizeMode={ResizeMode.CONTAIN}
+                  isLooping={false}
+                  shouldPlay={false}
+                  onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                    setImageSize({ width, height });
+                  }}
+                  onError={(error) => {
+                    console.error('Video playback error:', error);
+                    setError(
+                      'Failed to load video preview. The video file may be corrupted.'
+                    );
+                  }}
+                  // Disable iOS analysis features to prevent XPC errors
+                  accessibilityIgnoresInvertColors={true}
+                />
+              ) : (
+                <Image
+                  source={{ uri: mediaUri as string }}
+                  style={styles.previewImage}
+                  onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                    setImageSize({ width, height });
+                  }}
+                  // Disable any iOS analysis features to prevent XPC errors
+                  accessible={false}
+                  accessibilityIgnoresInvertColors={true}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('Image load error:', error);
+                    setError(
+                      'Failed to load image preview. Please try with a different image.'
+                    );
+                  }}
+                />
+              )}
+
+              {/* Display existing tags with drag-to-move */}
+              {taggedUsers.map((tag, index) => (
+                <DraggableTag
+                  key={`${tag.user.id}-${index}`}
+                  tag={tag}
+                  index={index}
+                  colors={colors}
+                  imageSize={imageSize}
+                  onUpdate={updateTagPosition}
+                  onRemove={removeTag}
+                />
+              ))}
+
+              {/* Show tagging hint when in tagging mode */}
+              {isTaggingMode && selectedUserForTagging && (
+                <View style={styles.taggingHint}>
+                  <Text
+                    style={[styles.taggingHintText, { color: colors.text }]}
+                  >
+                    Tap where you want to tag @{selectedUserForTagging.username}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* Upload Progress */}
-        {uploading && (
-          <View style={styles.progressContainer}>
-            <Text style={[styles.progressText, { color: colors.textSecondary }]}>
-              Uploading... {Math.round(uploadProgress * 100)}%
-            </Text>
-            <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-              <View style={[styles.progressFill, { 
-                width: `${uploadProgress * 100}%`,
-                backgroundColor: colors.tint,
-              }]} />
-            </View>
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Bottom Action Bar */}
-      <View style={[styles.bottomBar, { borderTopColor: colors.border }]}>
-        <TouchableOpacity 
-          style={[styles.draftButton, { borderColor: colors.border }]}
-          onPress={saveDraft}
-          disabled={loading}
-        >
-          <Save size={20} color={colors.textSecondary} />
-          <Text style={[styles.draftButtonText, { color: colors.textSecondary }]}>Save Draft</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Product Modal */}
-      <Modal
-        visible={showProductModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowProductModal(false)}>
-        <View style={[styles.productModalContainer, { backgroundColor: colors.modalBackground }]}>
-          <View style={[styles.productModalContent, { backgroundColor: colors.background }]}>
-            <View style={[styles.productModalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.productModalTitle, { color: colors.text }]}>Your Products</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowProductModal(false)}>
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            {products.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyText, { color: colors.text }]}>No products uploaded yet</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-                  Add products in the marketplace tab to link them to your posts
-                </Text>
-              </View>
-            ) : (
-              <ScrollView style={styles.productList}>
-                <View style={styles.productGrid}>
-                  {products.map((product) => (
-                    <View key={product.id} style={[styles.productCard, { 
-                      backgroundColor: colors.card,
-                      borderColor: colors.border
-                    }]}>
-                      <Image
-                        source={{ uri: product.image_url }}
-                        style={styles.productImage}
-                      />
-                      <View style={styles.productInfo}>
-                        <Text style={[styles.productName, { color: colors.text }]} numberOfLines={2}>
-                          {product.name}
-                        </Text>
-                        <Text style={[styles.modalProductPrice, { color: colors.tint }]}>
-                          ${product.price.toFixed(2)}
-                        </Text>
-                        <TouchableOpacity 
-                          style={[
-                            styles.linkProductButton,
-                            selectedProductId === product.id && styles.linkedProductButton
-                          ]}
-                          onPress={() => handleLinkProduct(product.id)}>
-                          <Text style={styles.linkProductButtonText}>
-                            {selectedProductId === product.id ? 'Linked' : 'Link'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* User Search Modal for Tagging */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showUserSearchModal}
-        onRequestClose={() => setShowUserSearchModal(false)}
-      >
-        <View style={styles.userSearchModalContainer}>
-          <View style={[styles.userSearchModalContent, { backgroundColor: colors.background }]}>
-            <ThemedH2 style={styles.modalTitle}>Tag a User</ThemedH2>
-            <View style={styles.searchContainer}>
-              <TextInput
-                placeholder="Search for a user..."
-                placeholderTextColor={colors.textSecondary}
-                style={[styles.searchInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.inputBackground }]}
-                value={userSearchQuery}
-                onChangeText={setUserSearchQuery}
-                autoFocus
+          {/* Caption Input */}
+          <View style={styles.captionSection}>
+            <View style={styles.userInfo}>
+              <Image
+                source={{
+                  uri: getAvatarUrl(
+                    user?.user_metadata?.avatar_url,
+                    userProfile?.username ||
+                      user?.user_metadata?.username ||
+                      'default'
+                  ),
+                }}
+                style={styles.userAvatar}
               />
+              <Text style={[styles.username, { color: colors.text }]}>
+                {userProfile?.username ||
+                  user?.user_metadata?.username ||
+                  'user'}
+              </Text>
             </View>
-
-            {loadingUsers ? (
-              <ActivityIndicator size="large" color={colors.tint} style={{marginTop: 20}} />
-            ) : (
-              <FlatList
-                data={userSearchResults}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity 
-                    style={styles.userItem}
-                    onPress={() => handleTagUser(item)}
-                  >
-                    <Image source={{ uri: item.avatar_url }} style={styles.modalUserAvatar} />
-                    <Text style={[styles.modalUsername, { color: colors.text }]}>{item.username}</Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <View style={styles.emptyContainer}>
-                    <ThemedText style={{ textAlign: 'center', color: colors.textSecondary }}>
-                      {userSearchQuery.length > 1 ? `No users found for "${userSearchQuery}"` : 'Start typing to search for users.'}
-                    </ThemedText>
-                  </View>
-                }
-              />
-            )}
-            <ThemedButton 
-              title="Close" 
-              onPress={() => setShowUserSearchModal(false)} 
-              variant="secondary" 
-              style={{marginTop: Spacing.md}} 
+            <TextInput
+              style={[
+                styles.captionInput,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.background,
+                },
+              ]}
+              placeholder="Write a caption..."
+              placeholderTextColor={colors.textSecondary}
+              value={caption}
+              onChangeText={setCaption}
+              multiline
+              textAlignVertical="top"
             />
           </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { borderBottomColor: colors.border },
+              ]}
+              onPress={() => {
+                if (isTaggingMode) {
+                  setIsTaggingMode(false);
+                  setSelectedUserForTagging(null);
+                } else {
+                  setShowUserSearchModal(true);
+                }
+              }}
+            >
+              <AtSign size={20} color={colors.text} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                {isTaggingMode ? 'Cancel Tagging' : 'Tag People'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { borderBottomColor: colors.border },
+              ]}
+              onPress={loadProducts}
+            >
+              <Search size={20} color={colors.text} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                Link Product
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Selected Product Display */}
+          {selectedProductId && (
+            <View
+              style={[styles.selectedProduct, { backgroundColor: colors.card }]}
+            >
+              <Image
+                source={{
+                  uri: products.find((p) => p.id === selectedProductId)
+                    ?.image_url,
+                }}
+                style={styles.productImage}
+              />
+              <View style={styles.productInfo}>
+                <Text style={[styles.productName, { color: colors.text }]}>
+                  {products.find((p) => p.id === selectedProductId)?.name}
+                </Text>
+                <Text style={[styles.productPrice, { color: colors.tint }]}>
+                  $
+                  {products
+                    .find((p) => p.id === selectedProductId)
+                    ?.price.toFixed(2)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSelectedProductId(null)}
+                style={styles.removeProductButton}
+              >
+                <X size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Upload Progress */}
+          {uploading && (
+            <View style={styles.progressContainer}>
+              <Text
+                style={[styles.progressText, { color: colors.textSecondary }]}
+              >
+                {mediaType === 'video'
+                  ? 'Processing and uploading video...'
+                  : 'Uploading image...'}{' '}
+                {Math.round(uploadProgress * 100)}%
+              </Text>
+              <View
+                style={[styles.progressBar, { backgroundColor: colors.border }]}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${uploadProgress * 100}%`,
+                      backgroundColor: colors.tint,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Bottom Action Bar */}
+        <View style={[styles.bottomBar, { borderTopColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.draftButton, { borderColor: colors.border }]}
+            onPress={saveDraft}
+            disabled={loading}
+          >
+            <Save size={20} color={colors.textSecondary} />
+            <Text
+              style={[styles.draftButtonText, { color: colors.textSecondary }]}
+            >
+              Save Draft
+            </Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </SafeAreaView>
+
+        {/* Product Modal */}
+        <Modal
+          visible={showProductModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowProductModal(false)}
+        >
+          <View
+            style={[
+              styles.productModalContainer,
+              { backgroundColor: colors.modalBackground },
+            ]}
+          >
+            <View
+              style={[
+                styles.productModalContent,
+                { backgroundColor: colors.background },
+              ]}
+            >
+              <View
+                style={[
+                  styles.productModalHeader,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
+                <Text
+                  style={[styles.productModalTitle, { color: colors.text }]}
+                >
+                  Your Products
+                </Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowProductModal(false)}
+                >
+                  <X size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+
+              {products.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={[styles.emptyText, { color: colors.text }]}>
+                    No products uploaded yet
+                  </Text>
+                  <Text
+                    style={[
+                      styles.emptySubtext,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    Add products in the marketplace tab to link them to your
+                    posts
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.productList}>
+                  <View style={styles.productGrid}>
+                    {products.map((product) => (
+                      <View
+                        key={product.id}
+                        style={[
+                          styles.productCard,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <Image
+                          source={{ uri: product.image_url }}
+                          style={styles.productImage}
+                        />
+                        <View style={styles.productInfo}>
+                          <Text
+                            style={[styles.productName, { color: colors.text }]}
+                            numberOfLines={2}
+                          >
+                            {product.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.modalProductPrice,
+                              { color: colors.tint },
+                            ]}
+                          >
+                            ${product.price.toFixed(2)}
+                          </Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.linkProductButton,
+                              selectedProductId === product.id &&
+                                styles.linkedProductButton,
+                            ]}
+                            onPress={() => handleLinkProduct(product.id)}
+                          >
+                            <Text style={styles.linkProductButtonText}>
+                              {selectedProductId === product.id
+                                ? 'Linked'
+                                : 'Link'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* User Search Modal for Tagging */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={showUserSearchModal}
+          onRequestClose={() => setShowUserSearchModal(false)}
+        >
+          <View style={styles.userSearchModalContainer}>
+            <View
+              style={[
+                styles.userSearchModalContent,
+                { backgroundColor: colors.background },
+              ]}
+            >
+              <ThemedH2 style={styles.modalTitle}>Tag a User</ThemedH2>
+              <View style={styles.searchContainer}>
+                <TextInput
+                  placeholder="Search for a user..."
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.searchInput,
+                    {
+                      color: colors.text,
+                      borderColor: colors.border,
+                      backgroundColor: colors.inputBackground,
+                    },
+                  ]}
+                  value={userSearchQuery}
+                  onChangeText={setUserSearchQuery}
+                  autoFocus
+                />
+              </View>
+
+              {loadingUsers ? (
+                <ActivityIndicator
+                  size="large"
+                  color={colors.tint}
+                  style={{ marginTop: 20 }}
+                />
+              ) : (
+                <FlatList
+                  data={userSearchResults}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.userItem}
+                      onPress={() => handleTagUser(item)}
+                    >
+                      <Image
+                        source={{ uri: item.avatar_url }}
+                        style={styles.modalUserAvatar}
+                      />
+                      <Text
+                        style={[styles.modalUsername, { color: colors.text }]}
+                      >
+                        {item.username}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <ThemedText
+                        style={{
+                          textAlign: 'center',
+                          color: colors.textSecondary,
+                        }}
+                      >
+                        {userSearchQuery.length > 1
+                          ? `No users found for "${userSearchQuery}"`
+                          : 'Start typing to search for users.'}
+                      </ThemedText>
+                    </View>
+                  }
+                />
+              )}
+              <ThemedButton
+                title="Close"
+                onPress={() => setShowUserSearchModal(false)}
+                variant="secondary"
+                style={{ marginTop: Spacing.md }}
+              />
+            </View>
+          </View>
+        </Modal>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
@@ -1034,7 +1419,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  
+
   // Styles for product modal
   productModalContainer: {
     flex: 1,

@@ -1,5 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { TextInput, View, Text, StyleSheet, Animated, TextInputProps } from 'react-native';
+import {
+  TextInput,
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  TextInputProps,
+} from 'react-native';
 import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
@@ -61,18 +68,15 @@ export function ThemedInput({
       position: 'absolute' as const,
       left: leftIcon ? 48 : Spacing.md,
       top: animatedLabel.interpolate({
-        inputRange: [0, 1],
-        outputRange: [size === 'large' ? 20 : size === 'small' ? 12 : 16, 8],
+        inputRange: [0, 0],
+        outputRange: [size === 'large' ?15 : size === 'small' ? 10 : 0, 0],
       }),
       fontSize: animatedLabel.interpolate({
         inputRange: [0, 1],
         outputRange: [16, 12],
       }),
-      color: animatedLabel.interpolate({
-        inputRange: [0, 1],
-        outputRange: [colors.textSecondary, isFocused ? colors.tint : colors.textSecondary],
-      }),
-      backgroundColor: colors.inputBackground,
+      color: '#a6a6a6a7',
+      // backgroundColor: 'red',
       paddingHorizontal: 4,
       zIndex: 1,
     };
@@ -82,13 +86,17 @@ export function ThemedInput({
     const baseStyle: any[] = [
       styles.container,
       styles[size],
-      { backgroundColor: colors.inputBackground },
+      // { backgroundColor: 'red' },
     ];
 
     if (variant === 'outlined') {
       baseStyle.push({
         borderWidth: 2,
-        borderColor: error ? colors.error : isFocused ? colors.tint : colors.border,
+        borderColor: error
+          ? colors.error
+          : isFocused
+          ? colors.tint
+          : colors.border,
         backgroundColor: 'transparent',
       });
     } else if (variant === 'filled') {
@@ -106,15 +114,23 @@ export function ThemedInput({
 
   const getInputStyle = () => {
     return [
-      styles.input,
+      // styles.input,
       styles[`${size}Input` as keyof typeof styles],
       {
-        color: colors.text,
-        paddingLeft: leftIcon ? 48 : Spacing.md,
-        paddingRight: rightIcon ? 48 : Spacing.md,
-        paddingTop: label ? (size === 'large' ? 40 : 36) : (size === 'large' ? 16 : size === 'small' ? 8 : 12),
+        // color: colors.text,
+        // paddingLeft: leftIcon ? 48 : Spacing.md,
+        // paddingRight: rightIcon ? 48 : Spacing.md,
+        // paddingTop: label
+        //   ? size === 'large'
+        //     ? 40
+        //     : 36
+        //   : size === 'large'
+        //   ? 16
+        //   : size === 'small'
+        //   ? 8
+        //   : 12,
       },
-      style,
+      // style,
     ];
   };
 
@@ -126,33 +142,29 @@ export function ThemedInput({
             {leftIcon}
           </View>
         )}
-        
+
         {label && (
-          <Animated.Text style={getLabelStyle()}>
-            {label}
-          </Animated.Text>
+          <Animated.Text style={getLabelStyle()}>{label}</Animated.Text>
         )}
-        
+
         <TextInput
           {...props}
           value={value}
           onFocus={handleFocus}
           onBlur={handleBlur}
           style={getInputStyle()}
-          placeholderTextColor={colors.textSecondary}
+          // placeholderTextColor={colors.textSecondary}
         />
-        
+
         {rightIcon && (
           <View style={[styles.iconContainer, styles.rightIcon]}>
             {rightIcon}
           </View>
         )}
       </View>
-      
+
       {error && (
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {error}
-        </Text>
+        <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
       )}
     </View>
   );
@@ -160,27 +172,23 @@ export function ThemedInput({
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   container: {
-    position: 'relative',
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.sm,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignContent: 'center',
+    justifyContent: 'center',
   },
-  input: {
-    flex: 1,
-    ...Typography.bodyLarge,
-    textAlignVertical: 'center',
-  },
+  input: {},
   iconContainer: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    width: 40,
-    zIndex: 2,
+    // width: 40,
+    // zIndex: 2,
   },
   leftIcon: {
     left: Spacing.sm,
@@ -195,13 +203,13 @@ const styles = StyleSheet.create({
   },
   // Size variants
   small: {
-    minHeight: 40,
+    minHeight: 10,
   },
   medium: {
-    minHeight: 48,
+    minHeight: 428,
   },
   large: {
-    minHeight: 56,
+    minHeight: 6,
   },
   // Input size variants
   smallInput: {
@@ -213,4 +221,4 @@ const styles = StyleSheet.create({
   largeInput: {
     paddingVertical: Spacing.lg,
   },
-}); 
+});
