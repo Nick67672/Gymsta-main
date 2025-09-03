@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, FlatList } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -15,6 +15,8 @@ import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import { ThemedButton } from '@/components/ThemedButton';
 import { goBack } from '@/lib/goBack';
 import { getAvatarUrl } from '@/lib/avatarUtils';
+import FeedPost from '@/components/Post';
+import EnhancedWorkoutPost from '@/components/EnhancedWorkoutPost';
 
 interface ProfileStory {
   id: string;
@@ -1039,60 +1041,31 @@ export default function UserProfileScreen() {
             </Text>
           </View>
         ) : activeTab === 'posts' ? (
-        <View style={[styles.postsGrid, { padding: 5 }]}>
-          {posts.map((item) => {
-            const handlePress = () => {
-              if (item.type === 'workout') {
-                // Navigate to workout view or show workout modal
-                setSelectedWorkoutId(item.id);
-                setShowWorkoutModal(true);
-              } else {
-                // Navigate to regular post
-                router.push(`/(tabs)/post/${item.id}`);
-              }
-            };
-            
-            return (
-              <TouchableOpacity 
-                key={item.id} 
-                style={styles.postContainer}
-                onPress={handlePress}
-              >
-                <View style={styles.postImageContainer}>
-                  {(item.type === 'post' ? (item as Post).image_url : (item as any).workout_sharing_information?.[0]?.photo_url) ? (
-                    <Image 
-                      source={{ 
-                        uri: item.type === 'post' 
-                          ? (item as Post).image_url 
-                          : (item as any).workout_sharing_information?.[0]?.photo_url || '' 
-                      }} 
-                      style={styles.postImage} 
-                    />
-                  ) : (
-                    // Fallback for workouts without images - show workout icon
-                    <View style={[styles.postImage, styles.workoutPlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
-                      <Dumbbell size={24} color={colors.tint} />
-                      <Text style={[styles.workoutPlaceholderText, { color: colors.text }]}>
-                        {item.type === 'workout' ? (item as any).exercises?.length || 0 : 0} exercises
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.postOverlay}>
-                    <View style={styles.likeBadge}>
-                      <Heart size={14} color="#fff" fill="#fff" />
-                      <Text style={styles.likesText}>{formatNumber(item.likes?.length || 0)}</Text>
-                    </View>
-                  </View>
-                  {item.type === 'workout' && (
-                    <View style={styles.workoutBadgeOverlay}>
-                      <Dumbbell size={12} color="#fff" />
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <FlatList
+          data={posts}
+          renderItem={({ item }) => (
+            <FeedPost
+              post={item}
+              onLike={handleLike}
+              onUnlike={handleUnlike}
+              onPress={() => {
+                if (item.type === 'workout') {
+                  setSelectedWorkoutId(item.id);
+                  setShowWorkoutModal(true);
+                } else {
+                  router.push(`/(tabs)/post/${item.id}`);
+                }
+              }}
+            />
+          )}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ padding: 5 }}
+          ListEmptyComponent={() => (
+            <View style={styles.postsGrid}>
+              <Text style={[styles.progressText, { color: colors.textSecondary }]}>No posts to show yet.</Text>
+            </View>
+          )}
+        />
         ) : activeTab === 'lifts' ? (
           lifts.length === 0 ? (
             <View style={styles.progressContainer}>

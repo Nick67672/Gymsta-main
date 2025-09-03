@@ -250,6 +250,7 @@ const GymstaFeed: React.FC<GymstaFeedProps> = ({
         data={posts}
         renderItem={renderPost}
         keyExtractor={(item) => item.id}
+        key={`feed-${posts.length}-${posts.map(p => p.id).join(',').slice(0, 20)}`}
         estimatedItemSize={500}
         showsVerticalScrollIndicator={false}
         refreshControl={CustomRefreshControl()}

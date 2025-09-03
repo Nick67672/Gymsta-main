@@ -1934,12 +1934,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.horizontalPadding - 1,
     marginTop: 6,
     marginBottom: 6,
+    marginHorizontal: -(Layout.horizontalPadding - 1),
   },
   toggleButton: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
     position: 'relative',
+    marginHorizontal: 3,
   },
   toggleText: {
     fontSize: 16,

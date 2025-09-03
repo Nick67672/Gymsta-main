@@ -543,17 +543,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               </View>
               
               <View style={styles.headerRight}>
-                <TouchableOpacity 
-                  style={[styles.sendButton, { backgroundColor: colors.tint }]}
-                  onPress={activeTab === 'friends' ? handleDirectMessage : handleExternalShare}
-                  disabled={activeTab === 'friends' ? selectedUsers.length === 0 || isSending : isSending}
-                >
-                  {isSending ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Send size={20} color="#FFFFFF" />
-                  )}
-                </TouchableOpacity>
               </View>
             </View>
 

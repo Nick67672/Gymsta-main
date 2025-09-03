@@ -25,6 +25,7 @@ import {
   Target,
   TrendingUp,
 } from 'lucide-react-native';
+import { useUnits } from '@/context/UnitContext';
 
 const { width: screenWidth } = Dimensions.get('window');
 const SWIPE_THRESHOLD = screenWidth * 0.2;
@@ -73,6 +74,7 @@ export const SwipeableExerciseCard: React.FC<SwipeableExerciseCardProps> = ({
 }) => {
   const { theme } = useTheme();
   const colors = Colors[theme];
+  const { getWeightIncrement } = useUnits();
   
   const translateX = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -301,7 +303,7 @@ export const SwipeableExerciseCard: React.FC<SwipeableExerciseCardProps> = ({
                   <View style={styles.dataControls}>
                     <TouchableOpacity
                       style={[styles.controlButton, { backgroundColor: colors.backgroundSecondary }]}
-                      onPress={() => onWeightChange(set.id, Math.max(0, set.weight - 2.5))}
+                      onPress={() => onWeightChange(set.id, Math.max(0, set.weight - getWeightIncrement('small')))}
                     >
                       <Minus size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -310,7 +312,7 @@ export const SwipeableExerciseCard: React.FC<SwipeableExerciseCardProps> = ({
                     </Text>
                     <TouchableOpacity
                       style={[styles.controlButton, { backgroundColor: colors.backgroundSecondary }]}
-                      onPress={() => onWeightChange(set.id, set.weight + 2.5)}
+                      onPress={() => onWeightChange(set.id, set.weight + getWeightIncrement('small'))}
                     >
                       <Plus size={16} color={colors.text} />
                     </TouchableOpacity>

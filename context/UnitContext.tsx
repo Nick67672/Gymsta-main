@@ -20,6 +20,7 @@ interface UnitContextType {
   formatWeight: (value: number, fromUnit?: 'lbs' | 'kg', toUnit?: 'lbs' | 'kg') => string;
   formatDistance: (value: number, unit?: 'miles' | 'km') => string;
   formatHeight: (value: number, unit?: 'ft' | 'cm') => string;
+  getWeightIncrement: (incrementType: 'small' | 'large') => number;
 }
 
 const defaultUnits: MeasurementUnits = {
@@ -282,6 +283,15 @@ export const UnitProvider: React.FC<UnitProviderProps> = ({ children }) => {
     return `${value.toFixed(1)} ${targetUnit}`;
   };
 
+  // Utility function for weight increments
+  const getWeightIncrement = (incrementType: 'small' | 'large') => {
+    if (units.weight_unit === 'lbs') {
+      return incrementType === 'small' ? 5 : 10;
+    } else { // metric
+      return incrementType === 'small' ? 2.5 : 5;
+    }
+  };
+
   const value: UnitContextType = {
     units,
     loading,
@@ -292,6 +302,7 @@ export const UnitProvider: React.FC<UnitProviderProps> = ({ children }) => {
     formatWeight,
     formatDistance,
     formatHeight,
+    getWeightIncrement,
   };
 
   return (

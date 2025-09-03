@@ -112,6 +112,17 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   onCommentCountChange,
   isMyGymTab = false,
 }) => {
+  // Early return if post data is invalid or is a video (extra safety check)
+  if (!post || !post.id || !post.image_url || !post.profiles || post.media_type === 'video') {
+    console.log('🚫 [DEBUG] GymstaPost: Invalid post data or video post, skipping render:', { 
+      hasPost: !!post, 
+      hasId: !!post?.id, 
+      hasImageUrl: !!post?.image_url, 
+      hasProfiles: !!post?.profiles,
+      mediaType: post?.media_type 
+    });
+    return null;
+  }
   // Animation values for the new design
   const [cardScale] = useState(new Animated.Value(1));
   const [cardRotation] = useState(new Animated.Value(0));
@@ -144,9 +155,13 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState(false);
+ 
   const [showFullScreenLike, setShowFullScreenLike] = useState(false);
   const [fullScreenLikeAnimation] = useState(new Animated.Value(0));
   const [showFullPostModal, setShowFullPostModal] = useState(false);
+ 
+  const [saveAnimation] = useState(new Animated.Value(1));
+ 
 
   // Unit system
   const { formatWeight } = useUnits();
@@ -278,6 +293,23 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
       console.log('🔍 [DEBUG] No currentUserId');
       return;
     }
+
+    // Haptic feedback + bounce animation for responsiveness
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    Animated.sequence([
+      Animated.timing(saveAnimation, {
+        toValue: 1.2,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.spring(saveAnimation, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     setSaving(true);
     console.log(
@@ -759,12 +791,23 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
             style={styles.CommentsSection}
             activeOpacity={0.8}
           >
+ 
             <Text
               style={[styles.CommentsText, { color: colors.textSecondary }]}
             >
               View all {localCommentsCount}{' '}
               {localCommentsCount === 1 ? 'comment' : 'comments'}
             </Text>
+ 
+            <Animated.View style={{ transform: [{ scale: saveAnimation }] }}>
+              <Bookmark 
+                size={28} 
+                color={isSaved ? colors.tint : colors.textSecondary} 
+                strokeWidth={2}
+                fill={isSaved ? colors.tint : 'none'}
+              />
+            </Animated.View>
+ 
           </TouchableOpacity>
         )}
 

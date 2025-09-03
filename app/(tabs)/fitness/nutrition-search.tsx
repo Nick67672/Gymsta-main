@@ -22,7 +22,7 @@ export default function NutritionSearchScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ date: string; meal: MealType }>();
+  const params = useLocalSearchParams<{ date: string | string[]; meal: string | string[] }>();
 
   const [query, setQuery] = useState('');
   const [selectedServing, setSelectedServing] = useState<number | null>(null);
@@ -35,6 +35,7 @@ export default function NutritionSearchScreen() {
 
   const addFood = async (food: FoodDefinition) => {
     try {
+ 
       if (!user) {
         Alert.alert('Error', 'You must be logged in.');
         return;
@@ -43,6 +44,13 @@ export default function NutritionSearchScreen() {
         Alert.alert('Error', 'Missing date or meal information.');
         return;
       }
+ 
+      if (!user) return;
+      const mealParam = Array.isArray(params.meal) ? params.meal[0] : params.meal;
+      const dateParam = Array.isArray(params.date) ? params.date[0] : params.date;
+      const resolvedMeal = (mealParam as MealType) || 'breakfast';
+      const resolvedDate = (dateParam as string) || new Date().toISOString().slice(0, 10);
+ 
       const grams = selectedServing ?? food.default_serving_grams;
       if (!grams || grams <= 0) {
         Alert.alert('Error', 'Please select a valid serving size.');
@@ -77,10 +85,17 @@ export default function NutritionSearchScreen() {
 //       })
       const { error } = await supabase.from('nutrition_entries').insert({
         user_id: user.id,
+ 
         entry_date: params.date,
         meal: params.meal,
         // food_id: null,
         // user_food_id: null,
+ 
+        entry_date: resolvedDate,
+        meal: resolvedMeal,
+        food_id: null,
+        user_food_id: null,
+ 
         source: 'starter',
         food_name: food.name,
         serving_grams: grams,
