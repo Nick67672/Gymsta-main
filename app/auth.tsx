@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-
 import {
   View,
   Text,
@@ -15,9 +14,6 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
- 
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, ScrollView, Keyboard, TouchableWithoutFeedback, Alert, KeyboardAvoidingView, Platform, Image } from 'react-native';
- 
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { ArrowLeft, Check, Mail, Lock, Eye, EyeOff } from 'lucide-react-native';
@@ -249,20 +245,9 @@ export default function AuthScreen() {
 
       if (signUpError) throw signUpError;
 
- 
-      const ensureProfile = async (uid: string) => {
-        try {
-          await supabase
-            .from('profiles')
-            .upsert({ id: uid, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-        } catch (_e) {
-          // ignore
-        }
-      };
- 
       if (user && session) {
-        await ensureProfile(user.id);
-        router.replace('/onboarding');
+        // Session is established, redirect to register page
+        router.replace('/register');
       } else if (user && !session) {
         // User created but no session, try to sign them in
         const { data: signInData, error: signInError } =
@@ -274,8 +259,7 @@ export default function AuthScreen() {
         if (signInError) throw signInError;
 
         if (signInData.user) {
-          await ensureProfile(signInData.user.id);
-          router.replace('/onboarding');
+          router.replace('/register');
         }
       }
     } catch (error) {
@@ -416,7 +400,6 @@ export default function AuthScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={insets.top}
       >
- 
         <View
           style={[styles.container, { backgroundColor: colors.background }]}
         >
@@ -425,94 +408,6 @@ export default function AuthScreen() {
               <ArrowLeft size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
- 
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={goBack}>
-            <ArrowLeft size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Hero */}
-        <LinearGradient
-          colors={theme === 'dark' 
-            ? ['rgba(99, 102, 241, 0.25)', 'rgba(168, 85, 247, 0.2)', 'transparent']
-            : ['rgba(99, 102, 241, 0.15)', 'rgba(168, 85, 247, 0.1)', 'transparent']
-          }
-          style={styles.hero}
-        >
-          <Image
-            source={require('../assets/images/logo_arete.png')}
-            style={styles.heroLogo}
-            resizeMode="contain"
-          />
-          <Text style={[styles.heroTitle, { color: colors.text }]}>Gymsta</Text>
-          <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>Train together. Progress faster.</Text>
-        </LinearGradient>
-
-        <ScrollView contentContainerStyle={styles.formContainer} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.headerText, { color: colors.tint }]}>
-            {getHeaderText()}
-          </Text>
-
-          {mode === 'forgot-password' && (
-            <View style={styles.infoContainer}>
-              <Mail size={48} color={colors.tint} />
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Enter your email address and we'll send you a link to reset your password.
-              </Text>
-            </View>
-          )}
-
-          {mode === 'reset-password' && (
-            <View style={styles.infoContainer}>
-              <Lock size={48} color={colors.tint} />
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Please enter your new password below.
-              </Text>
-            </View>
-          )}
-          
-          {error && <Text style={styles.error}>{error}</Text>}
-          {success && <Text style={styles.success}>{success}</Text>}
-          
-          {mode !== 'reset-password' && (
-            <ThemedInput
-              label={mode === 'signin' ? 'Email or Username' : 'Email'}
-              value={emailOrUsername}
-              onChangeText={setEmailOrUsername}
-              autoCapitalize="none"
-              keyboardType={mode === 'signin' ? 'default' : 'email-address'}
-              leftIcon={<Mail size={18} color={colors.textSecondary} />}
-              variant="filled"
-              size="large"
-            />
-          )}
-          
-          {mode !== 'forgot-password' && (
-            <ThemedInput
-              label={mode === 'reset-password' ? 'New Password' : 'Password'}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={mode === 'reset-password' ? !showPassword : !showPassword}
-              autoCapitalize="none"
-              leftIcon={<Lock size={18} color={colors.textSecondary} />} 
-              rightIcon={
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? (
-                    <EyeOff size={18} color={colors.textSecondary} />
-                  ) : (
-                    <Eye size={18} color={colors.textSecondary} />
-                  )}
-                </TouchableOpacity>
-              }
-              variant="filled"
-              size="large"
-            />
-          )}
- 
 
           <ScrollView
             contentContainerStyle={styles.formContainer}
@@ -869,26 +764,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
-  },
-  hero: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 24,
-    paddingBottom: 8,
-  },
-  heroLogo: {
-    width: 64,
-    height: 64,
-    marginBottom: 8,
-  },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-    marginBottom: 8,
   },
   headerText: {
     fontSize: 24,
