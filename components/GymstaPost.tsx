@@ -105,6 +105,17 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   onCommentCountChange,
   isMyGymTab = false,
 }) => {
+  // Early return if post data is invalid or is a video (extra safety check)
+  if (!post || !post.id || !post.image_url || !post.profiles || post.media_type === 'video') {
+    console.log('🚫 [DEBUG] GymstaPost: Invalid post data or video post, skipping render:', { 
+      hasPost: !!post, 
+      hasId: !!post?.id, 
+      hasImageUrl: !!post?.image_url, 
+      hasProfiles: !!post?.profiles,
+      mediaType: post?.media_type 
+    });
+    return null;
+  }
   // Animation values for the new design
   const [cardScale] = useState(new Animated.Value(1));
   const [cardRotation] = useState(new Animated.Value(0));
@@ -251,6 +262,23 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
       console.log('🔍 [DEBUG] No currentUserId');
       return;
     }
+
+    // Haptic feedback + bounce animation for responsiveness
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    Animated.sequence([
+      Animated.timing(saveAnimation, {
+        toValue: 1.2,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.spring(saveAnimation, {
+        toValue: 1,
+        friction: 4,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     setSaving(true);
     console.log('🔍 [DEBUG] Starting save/unsave operation, current isSaved:', isSaved);
