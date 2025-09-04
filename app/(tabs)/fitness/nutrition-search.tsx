@@ -65,24 +65,24 @@ export default function NutritionSearchScreen() {
       const fiber_g = (food.fiber_g || 0) * factor;
       const sugar_g = (food.sugar_g || 0) * factor;
       const sodium_mg = (food.sodium_mg || 0) * factor;
-// console.log('first', {
-//         user_id: user.id,
-//         entry_date: params.date,
-//         meal: params.meal,
-//         // food_id: null,
-//         // user_food_id: null,
-//         source: 'starter',
-//         food_name: food.name,
-//         serving_grams: grams,
-//         servings: 1,
-//         calories,
-//         protein_g,
-//         carbs_g,
-//         fat_g,
-//         fiber_g,
-//         sugar_g,
-//         sodium_mg,
-//       })
+console.log('first', {
+        user_id: user.id,
+        entry_date: params.date,
+        meal: params.meal,
+        // food_id: null,
+        // user_food_id: null,
+        source: 'starter',
+        food_name: food.name,
+        serving_grams: grams,
+        servings: 1,
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+        fiber_g,
+        sugar_g,
+        sodium_mg,
+      })
       const { error } = await supabase.from('nutrition_entries').insert({
         user_id: user.id,
  
@@ -93,8 +93,8 @@ export default function NutritionSearchScreen() {
  
         entry_date: resolvedDate,
         meal: resolvedMeal,
-        food_id: null,
-        user_food_id: null,
+        // food_id: null,
+        // user_food_id: null,
  
         source: 'starter',
         food_name: food.name,
