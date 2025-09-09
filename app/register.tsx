@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/context/ThemeContext';
@@ -19,6 +19,8 @@ export default function RegisterScreen() {
   const [showGymSuggestions, setShowGymSuggestions] = useState(false);
   const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [gymInputY, setGymInputY] = useState<number>(0);
 
   // Check auth session on component mount
   useEffect(() => {
@@ -147,11 +149,22 @@ export default function RegisterScreen() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={() => {
-      Keyboard.dismiss();
-      setShowGymSuggestions(false);
-    }}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <TouchableWithoutFeedback onPress={() => {
+        Keyboard.dismiss();
+      }}>
+        <ScrollView 
+          ref={scrollRef}
+          style={{ flex: 1 }}
+          contentContainerStyle={[styles.container, { backgroundColor: colors.background, paddingBottom: 40 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+        >
         <Text style={[styles.title, { color: colors.tint }]}>Complete Your Profile</Text>
         
         {error && (
@@ -184,7 +197,7 @@ export default function RegisterScreen() {
           style={{ minHeight: 100, textAlignVertical: 'top' }}
         />
 
-        <View style={styles.gymInputContainer}>
+        <View style={styles.gymInputContainer} onLayout={(e) => setGymInputY(e.nativeEvent.layout.y)}>
           <ThemedInput
             label="Gym (optional)"
             value={gym}
@@ -192,7 +205,14 @@ export default function RegisterScreen() {
               setGym(text);
               setShowGymSuggestions(true);
             }}
-            onFocus={() => setShowGymSuggestions(true)}
+            onFocus={() => {
+              setShowGymSuggestions(true);
+              setTimeout(() => {
+                if (scrollRef.current) {
+                  scrollRef.current.scrollTo({ y: Math.max(gymInputY - 20, 0), animated: true });
+                }
+              }, 50);
+            }}
             leftIcon={<MapPin size={18} color={colors.textSecondary} />}
             variant="filled"
             size="large"
@@ -204,35 +224,38 @@ export default function RegisterScreen() {
           />
           
           {showGymSuggestions && filteredGyms.length > 0 && (
-            <ScrollView 
-              style={[
-                styles.suggestionsContainer,
-                {
-                  backgroundColor: colors.inputBackground,
-                  borderColor: colors.border
-                }
-              ]}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled
-            >
-              {filteredGyms.map((suggestion, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.suggestionItem,
-                    { borderBottomColor: colors.border }
-                  ]}
-                  onPress={() => {
-                    setGym(suggestion);
-                    setShowGymSuggestions(false);
-                  }}
-                >
-                  <Text style={[styles.suggestionText, { color: colors.text }]}>
-                    {suggestion}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={[
+              styles.suggestionsContainer,
+              {
+                backgroundColor: colors.inputBackground,
+                borderColor: colors.border
+              }
+            ]}>
+              <ScrollView 
+                style={styles.suggestionsList}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                {filteredGyms.map((suggestion, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.suggestionItem,
+                      { borderBottomColor: colors.border, borderBottomWidth: index < filteredGyms.length - 1 ? 1 : 0 }
+                    ]}
+                    onPress={() => {
+                      setGym(suggestion);
+                      setShowGymSuggestions(false);
+                    }}
+                  >
+                    <Text style={[styles.suggestionText, { color: colors.text }]}>
+                      {suggestion}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           )}
         </View>
 
@@ -244,8 +267,9 @@ export default function RegisterScreen() {
           disabled={loading || !username.trim()}
           style={styles.completeButton}
         />
-      </View>
-    </TouchableWithoutFeedback>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -283,16 +307,21 @@ const styles = StyleSheet.create({
   },
   gymInputContainer: {
     position: 'relative',
-    zIndex: 1,
+    zIndex: 10,
   },
   suggestionsContainer: {
-    maxHeight: 200,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    marginBottom: 16,
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 140,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 8,
+    zIndex: 11,
+  },
+  suggestionsList: {
+    flex: 1,
   },
   suggestionItem: {
     padding: 12,

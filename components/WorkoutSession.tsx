@@ -54,7 +54,9 @@ interface SwipeableSetRowProps {
   onUpdateSetValue: (exerciseIndex: number, setIndex: number, field: 'reps' | 'weight', value: number) => void;
   formatWeight: (weight: number, fromUnit?: 'lbs' | 'kg', toUnit?: 'lbs' | 'kg') => string;
   isEditingPlan: boolean;
-  getWeightIncrement: (size: 'small' | 'medium' | 'large') => number;
+  getWeightIncrement: (size: 'small' | 'large') => number;
+  unitsWeightUnit: 'lbs' | 'kg';
+  convertWeight: (value: number, from: 'lbs' | 'kg', to: 'lbs' | 'kg') => number;
 }
 
 const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
@@ -68,21 +70,28 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
   formatWeight,
   isEditingPlan,
   getWeightIncrement,
+  unitsWeightUnit,
+  convertWeight,
 }) => {
   const [isEditingWeight, setIsEditingWeight] = useState(false);
-  const [weightInput, setWeightInput] = useState(set.weight.toString());
+  const [weightInput, setWeightInput] = useState(
+    convertWeight(set.weight, 'kg', unitsWeightUnit).toString()
+  );
 
-  // Update weight input when set.weight changes
+  // Update weight input when set.weight or units change
   useEffect(() => {
-    setWeightInput(set.weight.toString());
-  }, [set.weight]);
+    const display = convertWeight(set.weight, 'kg', unitsWeightUnit);
+    setWeightInput(Number.isFinite(display) ? display.toString() : '0');
+  }, [set.weight, unitsWeightUnit]);
 
   const handleWeightSubmit = () => {
-    const newWeight = parseFloat(weightInput);
-    if (!isNaN(newWeight) && newWeight >= 0) {
-      onUpdateSetValue(exerciseIndex, setIndex, 'weight', newWeight);
+    const newWeightUser = parseFloat(weightInput);
+    if (!isNaN(newWeightUser) && newWeightUser >= 0) {
+      const newWeightKg = convertWeight(newWeightUser, unitsWeightUnit, 'kg');
+      onUpdateSetValue(exerciseIndex, setIndex, 'weight', newWeightKg);
     } else {
-      setWeightInput(set.weight.toString()); // Reset to original value
+      const display = convertWeight(set.weight, 'kg', unitsWeightUnit);
+      setWeightInput(Number.isFinite(display) ? display.toString() : '0');
     }
     setIsEditingWeight(false);
   };
@@ -259,7 +268,11 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
               <View style={styles.inputWithButtons}>
                 <TouchableOpacity
                   style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', Math.max(0, set.weight - getWeightIncrement('large')))}
+                  onPress={() => {
+                    const deltaKg = convertWeight(getWeightIncrement('large'), unitsWeightUnit, 'kg');
+                    const newVal = Math.max(0, set.weight - deltaKg);
+                    onUpdateSetValue(exerciseIndex, setIndex, 'weight', newVal);
+                  }}
                 >
                   <Minus size={16} color="white" />
                 </TouchableOpacity>
@@ -295,7 +308,11 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
                 )}
                 <TouchableOpacity
                   style={[styles.inputButton, { backgroundColor: colors.tint }]}
-                  onPress={() => onUpdateSetValue(exerciseIndex, setIndex, 'weight', set.weight + getWeightIncrement('large'))}
+                  onPress={() => {
+                    const deltaKg = convertWeight(getWeightIncrement('large'), unitsWeightUnit, 'kg');
+                    const newVal = set.weight + deltaKg;
+                    onUpdateSetValue(exerciseIndex, setIndex, 'weight', newVal);
+                  }}
                 >
                   <Plus size={16} color="white" />
                 </TouchableOpacity>
@@ -354,7 +371,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
-  const { units, formatWeight, getWeightIncrement } = useUnits();
+  const { units, formatWeight, getWeightIncrement, convertWeight } = useUnits();
 
   const [currentWorkout, setCurrentWorkout] = useState<Workout>(workout);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -787,7 +804,7 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
       onWorkoutComplete(completedWorkout);
       Alert.alert(
         'Workout Complete!', 
-        `Great job! You worked out for ${durationMinutes} minutes and lifted ${totalVolume}kg total volume.`,
+        `Great job! You worked out for ${durationMinutes} minutes and lifted ${formatWeight(totalVolume, 'kg')} total volume.`,
         [{ text: 'OK' }]
       );
 
@@ -1027,6 +1044,8 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
                    formatWeight={formatWeight}
                    isEditingPlan={plannedWorkoutId === null && Boolean(currentWorkout.id) && !currentWorkout.id.startsWith('temp-')}
                    getWeightIncrement={getWeightIncrement}
+                   unitsWeightUnit={units.weight_unit}
+                   convertWeight={convertWeight}
                  />
               ))}
             </View>
@@ -1451,7 +1470,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    minWidth: 90,
+    minWidth: 110,
   },
   inputButton: {
     width: 28,
@@ -1463,7 +1482,8 @@ const styles = StyleSheet.create({
   inputValue: {
     fontSize: 16,
     fontWeight: 'bold',
-    minWidth: 40,
+    minWidth: 56,
+    maxWidth: 72,
     textAlign: 'center',
     paddingHorizontal: 4,
     flexShrink: 0,
@@ -1480,11 +1500,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     minHeight: 28,
+    minWidth: 72,
+    textAlign: 'center',
   },
   weightTouchable: {
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 28,
+    minWidth: 72,
     paddingVertical: 4,
   },
   completeButton: {

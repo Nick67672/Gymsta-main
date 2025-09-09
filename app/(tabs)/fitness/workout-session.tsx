@@ -5,6 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { useAuth } from '@/context/AuthContext';
+import { useUnits } from '@/context/UnitContext';
 import { supabase } from '@/lib/supabase';
 
 type WorkoutSet = { reps: number; weight: number; completed?: boolean };
@@ -14,6 +15,7 @@ export default function WorkoutSessionScreen() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { formatWeight } = useUnits();
   const { workoutId, readOnly } = useLocalSearchParams<{ workoutId: string; readOnly?: string }>();
 
   const [loading, setLoading] = useState(true);
@@ -327,7 +329,7 @@ export default function WorkoutSessionScreen() {
         />
         <View style={styles.summaryRow}>
           <Text style={[styles.summaryChip, { color: colors.textSecondary }]}>{totalSets} sets</Text>
-          <Text style={[styles.summaryChip, { color: colors.textSecondary }]}>{Math.round(totalVolume)} kg</Text>
+          <Text style={[styles.summaryChip, { color: colors.textSecondary }]}>{formatWeight(totalVolume, 'kg')}</Text>
           <Text style={[styles.summaryChip, { color: colors.textSecondary }]}>{computeElapsed()} min</Text>
         </View>
       </View>
@@ -357,7 +359,7 @@ export default function WorkoutSessionScreen() {
               <View key={i} style={styles.setRow}>
                 <Text style={[styles.setIndex, { color: colors.textSecondary }]}>Set {i + 1}</Text>
                 <TextInput
-                  style={[styles.setInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}
+                  style={[styles.setInput, styles.setInputFixed, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}
                   keyboardType="number-pad"
                   value={String(s.reps)}
                   editable={!isReadOnly}
@@ -366,7 +368,7 @@ export default function WorkoutSessionScreen() {
                   placeholderTextColor={colors.textSecondary}
                 />
                 <TextInput
-                  style={[styles.setInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}
+                  style={[styles.setInput, styles.setInputFixed, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }]}
                   keyboardType="decimal-pad"
                   value={String(s.weight)}
                   editable={!isReadOnly}
@@ -526,10 +528,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   setInput: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
     borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
+  },
+  setInputFixed: {
+    width: 90,
+    textAlign: 'center',
   },
   completeBtn: {
     width: 36,

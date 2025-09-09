@@ -5,6 +5,7 @@ import { useTheme } from '@/context/ThemeContext';
 import Colors from '@/constants/Colors';
 import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { useAuth } from '@/context/AuthContext';
+import { useUnits } from '@/context/UnitContext';
 import { supabase } from '@/lib/supabase';
 
 type WorkoutRow = {
@@ -23,6 +24,7 @@ export default function SimpleWorkoutHub() {
   const { theme } = useTheme();
   const colors = Colors[theme];
   const { user } = useAuth();
+  const { formatWeight } = useUnits();
 
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<Pick<WorkoutRow, 'id' | 'name' | 'date'> | null>(null);
@@ -116,7 +118,7 @@ export default function SimpleWorkoutHub() {
           .gte('date', start.toISOString().split('T')[0]);
         if (!error) {
           const sum = (data || []).reduce((a: number, r: any) => a + (Number(r.total_volume) || 0), 0);
-          results.push({ key: 'total_volume_7d', value: `${Math.round(sum)} kg` });
+          results.push({ key: 'total_volume_7d', value: formatWeight(Math.round(sum), 'kg') });
         }
       }
       if (keys.includes('body_weight_avg_7d')) {
@@ -130,7 +132,7 @@ export default function SimpleWorkoutHub() {
         if (!error) {
           const vals = (data || []).map((r: any) => Number(r.weight_kg) || 0);
           const avg = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
-          results.push({ key: 'body_weight_avg_7d', value: `${avg} kg` });
+          results.push({ key: 'body_weight_avg_7d', value: formatWeight(avg, 'kg') });
         }
       }
       // streak and 1RM are optional Phase 3; omit heavy logic
@@ -171,7 +173,7 @@ export default function SimpleWorkoutHub() {
         <View style={styles.recentRowBottom}>
           <Text style={[styles.recentDate, { color: colors.textSecondary }]}>{new Date(item.date).toLocaleDateString()}</Text>
           {typeof item.total_volume === 'number' && (
-            <Text style={[styles.recentStat, { color: colors.textSecondary }]}>Vol: {Math.round(item.total_volume)}kg</Text>
+            <Text style={[styles.recentStat, { color: colors.textSecondary }]}>Vol: {formatWeight(Math.round(item.total_volume), 'kg')}</Text>
           )}
         </View>
       </TouchableOpacity>

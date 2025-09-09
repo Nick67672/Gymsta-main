@@ -13,8 +13,8 @@ export default function FitnessLayout() {
       <Stack.Screen name="workout-plans" />
       <Stack.Screen name="workout-history" />
       <Stack.Screen name="workout-preferences" />
-      <Stack.Screen name="workout-plan" />
-      <Stack.Screen name="workout-insights" />
+      <Stack.Screen name="workout-plan/[id]" />
+      <Stack.Screen name="workout-insights/[id]" />
     </Stack>
   );
 } 

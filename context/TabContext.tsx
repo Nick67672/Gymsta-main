@@ -20,8 +20,9 @@ export const useTab = () => {
 };
 
 export const TabProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('my-gym');
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  // Default to Explore and center it in the selector (index 1 given [My Gym, Explore, Following])
+  const [activeTab, setActiveTab] = useState<TabType>('explore');
+  const [activeTabIndex, setActiveTabIndex] = useState(1);
 
   return (
     <TabContext.Provider

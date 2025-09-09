@@ -56,6 +56,7 @@ import { CommentSystem } from './CommentSystem';
 import { ShareModal } from './ShareModal';
 import { getAvatarUrl } from '@/lib/avatarUtils';
 import ImageZoomViewer from './ImageZoomViewer';
+import ZoomableMedia from './ZoomableMedia';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -122,6 +123,7 @@ const PostComponent: React.FC<PostProps> = ({
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState(false);
+  const [zoomActive, setZoomActive] = useState(false);
 
   // Unit system
   const { formatWeight } = useUnits();
@@ -563,6 +565,7 @@ const PostComponent: React.FC<PostProps> = ({
           style={styles.mediaContainer}
           onPress={handleDoubleTap}
           activeOpacity={0.95}
+          disabled={zoomActive}
         >
           {post.media_type === 'video' ? (
             <View style={styles.videoContainer}>
@@ -594,24 +597,26 @@ const PostComponent: React.FC<PostProps> = ({
             </View>
           ) : (
             <View style={styles.imageContainer}>
-              <TouchableOpacity
-                onPress={handleImageTap}
-                activeOpacity={0.95}
-                style={styles.imageTouchable}
-              >
-                <Image
-                  source={{ uri: post.image_url }}
-                  style={styles.image}
-                  resizeMode="cover"
-                />
-                {!post.image_url && (
-                  <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
-                    <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
-                      No image available
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              <ZoomableMedia resetOnEnd onZoomActiveChange={setZoomActive}>
+                <TouchableOpacity
+                  onPress={handleImageTap}
+                  activeOpacity={0.95}
+                  style={styles.imageTouchable}
+                >
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
+                  {!post.image_url && (
+                    <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]}> 
+                      <Text style={[styles.placeholderText, { color: colors.textSecondary }]}> 
+                        No image available 
+                      </Text> 
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </ZoomableMedia>
             </View>
           )}
 
@@ -770,7 +775,9 @@ const PostComponent: React.FC<PostProps> = ({
         <Animated.View 
           style={[
             styles.floatingActions,
-            { opacity: contentOpacity }
+            { opacity: contentOpacity },
+            { marginTop: post.caption ? Spacing.xs : Spacing.sm },
+            { marginBottom: post.caption ? Spacing.xs : Spacing.sm }
           ]}
         >
           <View style={styles.likeContainer}>
@@ -1244,8 +1251,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    marginTop: -4,
+    paddingBottom: Spacing.sm,
+    marginTop: Spacing.xs,
     zIndex: 2,
     gap: Spacing.lg,
   },

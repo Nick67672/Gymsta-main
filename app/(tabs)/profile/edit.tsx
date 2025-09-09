@@ -236,12 +236,15 @@ export default function EditProfileScreen() {
     <ThemedView style={styles.container}>
       <KeyboardAvoidingView 
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : 0}
       >
       <ScrollView 
         ref={scrollRef}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          showGymSuggestions ? { paddingBottom: Spacing.xl * 4 } : null,
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -249,7 +252,6 @@ export default function EditProfileScreen() {
         scrollEventThrottle={16}
         onScrollBeginDrag={() => {
           Keyboard.dismiss();
-          setShowGymSuggestions(false);
         }}
       >
           {/* Header */}
@@ -317,7 +319,7 @@ export default function EditProfileScreen() {
           </ThemedCardView>
 
           {/* Profile Information */}
-          <TouchableWithoutFeedback onPress={() => setShowGymSuggestions(false)}>
+          <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
             <View>
               <ThemedCardView style={styles.formSection}>
                 <ThemedH3 style={styles.sectionTitle}>Profile Information</ThemedH3>
@@ -365,7 +367,7 @@ export default function EditProfileScreen() {
                           // Ensure the field and dropdown are visible above the keyboard
                           setTimeout(() => {
                             if (scrollRef.current) {
-                              scrollRef.current.scrollTo({ y: Math.max(gymInputY - 20, 0), animated: true });
+                              scrollRef.current.scrollTo({ y: Math.max(gymInputY - 120, 0), animated: true });
                             }
                           }, 50);
                         }}

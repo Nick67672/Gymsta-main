@@ -73,6 +73,11 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
     { key: 'following', label: 'Following' },
   ];
 
+  // Compute rotated display order so the active tab is centered
+  const prevIndex = (activeTabIndex - 1 + tabs.length) % tabs.length;
+  const nextIndex = (activeTabIndex + 1) % tabs.length;
+  const displayTabs = [tabs[prevIndex], tabs[activeTabIndex], tabs[nextIndex]];
+
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: translateX } }],
     { useNativeDriver: true }
@@ -86,11 +91,11 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
       let newIndex = activeTabIndex;
 
       if (translationX > threshold || velocityX > 500) {
-        // Swipe right - go to previous tab
-        newIndex = Math.max(0, activeTabIndex - 1);
+        // Swipe right - go to previous tab (wrap around)
+        newIndex = (activeTabIndex - 1 + tabs.length) % tabs.length;
       } else if (translationX < -threshold || velocityX < -500) {
-        // Swipe left - go to next tab
-        newIndex = Math.min(tabs.length - 1, activeTabIndex + 1);
+        // Swipe left - go to next tab (wrap around)
+        newIndex = (activeTabIndex + 1) % tabs.length;
       }
 
       // Animate back to position
@@ -111,23 +116,48 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
   };
 
   const selectTab = (index: number) => {
+    if (index === activeTabIndex) return;
     // Add haptic feedback for tab selection
     haptics.tabChange();
-    setActiveTabIndex(index);
-    setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
+
+    // Determine direction (next or previous with wrap-around)
+    const nextIdx = (activeTabIndex + 1) % tabs.length;
+    const prevIdx = (activeTabIndex - 1 + tabs.length) % tabs.length;
+    const isNext = index === nextIdx;
+    const isPrev = index === prevIdx;
+
+    const offset = 60; // small visual nudge
+    const toValue = isNext ? -offset : isPrev ? offset : 0;
+
+    if (toValue !== 0) {
+      Animated.timing(translateX, {
+        toValue,
+        duration: 120,
+        useNativeDriver: true,
+      }).start(() => {
+        setActiveTabIndex(index);
+        setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }).start();
+      });
+    } else {
+      // Non-adjacent clicks: just set immediately
+      setActiveTabIndex(index);
+      setActiveTab(tabs[index].key as 'explore' | 'following' | 'my-gym');
+    }
   };
 
-  const getTabStyle = (index: number) => {
-    const isActive = index === activeTabIndex;
-    const distance = Math.abs(index - activeTabIndex);
+  const getTabStyle = (displayIndex: number) => {
+    // Center item (displayIndex 1) is visually emphasized via opacity/weight only to avoid visual shift
+    const isCenter = displayIndex === 1;
+    const distance = Math.abs(displayIndex - 1);
     return {
-      opacity: isActive ? 1 : Math.max(0.6 - distance * 0.2, 0.4),
-      transform: [
-        {
-          scale: isActive ? 1.1 : Math.max(1 - distance * 0.1, 0.9),
-        },
-      ],
-    };
+      opacity: isCenter ? 1 : Math.max(0.6 - distance * 0.2, 0.4),
+    } as const;
   };
 
   const tintColor = overrideTintColor ?? colors.tint;
@@ -137,69 +167,44 @@ const TikTokStyleFeedSelector: React.FC<TikTokStyleFeedSelectorProps> = ({
       ref={panRef}
       onGestureEvent={onGestureEvent}
       onHandlerStateChange={onHandlerStateChange}
+      activeOffsetX={[-20, 20]}
     >
       <Animated.View
         style={[tikTokStyles.container, { backgroundColor: colors.background }]}
       >
         <View style={tikTokStyles.tabsContainer}>
-          {(() => {
-            const prevIndex = activeTabIndex - 1;
-            const nextIndex = activeTabIndex + 1;
-            const slots: Array<
-              { type: 'tab'; index: number } | { type: 'empty' }
-            > = [
-              prevIndex >= 0
-                ? { type: 'tab', index: prevIndex }
-                : { type: 'empty' },
-              { type: 'tab', index: activeTabIndex },
-              nextIndex < tabs.length
-                ? { type: 'tab', index: nextIndex }
-                : { type: 'empty' },
-            ];
-            return slots.map((slot, i) => {
-              if (slot.type === 'empty') {
-                return (
-                  <View
-                    key={`empty-${i}`}
-                    style={[tikTokStyles.tab, { opacity: 0 }]}
-                  />
-                );
-              }
-              const index = slot.index;
-              const tab = tabs[index];
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[tikTokStyles.tab, getTabStyle(index)]}
-                  onPress={() => selectTab(index)}
-                  activeOpacity={0.7}
+          {displayTabs.map((tab, displayIndex) => {
+            const baseIndex = tabs.findIndex((t) => t.key === tab.key);
+            const isActive = baseIndex === activeTabIndex;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[tikTokStyles.tab, getTabStyle(displayIndex)]}
+                onPress={() => selectTab(baseIndex)}
+                activeOpacity={0.7}
+              >
+                <Animated.Text
+                  style={[
+                    tikTokStyles.tabText,
+                    {
+                      color: isActive ? tintColor : colors.textSecondary,
+                      fontWeight: isActive ? '700' : '600',
+                    },
+                  ]}
                 >
-                  <Animated.Text
+                  {tab.label}
+                </Animated.Text>
+                {isActive && (
+                  <View
                     style={[
-                      tikTokStyles.tabText,
-                      {
-                        color:
-                          index === activeTabIndex
-                            ? tintColor
-                            : colors.textSecondary,
-                        fontWeight: index === activeTabIndex ? '700' : '600',
-                      },
+                      tikTokStyles.activeUnderline,
+                      { backgroundColor: tintColor },
                     ]}
-                  >
-                    {tab.label}
-                  </Animated.Text>
-                  {index === activeTabIndex && (
-                    <View
-                      style={[
-                        tikTokStyles.activeUnderline,
-                        { backgroundColor: tintColor },
-                      ]}
-                    />
-                  )}
-                </TouchableOpacity>
-              );
-            });
-          })()}
+                  />
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </Animated.View>
     </PanGestureHandler>
@@ -573,7 +578,7 @@ function HomeScreenContent() {
         media_type: post.media_type || 'image',
       }));
 
-      // Load workouts from followed users
+      // Load workouts from followed users that were explicitly shared (is_my_gym = true)
       const { data: workoutsData, error: workoutsError } = await supabase
         .from('workouts')
         .select(
@@ -582,12 +587,12 @@ function HomeScreenContent() {
           user_id,
           exercises,
           created_at,
-          profiles (
+          profiles!inner (
             username,
             avatar_url,
             gym
           ),
-          workout_sharing_information (
+          workout_sharing_information!inner (
             title,
             caption,
             photo_url,
@@ -596,6 +601,7 @@ function HomeScreenContent() {
         `
         )
         .in('user_id', followingIds)
+        .eq('workout_sharing_information.is_my_gym', true)
         .order('created_at', { ascending: false });
 
       if (workoutsError) throw workoutsError;
@@ -1235,7 +1241,6 @@ function HomeScreenContent() {
   // Individual post renderer for FlashList
   const renderPost = useCallback(
     ({ item }: { item: Post }) => {
-      console.warn('item', item);
       return (
         <GymstaPost
           post={item}
@@ -1362,9 +1367,21 @@ function HomeScreenContent() {
         <View style={styles.headerContent}>
           {/* Logo/Brand */}
           <View style={styles.logoContainer}>
-            <Text style={[styles.logoText, { color: colors.text }]}>
-              ReRack
-            </Text>
+            {currentUserGym?.toLowerCase().includes('arete') ? (
+              <View style={styles.brandRow}>
+                <Image
+                  source={require('../../assets/images/logo_arete.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                  accessible
+                  accessibilityLabel="ARETE"
+                />
+                <Text style={[styles.brandX, { color: colors.text }]}>X</Text>
+                <Text style={[styles.logoBrandText, { color: colors.text }]}>RERACK</Text>
+              </View>
+            ) : (
+              <Text style={[styles.logoText, { color: colors.text }]}>ReRack</Text>
+            )}
           </View>
 
           {/* Action Buttons */}
@@ -1665,6 +1682,29 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
     textTransform: 'uppercase',
+  },
+  logoImage: {
+    width: 120,
+    height: 28,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+    marginLeft: -Spacing.xl,
+  },
+  brandX: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginHorizontal: 0,
+    marginLeft: -18,
+  },
+  logoBrandText: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginLeft: 6,
   },
   headerActions: {
     flexDirection: 'row',
@@ -2021,14 +2061,15 @@ const tikTokStyles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
+    width: '100%',
   },
   tab: {
-    paddingHorizontal: Spacing.lg,
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: Spacing.sm,
-    marginHorizontal: Spacing.xs,
   },
   tabText: {
     ...Typography.bodyLarge,

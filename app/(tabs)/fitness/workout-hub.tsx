@@ -357,7 +357,15 @@ export default function WorkoutHubScreen() {
           <View style={styles.headerRight} />
         </View>
 
-        <ScrollView style={[styles.content, { paddingBottom: Spacing.xl }]} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom: Spacing.xl }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          scrollEventThrottle={16}
+          {...(Platform.OS === 'ios' ? { delaysContentTouches: false } : {})}
+        >
           {/* Progress Snapshot */}
           <View style={styles.snapshotRow}>
             <LinearGradient
@@ -390,7 +398,7 @@ export default function WorkoutHubScreen() {
           </View>
 
           {/* Quick Start card (below quick stats, above Saved Workouts) */}
-          <TouchableOpacity activeOpacity={0.9} onPress={() => router.push('/fitness/workout-tracker?action=quickStart')}>
+          <TouchableOpacity activeOpacity={0.9} delayPressIn={0} onPress={() => router.push('/fitness/workout-tracker?action=quickStart')}>
             <LinearGradient
               colors={[colors.primaryGradientStart, colors.primaryGradientEnd]}
               start={{ x: 0, y: 0 }}
@@ -418,6 +426,7 @@ export default function WorkoutHubScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Saved Workouts</Text>
             <TouchableOpacity
               style={[styles.addPlanButton, { backgroundColor: colors.tint }]}
+              delayPressIn={0}
               onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}
             >
               <Plus size={16} color={'#fff'} />
@@ -436,12 +445,12 @@ export default function WorkoutHubScreen() {
 
           {/* Quick Templates */}
           <View style={{ flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md }}>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}>
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} delayPressIn={0} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'quickStart' } })}>
               <Dumbbell size={14} color={colors.text} />
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>New Plan</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>Quick Start</Text>
             </TouchableOpacity>
             {['Push', 'Pull', 'Legs'].map((tpl) => (
-              <TouchableOpacity key={tpl} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'create' } })}>
+              <TouchableOpacity key={tpl} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }} delayPressIn={0} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'quickStart' } })}>
                 <Flame size={14} color={colors.text} />
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>{tpl}</Text>
               </TouchableOpacity>
@@ -481,15 +490,15 @@ export default function WorkoutHubScreen() {
                       <Text style={[styles.planLastDone, { color: colors.textSecondary }]}>Last done {lastCompletedMap[p.id]}</Text>
                     )}
                     <View style={styles.cardActionsRow}>
-                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'editPlan', planId: p.id } })}>
+                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} delayPressIn={0} onPress={() => router.push({ pathname: '/fitness/workout-tracker', params: { action: 'editPlan', planId: p.id } })}>
                         <Edit3 size={14} color={colors.text} />
                         <Text style={[styles.smallBtnText, { color: colors.text }]}>Edit</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} onPress={() => router.push({ pathname: '/fitness/workout-insights/[id]', params: { id: p.id } })}>
+                      <TouchableOpacity style={[styles.smallBtn, { borderColor: colors.border }]} delayPressIn={0} onPress={() => router.push({ pathname: '/fitness/workout-insights/[id]', params: { id: p.id } })}>
                         <TrendingUp size={14} color={colors.text} />
                         <Text style={[styles.smallBtnText, { color: colors.text }]}>Insights</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.beginBtn, { backgroundColor: colors.tint }]} onPress={() => handleBeginFromPlan(p)}>
+                      <TouchableOpacity style={[styles.beginBtn, { backgroundColor: colors.tint }]} delayPressIn={0} onPress={() => handleBeginFromPlan(p)}>
                         <Play size={14} color={'#fff'} />
                         <Text style={styles.beginBtnText}>Begin</Text>
                       </TouchableOpacity>
@@ -498,7 +507,7 @@ export default function WorkoutHubScreen() {
                 )}
               />
               {hasMore && (
-                <TouchableOpacity disabled={loadingMore} style={[styles.loadMoreBtn, { borderColor: colors.border }]} onPress={() => fetchPlans(false)}>
+                <TouchableOpacity disabled={loadingMore} style={[styles.loadMoreBtn, { borderColor: colors.border }]} delayPressIn={0} onPress={() => fetchPlans(false)}>
                   <Text style={[styles.smallBtnText, { color: colors.text }]}>{loadingMore ? 'Loading…' : 'Load more'}</Text>
                 </TouchableOpacity>
               )}
@@ -525,6 +534,7 @@ export default function WorkoutHubScreen() {
           <TouchableOpacity
             style={[styles.historyButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             activeOpacity={0.8}
+            delayPressIn={0}
             onPress={() => router.push('/fitness/workout-history')}
           >
             <View style={styles.historyButtonContent}>

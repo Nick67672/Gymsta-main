@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions, Easing, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions, Easing, TextInput, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Zap, Apple, TrendingUp, Calendar, Target, ChefHat, ChevronRight, Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -225,6 +225,9 @@ export default function FitnessHubScreen() {
                 <Text
                   style={[styles.quoteText, { color: colors.text }]}
                   numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  maxFontSizeMultiplier={1.1}
                   ellipsizeMode="tail"
                 >
                   {motivationalQuotes[currentQuoteIndex]}
@@ -434,11 +437,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   quoteText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 22,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
+    letterSpacing: -0.2,
+    fontFamily: Platform.OS === 'ios' ? 'SF Pro Display' : 'sans-serif-medium',
   },
   // Removed dots styles
   content: {

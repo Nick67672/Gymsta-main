@@ -994,7 +994,19 @@ export default function ProfileScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
         <TouchableOpacity onPress={() => router.push('/')}>
-          <Text style={[styles.logo, { color: '#fff' }]}>ReRack</Text>
+          {profile?.gym?.toLowerCase().includes('arete') ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0, marginLeft: -Spacing.xl }}>
+              <Image
+                source={require('@/assets/images/logo_arete.png')}
+                style={{ width: 120, height: 28 }}
+                resizeMode="contain"
+              />
+              <Text style={[styles.logo, { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1.2, marginHorizontal: 0, marginLeft: -18 }]}>X</Text>
+              <Text style={[styles.logo, { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 1.2, marginLeft: 6 }]}>RERACK</Text>
+            </View>
+          ) : (
+            <Text style={[styles.logo, { color: '#fff' }]}>ReRack</Text>
+          )}
         </TouchableOpacity>
         <View style={styles.headerButtons}>
                   <TouchableOpacity

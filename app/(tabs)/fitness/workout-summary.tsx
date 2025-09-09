@@ -79,36 +79,18 @@ export default function WorkoutSummaryScreen() {
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${currentUserId}/${fileName}`;
       const WORKOUT_IMAGES_BUCKET = process.env.EXPO_PUBLIC_WORKOUT_IMAGES_BUCKET ?? 'workout_images';
-      
-      let uploadError;
-      
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        
-        ({ error: uploadError } = await supabase.storage
-          .from(WORKOUT_IMAGES_BUCKET)
-          .upload(filePath, blob, { 
-            contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-            cacheControl: '3600',
-            upsert: false
-          }));
-      } else {
-        const formData = new FormData();
-        formData.append('file', {
-          uri: uri,
-          name: fileName,
-          type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-        } as any);
 
-        ({ error: uploadError } = await supabase.storage
-          .from(WORKOUT_IMAGES_BUCKET)
-          .upload(filePath, formData, {
-            contentType: 'multipart/form-data',
-            cacheControl: '3600',
-            upsert: false
-          }));
-      }
+      // Use Blob upload for both web and native (FormData is not supported by Supabase storage upload)
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const { error: uploadError } = await supabase.storage
+        .from(WORKOUT_IMAGES_BUCKET)
+        .upload(filePath, blob, {
+          contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
+          cacheControl: '3600',
+          upsert: false,
+        });
 
       if (uploadError) {
         throw uploadError;
@@ -117,7 +99,7 @@ export default function WorkoutSummaryScreen() {
       const { data: publicData } = supabase.storage
         .from(WORKOUT_IMAGES_BUCKET)
         .getPublicUrl(filePath);
-      
+
       setPhotoUrl(publicData?.publicUrl ?? null);
     } catch (error) {
       console.error('Error uploading photo:', error);

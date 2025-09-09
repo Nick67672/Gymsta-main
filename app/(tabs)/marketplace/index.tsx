@@ -428,7 +428,10 @@ export default function MarketplaceScreen() {
         <View style={[styles.searchContainer, {backgroundColor: colors.inputBackground}]}>
           <Search color={colors.textSecondary} size={20} />
           <TextInput
-            placeholder="Search ReRack Marketplace"
+            placeholder={
+              // Keep generic placeholder; branding is applied elsewhere in app headers
+              'Search Marketplace'
+            }
             placeholderTextColor={colors.textSecondary}
             style={[styles.searchInput, { color: colors.text }]}
             value={searchQuery}

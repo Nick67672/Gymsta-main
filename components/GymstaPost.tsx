@@ -58,6 +58,7 @@ import { CommentSystem } from './CommentSystem';
 import { ShareModal } from './ShareModal';
 import { getAvatarUrl } from '@/lib/avatarUtils';
 import ImageZoomViewer from './ImageZoomViewer';
+import ZoomableMedia from './ZoomableMedia';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -126,6 +127,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const [achievementScale] = useState(new Animated.Value(0));
   const [engagementPulse] = useState(new Animated.Value(0));
   const [socialProofOpacity] = useState(new Animated.Value(0));
+  const [saveAnimation] = useState(new Animated.Value(1));
 
   const [revealAnimation] = useState(new Animated.Value(0));
   
@@ -138,6 +140,7 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const [showShareModal, setShowShareModal] = useState(false);
   const [localCommentsCount, setLocalCommentsCount] = useState(post.comments_count || 0);
   const [isProcessingLike, setIsProcessingLike] = useState(false);
+  const [zoomActive, setZoomActive] = useState(false);
   const [showAchievement, setShowAchievement] = useState(false);
   const [showEngagementPulse, setShowEngagementPulse] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
@@ -554,6 +557,8 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
             style={styles.mediaContainer}
             onPress={handleDoubleTap}
             activeOpacity={0.95}
+            disabled={zoomActive}
+            delayPressIn={0}
           >
             {post.media_type === 'video' ? (
               <View style={styles.videoContainer}>
@@ -581,21 +586,24 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
               </View>
             ) : (
               <View style={styles.imageContainer}>
-                <TouchableOpacity
-                  onPress={handleImageTap}
-                  activeOpacity={0.95}
-                  style={styles.imageTouchable}
-                >
-                  <Image
-                    source={{ uri: post.image_url }}
-                    style={[styles.image, { opacity: imageLoaded ? 1 : 0 }]}
-                    resizeMode="cover"
-                    onLoad={() => setImageLoaded(true)}
-                  />
-                  {!imageLoaded && (
-                    <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]} />
-                  )}
-                </TouchableOpacity>
+                <ZoomableMedia resetOnEnd onZoomActiveChange={setZoomActive}>
+                  <TouchableOpacity
+                    onPress={handleImageTap}
+                    activeOpacity={0.95}
+                    style={styles.imageTouchable}
+                    delayPressIn={0}
+                  >
+                    <Image
+                      source={{ uri: post.image_url }}
+                      style={[styles.image, { opacity: imageLoaded ? 1 : 0 }]}
+                      resizeMode="cover"
+                      onLoad={() => setImageLoaded(true)}
+                    />
+                    {!imageLoaded && (
+                      <View style={[styles.imagePlaceholder, { backgroundColor: colors.backgroundSecondary }]} />
+                    )}
+                  </TouchableOpacity>
+                </ZoomableMedia>
                 
                 {/* Workout Achievement Overlay */}
                 {hasWorkoutData && (
@@ -735,7 +743,9 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
           <Animated.View 
             style={[
               styles.floatingActions,
-              { opacity: contentOpacity }
+              { opacity: contentOpacity },
+              { marginTop: post.caption ? Spacing.xs : Spacing.sm },
+              { marginBottom: post.caption ? Spacing.xs : Spacing.sm }
             ]}
           >
             <View style={styles.likeContainer}>
@@ -784,8 +794,6 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
               </Text>
             )}
           </View>
-
-            <View style={{ flex: 1 }} />
 
             <TouchableOpacity 
               style={styles.actionButton} 
@@ -1176,9 +1184,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: Spacing.lg,
-    paddingTop: 0,
-    paddingBottom: 0,
-    marginTop: -6,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.xs,
+    marginTop: Spacing.xs,
     zIndex: 2,
     gap: Spacing.lg,
   },
