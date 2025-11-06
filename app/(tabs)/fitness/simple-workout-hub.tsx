@@ -22,7 +22,7 @@ type WorkoutRow = {
 
 export default function SimpleWorkoutHub() {
   const { theme } = useTheme();
-  const colors = Colors[theme];
+  const colors = Colors[theme] || Colors.light; // Fallback to light theme if undefined
   const { user } = useAuth();
   const { formatWeight } = useUnits();
 

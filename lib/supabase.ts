@@ -19,19 +19,17 @@ const supabaseUrl = resolveEnv('EXPO_PUBLIC_SUPABASE_URL');
 const supabaseAnonKey = resolveEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables:', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseAnonKey,
-    nodeEnv: process.env.NODE_ENV,
-  });
-  throw new Error('Missing Supabase environment variables - check your .env file and build configuration');
+  console.warn('Supabase env not found. Falling back to placeholder client. Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set via app.config.js');
 }
 
-console.log('Initializing Supabase client...', supabaseUrl); // Debug log for production builds
+const effectiveUrl = supabaseUrl ?? 'https://invalid-project.supabase.co';
+const effectiveAnonKey = supabaseAnonKey ?? 'public-anon-key';
+
+console.log('Initializing Supabase client...', effectiveUrl); // Debug log for production builds
 
 export const supabase = createClient<Database>(
-  supabaseUrl,
-  supabaseAnonKey,
+  effectiveUrl,
+  effectiveAnonKey,
   {
     auth: {
       persistSession: true,

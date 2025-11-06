@@ -28,6 +28,9 @@ import {
   AtSign,
   Save,
   ArrowLeft,
+  Dumbbell,
+  Clock,
+  TrendingUp,
 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -175,6 +178,11 @@ export default function UploadScreen() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 
+  // Workout attach state
+  const [latestWorkouts, setLatestWorkouts] = useState<any[]>([]);
+  const [attachedWorkout, setAttachedWorkout] = useState<any | null>(null);
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+
   // New state for tagging and location
   const [showUserSearchModal, setShowUserSearchModal] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -231,6 +239,51 @@ export default function UploadScreen() {
 
     loadUserProfile();
   }, [user]);
+
+  // Load latest completed workouts for quick attach
+  useEffect(() => {
+    const loadLatest = async () => {
+      try {
+        if (!user) return;
+        const since = new Date();
+        since.setDate(since.getDate() - 7);
+        const { data, error } = await supabase
+          .from('workouts')
+          .select('id,name,exercises,duration_minutes,total_volume,is_completed,date,created_at')
+          .eq('user_id', user.id)
+          .eq('is_completed', true)
+          .gte('date', since.toISOString().split('T')[0])
+          .order('date', { ascending: false })
+          .limit(5);
+        if (error) throw error;
+        setLatestWorkouts(data || []);
+      } catch (e) {
+        // non-fatal
+      }
+    };
+    loadLatest();
+  }, [user?.id]);
+
+  const computeWorkoutStats = (workout: any) => {
+    if (!workout) return { totalSets: 0, duration: 0, volume: 0 };
+    const exercises = Array.isArray(workout.exercises) ? workout.exercises : [];
+    const totalSets = exercises.reduce((sum: number, ex: any) => sum + ((ex.sets || []).length || 0), 0);
+    const duration = Number(workout.duration_minutes) || Math.max(20, totalSets * 2 + exercises.length * 3);
+    const volume = Number(workout.total_volume) || exercises.reduce((sum: number, ex: any) => {
+      const sets = Array.isArray(ex.sets) ? ex.sets : [];
+      const exVol = sets.reduce((s: number, st: any) => s + ((Number(st.reps) || 0) * (Number(st.weight) || 0)), 0);
+      return sum + exVol;
+    }, 0);
+    return { totalSets, duration, volume };
+  };
+
+  const generateWorkoutCaption = (workout: any) => {
+    if (!workout) return '';
+    const name = workout.name || 'Workout';
+    const { totalSets, duration, volume } = computeWorkoutStats(workout);
+    const volumeK = volume > 999 ? `${Math.round(volume / 1000)}k` : `${Math.round(volume)}`;
+    return `${name} ✅ ${duration} min • ${totalSets} sets • ${volumeK} kg`;
+  };
 
   // Generate video thumbnail when video is selected
   useEffect(() => {
@@ -450,7 +503,12 @@ export default function UploadScreen() {
       return;
     }
 
-    // Require a non-empty caption before allowing upload
+    // Auto-generate caption if empty and a workout is attached
+    if ((!caption || !caption.trim()) && attachedWorkout) {
+      const auto = generateWorkoutCaption(attachedWorkout);
+      if (auto) setCaption(auto);
+    }
+    // If still empty, require caption
     if (!caption || !caption.trim()) {
       setError('Please add a caption to your post.');
       return;
@@ -562,6 +620,8 @@ export default function UploadScreen() {
           location_name: selectedLocation?.name,
           latitude: selectedLocation?.latitude,
           longitude: selectedLocation?.longitude,
+          workout_id: attachedWorkout?.id || null,
+          post_type: attachedWorkout ? 'workout' : 'regular',
         })
         .select()
         .single();
@@ -622,6 +682,7 @@ export default function UploadScreen() {
       setSelectedProductId(null);
       setTaggedUsers([]);
       setSelectedLocation(null);
+      setAttachedWorkout(null);
 
       // Show success message and navigate back to main feed
       Alert.alert('Success', 'Your post has been uploaded!');
@@ -965,6 +1026,18 @@ export default function UploadScreen() {
                 styles.actionButton,
                 { borderBottomColor: colors.border },
               ]}
+              onPress={() => setShowWorkoutModal(true)}
+            >
+              <Dumbbell size={20} color={colors.text} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                {attachedWorkout ? 'Change Attached Workout' : 'Attach Latest Workout'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { borderBottomColor: colors.border },
+              ]}
               onPress={() => {
                 if (isTaggingMode) {
                   setIsTaggingMode(false);
@@ -993,6 +1066,38 @@ export default function UploadScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Attached Workout Display */}
+          {attachedWorkout && (
+            <View
+              style={{
+                marginHorizontal: Spacing.lg,
+                marginTop: Spacing.sm,
+                padding: Spacing.md,
+                borderRadius: BorderRadius.md,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>
+                    {attachedWorkout.name || 'Workout'}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, marginTop: 4 }}>
+                    {(() => {
+                      const { totalSets, duration, volume } = computeWorkoutStats(attachedWorkout);
+                      return `${duration}m • ${totalSets} sets • ${Math.round(volume)} kg`;
+                    })()}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setAttachedWorkout(null)}>
+                  <X size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Selected Product Display */}
           {selectedProductId && (
@@ -1261,6 +1366,62 @@ export default function UploadScreen() {
                 variant="secondary"
                 style={{ marginTop: Spacing.md }}
               />
+            </View>
+          </View>
+        </Modal>
+
+        {/* Attach Workout Modal */}
+        <Modal
+          visible={showWorkoutModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowWorkoutModal(false)}
+        >
+          <View
+            style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}
+          >
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%' }}>
+              <View style={{ padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Attach a Workout</Text>
+                <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
+                  <X size={22} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ padding: Spacing.lg }}>
+                {latestWorkouts.length === 0 && (
+                  <Text style={{ color: colors.textSecondary }}>No recent completed workouts.</Text>
+                )}
+                {latestWorkouts.map((w) => {
+                  const { totalSets, duration, volume } = computeWorkoutStats(w);
+                  return (
+                    <TouchableOpacity
+                      key={w.id}
+                      style={{ paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                      onPress={() => {
+                        setAttachedWorkout(w);
+                        if (!caption.trim()) setCaption(generateWorkoutCaption(w));
+                        setShowWorkoutModal(false);
+                      }}
+                    >
+                      <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 6 }}>{w.name || 'Workout'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Clock size={16} color={colors.textSecondary} />
+                          <Text style={{ color: colors.textSecondary }}>{duration}m</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <TrendingUp size={16} color={colors.textSecondary} />
+                          <Text style={{ color: colors.textSecondary }}>{Math.round(volume)} kg</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Dumbbell size={16} color={colors.textSecondary} />
+                          <Text style={{ color: colors.textSecondary }}>{totalSets} sets</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           </View>
         </Modal>

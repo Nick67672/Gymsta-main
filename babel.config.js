@@ -3,7 +3,17 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'react-native-reanimated/plugin',
+      [
+        'module-resolver',
+        {
+          root: ['./'],
+          alias: {
+            '@': './',
+          },
+          extensions: ['.tsx', '.ts', '.js', '.jsx', '.json'],
+        },
+      ],
+      ['react-native-reanimated/plugin', { disableAutoLayout: true }], // must remain last
     ],
   };
 };

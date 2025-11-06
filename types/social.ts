@@ -23,6 +23,8 @@ export interface Post {
   media_type: string;
   created_at: string;
   product_id: string | null;
+  workout_id?: string | null;
+  post_type?: 'regular' | 'workout' | 'achievement';
   profiles: any;
   likes: {
     id: string;

@@ -10,16 +10,13 @@ import {
   Platform,
 } from 'react-native';
 import {
-  PanGestureHandler,
-  PinchGestureHandler,
-  TapGestureHandler,
-  State,
+  Gesture,
+  GestureDetector,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedGestureHandler,
   runOnJS,
   withSpring,
   withTiming,
@@ -53,10 +50,7 @@ const ImageZoomViewer: React.FC<ImageZoomViewerProps> = ({
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
 
-  // Refs for gesture handlers
-  const panRef = useRef(null);
-  const pinchRef = useRef(null);
-  const doubleTapRef = useRef(null);
+  // Refs no longer needed with new Gesture API
 
   const resetImage = () => {
     translateX.value = withSpring(0);
@@ -79,18 +73,20 @@ const ImageZoomViewer: React.FC<ImageZoomViewerProps> = ({
     savedScale.value = newScale;
   };
 
-  const panGestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startX = translateX.value;
-      context.startY = translateY.value;
-    },
-    onActive: (event, context: any) => {
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      'worklet';
+      // Store current values
+    })
+    .onUpdate((event) => {
+      'worklet';
       if (scale.value > 1) {
-        translateX.value = context.startX + event.translationX;
-        translateY.value = context.startY + event.translationY;
+        translateX.value = savedTranslateX.value + event.translationX;
+        translateY.value = savedTranslateY.value + event.translationY;
       }
-    },
-    onEnd: () => {
+    })
+    .onEnd(() => {
+      'worklet';
       // Constrain the image within bounds
       const maxTranslateX = (scale.value - 1) * screenWidth / 2;
       const maxTranslateY = (scale.value - 1) * screenHeight / 2;
@@ -108,21 +104,22 @@ const ImageZoomViewer: React.FC<ImageZoomViewerProps> = ({
 
       savedTranslateX.value = translateX.value;
       savedTranslateY.value = translateY.value;
-    },
-  });
+    });
 
-  const pinchGestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startScale = scale.value;
-    },
-    onActive: (event, context: any) => {
-      const newScale = context.startScale * event.scale;
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      'worklet';
+      // Store current values
+    })
+    .onUpdate((event) => {
+      'worklet';
+      const newScale = savedScale.value * event.scale;
       scale.value = Math.max(1, Math.min(newScale, 5));
-    },
-    onEnd: () => {
+    })
+    .onEnd(() => {
+      'worklet';
       savedScale.value = scale.value;
-    },
-  });
+    });
 
   const handleDoubleTap = () => {
     const nextScale = scale.value > 1 ? 1 : 2;
@@ -197,37 +194,16 @@ const ImageZoomViewer: React.FC<ImageZoomViewerProps> = ({
           styles.imageContainer,
           Platform.OS === 'web' ? { touchAction: 'none', userSelect: 'none' as any } : null,
         ]}>
-          <PanGestureHandler
-            ref={panRef}
-            onGestureEvent={panGestureHandler}
-            simultaneousHandlers={pinchRef}
-          >
-            <Animated.View style={styles.panContainer}>
-              <PinchGestureHandler
-                ref={pinchRef}
-                onGestureEvent={pinchGestureHandler}
-                simultaneousHandlers={[panRef, doubleTapRef]}
-              >
-                <Animated.View style={[styles.pinchContainer]}>
-                  <TapGestureHandler
-                    ref={doubleTapRef}
-                    numberOfTaps={2}
-                    onActivated={handleDoubleTap}
-                    simultaneousHandlers={[pinchRef, panRef]}
-                  >
-                    <Animated.View style={animatedStyle}>
-                      <Image
-                        source={{ uri: imageUri }}
-                        style={styles.image}
-                        resizeMode="contain"
-                        onLoad={handleImageLoad}
-                      />
-                    </Animated.View>
-                  </TapGestureHandler>
-                </Animated.View>
-              </PinchGestureHandler>
+          <GestureDetector gesture={Gesture.Simultaneous(panGesture, pinchGesture, Gesture.Tap().numberOfTaps(2).onEnd(handleDoubleTap))}>
+            <Animated.View style={animatedStyle}>
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.image}
+                resizeMode="contain"
+                onLoad={handleImageLoad}
+              />
             </Animated.View>
-          </PanGestureHandler>
+          </GestureDetector>
         </GestureHandlerRootView>
 
         {/* Instructions */}

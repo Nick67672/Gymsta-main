@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import React from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,8 +16,11 @@ import {
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
-import { LogIn, MessageSquare, Bell, Search } from 'lucide-react-native';
+import { LogIn, Bell, Search } from 'lucide-react-native';
 import { FlashList } from '@shopify/flash-list';
+// Ensure FlashList does not rely on Reanimated AutoLayout when unavailable
+// @ts-ignore
+FlashList.defaultProps = { ...(FlashList.defaultProps || {}), disableAutoLayout: true };
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { haptics } from '@/lib/haptics';
@@ -40,7 +42,7 @@ import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import GymstaPost from '../../components/GymstaPost';
 import StoriesRail from '../../components/StoriesRail';
-import EnhancedWorkoutPost from '../../components/EnhancedWorkoutPost';
+const EnhancedWorkoutPost = React.lazy(() => import('../../components/EnhancedWorkoutPost'));
 import { Story, Profile, Post, Workout } from '../../types/social';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -224,7 +226,6 @@ function HomeScreenContent() {
 
   // State for badge counts
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [unreadMessages, setUnreadMessages] = useState(0);
 
   // Collapsible header state
   const headerHeight = 160; // Increased height for more spacing between header and content
@@ -438,6 +439,8 @@ function HomeScreenContent() {
       const postsWithMediaType = (data || []).map((post: any) => ({
         ...post,
         media_type: post.media_type || 'image',
+        workout_id: post.workout_id || null,
+        post_type: post.post_type || (post.workout_id ? 'workout' : 'regular'),
         comments_count: commentCounts[post.id] || 0,
       }));
 
@@ -616,7 +619,6 @@ function HomeScreenContent() {
   const loadUnreadCounts = async () => {
     if (!isAuthenticated || !user) {
       setUnreadNotifications(0);
-      setUnreadMessages(0);
       return;
     }
 
@@ -624,10 +626,6 @@ function HomeScreenContent() {
       // Load unread notifications count using utility function
       const notificationCount = await getUnreadNotificationCount();
       setUnreadNotifications(notificationCount);
-
-      // Load unread messages count (you'll need to implement this based on your messages table structure)
-      // For now, setting a placeholder - you can implement based on your chat/messages schema
-      setUnreadMessages(0);
     } catch (error) {
       console.error('Error loading unread counts:', error);
     }
@@ -1326,18 +1324,20 @@ function HomeScreenContent() {
     } else {
       // It's a Workout
       return (
-        <EnhancedWorkoutPost
-          workout={item}
-          colors={colors}
-          currentUserId={currentUserId}
-          isAuthenticated={isAuthenticated}
-          showAuthModal={showAuthModal}
-          navigateToProfile={navigateToProfile}
-          handleLike={handleLike}
-          handleUnlike={handleUnlike}
-          handleDeletePost={handleDeletePost}
-          onCommentCountChange={handleCommentCountChange}
-        />
+        <React.Suspense fallback={null}>
+          <EnhancedWorkoutPost
+            workout={item}
+            colors={colors}
+            currentUserId={currentUserId}
+            isAuthenticated={isAuthenticated}
+            showAuthModal={showAuthModal}
+            navigateToProfile={navigateToProfile}
+            handleLike={handleLike}
+            handleUnlike={handleUnlike}
+            handleDeletePost={handleDeletePost}
+            onCommentCountChange={handleCommentCountChange}
+          />
+        </React.Suspense>
       );
     }
   };
@@ -1431,27 +1431,6 @@ function HomeScreenContent() {
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.headerButton,
-                    { backgroundColor: colors.backgroundSecondary },
-                  ]}
-                  onPress={() => {
-                    haptics.tap();
-                    router.push('/chat');
-                  }}
-                >
-                  <MessageSquare size={24} color={colors.text} />
-                  {unreadMessages > 0 && (
-                    <View
-                      style={[styles.badge, { backgroundColor: colors.error }]}
-                    >
-                      <Text style={styles.badgeText}>
-                        {unreadMessages > 99 ? '99+' : unreadMessages}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
               </>
             ) : (
               <TouchableOpacity
@@ -1577,19 +1556,21 @@ function HomeScreenContent() {
                             isMyGymTab={true}
                           />
                         ) : (
-                          <EnhancedWorkoutPost
-                            key={`workout-${item.id}`}
-                            workout={item}
-                            colors={colors}
-                            currentUserId={currentUserId}
-                            isAuthenticated={isAuthenticated}
-                            showAuthModal={showAuthModal}
-                            navigateToProfile={navigateToProfile}
-                            handleLike={handleLike}
-                            handleUnlike={handleUnlike}
-                            handleDeletePost={handleDeletePost}
-                            onCommentCountChange={handleCommentCountChange}
-                          />
+                          <React.Suspense fallback={null}>
+                            <EnhancedWorkoutPost
+                              key={`workout-${item.id}`}
+                              workout={item}
+                              colors={colors}
+                              currentUserId={currentUserId}
+                              isAuthenticated={isAuthenticated}
+                              showAuthModal={showAuthModal}
+                              navigateToProfile={navigateToProfile}
+                              handleLike={handleLike}
+                              handleUnlike={handleUnlike}
+                              handleDeletePost={handleDeletePost}
+                              onCommentCountChange={handleCommentCountChange}
+                            />
+                          </React.Suspense>
                         )
                       )}
                     </>

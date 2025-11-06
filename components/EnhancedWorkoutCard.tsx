@@ -72,7 +72,7 @@ export const EnhancedWorkoutCard: React.FC<EnhancedWorkoutCardProps> = ({
   previousWorkoutStats,
 }) => {
   const { theme } = useTheme();
-  const colors = Colors[theme];
+  const colors = Colors[theme] || Colors.light; // Fallback to light theme if undefined
   
   const [showMuscleGroups, setShowMuscleGroups] = useState(false);
   const scaleAnimation = useRef(new Animated.Value(1)).current;

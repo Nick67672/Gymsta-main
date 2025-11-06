@@ -3,7 +3,6 @@ import {
   House,
   MessageSquare,
   SquarePlus as PlusSquare,
-  ShoppingBag,
   User,
   Zap,
 } from 'lucide-react-native';
@@ -307,11 +306,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="marketplace"
+        name="chat"
         options={{
           tabBarIcon: ({ color, size, focused }) => (
             <GradientTabIcon focused={focused} inactiveColor={color}>
-              <ShoppingBag size={24} />
+              <MessageSquare size={24} />
             </GradientTabIcon>
           ),
         }}
@@ -319,17 +318,12 @@ export default function TabLayout() {
           tabPress: (e) => {
             handleTabPress();
             e.preventDefault();
-            // Always navigate to the root of the marketplace tab
-            router.replace('/marketplace');
+            // Always navigate to the root of the chat tab
+            router.replace('/chat');
           },
         }}
       />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          href: null, // This hides the chat tab but keeps the route accessible
-        }}
-      />
+      
       <Tabs.Screen
         name="notifications"
         options={{

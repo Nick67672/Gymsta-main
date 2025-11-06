@@ -9,7 +9,6 @@ import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -136,54 +135,7 @@ export default function FitnessHubScreen() {
     router.push('/fitness/ai-hub');
   };
 
-  // Lightweight weight tracker CTA (private storage, weekly average)
-  const [weightInput, setWeightInput] = useState('');
-  const [weeklyAvg, setWeeklyAvg] = useState<number | null>(null);
-
-  useEffect(() => {
-    loadWeeklyAverage();
-  }, [user?.id]);
-
-  const loadWeeklyAverage = async () => {
-    try {
-      if (!user) return;
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-      const { data, error } = await supabase
-        .from('user_weight_entries')
-        .select('weight_kg, recorded_on')
-        .eq('user_id', user.id)
-        .gte('recorded_on', sevenDaysAgo.toISOString().split('T')[0]);
-      if (error) throw error;
-      const values = (data || []).map((r: any) => r.weight_kg).filter((v: any) => typeof v === 'number');
-      if (values.length === 0) {
-        setWeeklyAvg(null);
-      } else {
-        const avg = values.reduce((a: number, b: number) => a + b, 0) / values.length;
-        setWeeklyAvg(avg);
-      }
-    } catch (e) {
-      // non-fatal
-    }
-  };
-
-  const saveTodayWeight = async () => {
-    try {
-      if (!user) return;
-      const raw = parseFloat(weightInput);
-      if (Number.isNaN(raw) || raw <= 0) return;
-      const weightKg = raw; // For simplicity assume kg input. Could convert via useUnits.
-      const today = new Date().toISOString().split('T')[0];
-      const { error } = await supabase
-        .from('user_weight_entries')
-        .upsert({ user_id: user.id, recorded_on: today, weight_kg: weightKg, source: 'quick' }, { onConflict: 'user_id,recorded_on' });
-      if (error) throw error;
-      setWeightInput('');
-      loadWeeklyAverage();
-    } catch (e) {
-      // non-fatal
-    }
-  };
+  // Weight tracker removed for now
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -285,25 +237,33 @@ export default function FitnessHubScreen() {
                 </View>
                 
                 <View style={styles.hubCardBody}>
-                  <Text style={styles.hubTitle}>Workout Hub</Text>
-                  <Text style={styles.hubDescription}>
-                    Track workouts, log exercises, and monitor your fitness progress
+                  <Text
+                    style={styles.hubTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    ellipsizeMode="tail"
+                  >
+                    Workout Hub
                   </Text>
-                  
-                  <View style={styles.hubFeatures}>
-                    <View style={styles.featureItem}>
-                      <TrendingUp size={16} color="rgba(255,255,255,0.9)" />
-                      <Text style={styles.featureText}>Progress Tracking</Text>
+
+                  {/* Subtle icon-only feature row for visual interest */}
+                  <View style={styles.hubIconRow}>
+                    <View style={styles.hubIconCircleSm}>
+                      <TrendingUp size={14} color="rgba(255,255,255,0.9)" />
                     </View>
-                    <View style={styles.featureItem}>
-                      <Calendar size={16} color="rgba(255,255,255,0.9)" />
-                      <Text style={styles.featureText}>Workout Plans</Text>
+                    <View style={styles.hubIconCircleSm}>
+                      <Calendar size={14} color="rgba(255,255,255,0.9)" />
                     </View>
-                    <View style={styles.featureItem}>
-                      <Target size={16} color="rgba(255,255,255,0.9)" />
-                      <Text style={styles.featureText}>Personal Records</Text>
+                    <View style={styles.hubIconCircleSm}>
+                      <Target size={14} color="rgba(255,255,255,0.9)" />
                     </View>
                   </View>
+                </View>
+
+                {/* Large translucent watermark icon */}
+                <View pointerEvents="none" style={styles.hubWatermarkIcon}>
+                  <Zap size={120} color="rgba(255,255,255,0.12)" />
                 </View>
 
                 {/* Removed goal/progress footer */}
@@ -330,22 +290,30 @@ export default function FitnessHubScreen() {
                 </View>
                 
                 <View style={styles.hubCardBody}>
-                  <Text style={styles.hubTitle}>Nutrition Hub</Text>
-                  <Text style={styles.hubDescription}>
-                    Plan meals, track calories, and maintain a healthy diet
+                  <Text
+                    style={styles.hubTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    ellipsizeMode="tail"
+                  >
+                    Nutrition Hub
                   </Text>
-                  
-                  <View style={styles.hubFeatures}>
-                    <View style={styles.featureItem}>
-                      <ChefHat size={16} color="rgba(255,255,255,0.9)" />
-                      <Text style={styles.featureText}>Meal Planning</Text>
+
+                  {/* Icon-only feature row */}
+                  <View style={styles.hubIconRow}>
+                    <View style={styles.hubIconCircleSm}>
+                      <ChefHat size={14} color="rgba(255,255,255,0.9)" />
                     </View>
-                    <View style={styles.featureItem}>
-                      <TrendingUp size={16} color="rgba(255,255,255,0.9)" />
-                      <Text style={styles.featureText}>Calorie Tracking</Text>
+                    <View style={styles.hubIconCircleSm}>
+                      <TrendingUp size={14} color="rgba(255,255,255,0.9)" />
                     </View>
-                    {/* Removed Nutrition Goals feature since goals aren't supported */}
                   </View>
+                </View>
+
+                {/* Large translucent watermark icon */}
+                <View pointerEvents="none" style={styles.hubWatermarkIcon}>
+                  <Apple size={120} color="rgba(255,255,255,0.12)" />
                 </View>
 
                 {/* Removed goal/progress footer */}
@@ -374,10 +342,30 @@ export default function FitnessHubScreen() {
                 </View>
 
                 <View style={styles.hubCardBody}>
-                  <Text style={styles.hubTitle}>AI Hub</Text>
-                  <Text style={styles.hubDescription}>
-                    Correct your form with AI-powered video analysis and get real-time feedback.
+                  <Text
+                    style={styles.hubTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    ellipsizeMode="tail"
+                  >
+                    AI Hub
                   </Text>
+
+                  {/* Icon-only row */}
+                  <View style={styles.hubIconRow}>
+                    <View style={styles.hubIconCircleSm}>
+                      <Sparkles size={14} color="rgba(255,255,255,0.9)" />
+                    </View>
+                    <View style={styles.hubIconCircleSm}>
+                      <Target size={14} color="rgba(255,255,255,0.9)" />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Large translucent watermark icon */}
+                <View pointerEvents="none" style={styles.hubWatermarkIcon}>
+                  <Sparkles size={120} color="rgba(255,255,255,0.12)" />
                 </View>
               </View>
             </LinearGradient>
@@ -465,7 +453,7 @@ const styles = StyleSheet.create({
     ...Shadows.heavy,
   },
   hubCardGradient: {
-    minHeight: 180,
+    height: 200,
     borderRadius: 16,
   },
   hubCardContent: {
@@ -501,6 +489,26 @@ const styles = StyleSheet.create({
   },
   hubCardBody: {
     flex: 1,
+  },
+  hubIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  hubIconCircleSm: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hubWatermarkIcon: {
+    position: 'absolute',
+    right: Spacing.lg,
+    bottom: Spacing.lg,
+    transform: [{ rotate: '-8deg' }],
   },
   hubTitle: {
     fontSize: 22,
@@ -548,42 +556,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.9)',
     fontWeight: '600',
-  },
-  weightCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-  },
-  weightTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: Spacing.md,
-  },
-  weightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  weightInput: {
-    flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: Spacing.md,
-    fontSize: 16,
-  },
-  weightSave: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: 10,
-  },
-  weightSaveText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  weightHint: {
-    fontSize: 12,
   },
 });

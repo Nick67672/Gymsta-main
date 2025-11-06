@@ -24,7 +24,7 @@ import Animated, {
 
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useUnits } from '@/context/UnitContext';
+const UnitContextModule = React.lazy(() => import('@/context/UnitContext'));
 import { supabase } from '@/lib/supabase';
 import { goBack } from '@/lib/goBack';
 import Colors from '@/constants/Colors';
@@ -59,7 +59,29 @@ interface ExerciseData {
 export default function WorkoutHistoryScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
-  const { formatWeight, units, updateUnits } = useUnits();
+  const [unitsReady, setUnitsReady] = React.useState(false);
+  const [formatWeight, setFormatWeight] = React.useState<(v:number, fromUnit?: 'lbs' | 'kg', toUnit?: 'lbs' | 'kg') => string>(() => (v:number) => `${v}`);
+  const [units, setUnits] = React.useState<any>({ weight_unit: 'lbs' });
+  const [updateUnits, setUpdateUnits] = React.useState<(u:any)=>Promise<void>>(async ()=>{});
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const mod: any = await import('@/context/UnitContext');
+        if (!mounted) return;
+        const hook = mod.useUnits as any;
+        if (hook) {
+          const ctx = hook();
+          setFormatWeight(() => ctx.formatWeight);
+          setUnits(ctx.units);
+          setUpdateUnits(() => ctx.updateUnits);
+          setUnitsReady(true);
+        }
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []);
   const colors = Colors[theme];
 
   const [workouts, setWorkouts] = useState<WorkoutData[]>([]);

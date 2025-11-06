@@ -108,8 +108,14 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
 
     if (state === State.END) {
       if (translation > SWIPE_THRESHOLD && !set.completed) {
-        // Swipe right - complete set
-        completeSet();
+        // Swipe right
+        if (isEditingPlan) {
+          // In plan edit mode, ignore right-swipe (no complete action)
+          resetPosition();
+        } else {
+          // Complete set during active workout
+          completeSet();
+        }
       } else if (translation < -SWIPE_THRESHOLD) {
         // Swipe left - delete set
         deleteSet();
@@ -185,7 +191,9 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
   const getBackgroundColor = () => {
     return translateX.interpolate({
       inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-      outputRange: ['#EF4444', colors.background, '#4CAF50'],
+      outputRange: isEditingPlan
+        ? ['#EF4444', colors.background, colors.background] // disable green complete bg in plan edit
+        : ['#EF4444', colors.background, '#4CAF50'],
       extrapolate: 'clamp',
     });
   };
@@ -207,27 +215,29 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
         <Text style={styles.swipeIndicatorText}>Delete Set</Text>
       </Animated.View>
 
-      {/* Complete indicator (right side) */}
-      <Animated.View
-        style={[
-          styles.swipeIndicator,
-          styles.completeIndicator,
-          {
-            backgroundColor: '#4CAF50',
-            opacity: getCompleteIndicatorOpacity(),
-          },
-        ]}
-      >
-        <CheckCircle size={24} color="white" />
-        <Text style={styles.swipeIndicatorText}>Complete Set</Text>
-      </Animated.View>
+      {/* Complete indicator (right side) - hidden while editing a plan */}
+      {!isEditingPlan && (
+        <Animated.View
+          style={[
+            styles.swipeIndicator,
+            styles.completeIndicator,
+            {
+              backgroundColor: '#4CAF50',
+              opacity: getCompleteIndicatorOpacity(),
+            },
+          ]}
+        >
+          <CheckCircle size={24} color="white" />
+          <Text style={styles.swipeIndicatorText}>Complete Set</Text>
+        </Animated.View>
+      )}
 
       {/* Main set row */}
-             <PanGestureHandler
-         onGestureEvent={handlePanGestureEvent}
-         onHandlerStateChange={handlePanStateChange}
-         enabled={!set.completed && !isEditingPlan}
-       >
+      <PanGestureHandler
+        onGestureEvent={handlePanGestureEvent}
+        onHandlerStateChange={handlePanStateChange}
+        enabled={!set.completed}
+      >
         <Animated.View
           style={[
             styles.setRow,
@@ -424,26 +434,30 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
     const currentExercise = currentWorkout.exercises[currentExerciseIndex];
     if (currentExercise) {
       const completedSets = currentExercise.sets.filter(set => set.completed).length;
+      const totalSets = currentExercise.sets.length;
       const totalExercises = currentWorkout.exercises.length;
       const completedExercises = currentExerciseIndex;
-      const workoutProgress = (completedExercises + (completedSets / currentExercise.sets.length)) / totalExercises;
-      
+      const workoutProgress = (completedExercises + (completedSets / Math.max(1, totalSets))) / Math.max(1, totalExercises);
+
       // Determine if compound movement
       const compoundExercises = ['squat', 'deadlift', 'bench', 'press', 'row', 'pull'];
       const isCompound = compoundExercises.some(compound => 
         currentExercise.name.toLowerCase().includes(compound)
       );
-      
+
+      // Clamp the displayed set number so it never exceeds total sets
+      const displaySetNumber = Math.min(completedSets + 1, totalSets);
+
       setWorkoutContext({
         exerciseName: currentExercise.name,
-        exerciseType: 'strength', // Could be enhanced with exercise type detection
-        setNumber: completedSets + 1,
-        totalSets: currentExercise.sets.length,
+        exerciseType: 'strength',
+        setNumber: displaySetNumber,
+        totalSets,
         workoutProgress,
         isCompoundMovement: isCompound,
-        exerciseIntensity: 5, // Could be enhanced with user input
+        exerciseIntensity: 5,
         timeOfDay: new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening',
-        userTendsToSkip: false // Could be learned from analytics
+        userTendsToSkip: false,
       });
     }
   }, [currentExerciseIndex, currentWorkout]);
@@ -498,14 +512,17 @@ export default function WorkoutSession({ workout, onWorkoutComplete, onClose, de
 
     // Update workout context for the timer
     const exercise = currentWorkout.exercises[exerciseIndex];
-    const completedSetsCount = exercise.sets.filter(s => s.completed).length + 1; // +1 for the set we just completed
+    const totalSetsForExercise = exercise.sets.length;
+    // +1 to account for the set just completed before state commit; clamp to total sets
+    const completedSetsCount = exercise.sets.filter(s => s.completed).length + 1;
+    const displaySetNumber = Math.min(completedSetsCount, totalSetsForExercise);
     const currentHour = new Date().getHours();
     
     setWorkoutContext({
       exerciseName: exercise.name,
       exerciseType: 'strength', // You might want to make this dynamic based on exercise
-      setNumber: completedSetsCount,
-      totalSets: exercise.sets.length,
+      setNumber: displaySetNumber,
+      totalSets: totalSetsForExercise,
       workoutProgress: (currentExerciseIndex + 1) / currentWorkout.exercises.length,
       isCompoundMovement: ['squat', 'deadlift', 'bench', 'press'].some(compound => 
         exercise.name.toLowerCase().includes(compound)

@@ -1,3 +1,5 @@
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 import '@/lib/polyfills';
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';

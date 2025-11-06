@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, FlatList } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,8 +15,6 @@ import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import { ThemedButton } from '@/components/ThemedButton';
 import { goBack } from '@/lib/goBack';
 import { getAvatarUrl } from '@/lib/avatarUtils';
-import FeedPost from '@/components/Post';
-import EnhancedWorkoutPost from '@/components/EnhancedWorkoutPost';
 
 interface ProfileStory {
   id: string;
@@ -131,6 +129,10 @@ export default function UserProfileScreen() {
   const [following, setFollowing] = useState<Following[]>([]);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [loadingFollowing, setLoadingFollowing] = useState(false);
+  const [playingVideo, setPlayingVideo] = useState<string | null>(null);
+  const [flaggedPosts, setFlaggedPosts] = useState<{ [postId: string]: boolean }>({});
+  const [flagging, setFlagging] = useState<{ [postId: string]: boolean }>({});
+  const videoRefs = useRef<{ [key: string]: any }>({});
 
   // Format numbers for better display (e.g., 1.2K, 1.5M)
   const formatNumber = (num: number): string => {
@@ -260,10 +262,10 @@ export default function UserProfileScreen() {
         follow_request_sent: followRequestSent
       });
 
-      // Load user's posts with likes
+      // Load user's posts with likes and profiles
       const { data: postsData, error: postsError } = await supabase
         .from('posts')
-        .select('id, caption, image_url, created_at, likes(id, user_id)')
+        .select('id, caption, image_url, created_at, user_id, media_type, product_id, likes(id, user_id), profiles(id, username, avatar_url, is_verified)')
         .eq('user_id', profileData.id)
         .order('created_at', { ascending: false });
 
@@ -630,6 +632,35 @@ export default function UserProfileScreen() {
     }
   };
 
+  const toggleVideoPlayback = (postId: string) => {
+    setPlayingVideo(playingVideo === postId ? null : postId);
+  };
+
+  const navigateToProfile = (userId: string, username: string) => {
+    if (userId === currentUserId) {
+      router.push('/(tabs)/profile');
+    } else {
+      router.push(`/${username}`);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', postId);
+
+      if (error) throw error;
+
+      // Remove from local state
+      setPosts(posts.filter(p => p.id !== postId));
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      Alert.alert('Error', 'Failed to delete post');
+    }
+  };
+
   const loadFollowers = async () => {
     if (!profile) return;
     
@@ -868,6 +899,162 @@ export default function UserProfileScreen() {
     );
   }
 
+  const postGridItems = posts.filter((p: any) => (p as any).type === 'post');
+
+  // Profile header component for FlatList
+  const renderProfileHeader = () => (
+    <>
+      <TouchableOpacity 
+        onPress={profile.has_story ? () => setShowingStories(true) : undefined}
+        style={[
+          styles.profileImageContainer,
+          profile.has_story && styles.hasStoryRing,
+          { backgroundColor: colors.background }
+        ]}>
+          <Image
+            source={{ 
+              uri: getAvatarUrl(profile.avatar_url, profile.username)
+            }}
+            style={styles.profileImage}
+          />
+      </TouchableOpacity>
+
+      <View style={styles.profileInfo}>
+        <View style={styles.usernameContainer}>
+          <Text style={[styles.username, { color: colors.text }]}>{profile.username}</Text>
+          {profile.is_verified && (
+            <CheckCircle2 size={20} color="#fff" fill="#3B82F6" />
+          )}
+        </View>
+        <Text style={[styles.bio, { color: colors.textSecondary }]}>{profile.bio || 'No bio yet'}</Text>
+        {profile.gym && (
+          <View style={styles.gymContainer}>
+            <Text style={[styles.gymLabel, { color: colors.textSecondary }]}>📍 </Text>
+            <Text style={[styles.gymName, { color: colors.text }]}>{profile.gym}</Text>
+          </View>
+        )}
+        
+        {currentUserId && currentUserId !== profile.id && (
+          <View style={[
+            styles.buttonContainer,
+            styles.singleButtonContainer
+          ]}>
+            <ThemedButton
+              title={profile.is_following ? 'Following' : profile.follow_request_sent ? 'Requested' : 'Follow'}
+              onPress={handleFollow}
+              variant={(profile.is_following || profile.follow_request_sent) ? 'secondary' : 'primary'}
+              size="medium"
+              disabled={followLoading}
+              loading={followLoading}
+              icon={
+                profile.is_following ? (
+                  <UserCheck size={18} color={colors.tint} />
+                ) : profile.follow_request_sent ? (
+                  <UserPlus size={18} color={colors.tint} />
+                ) : (
+                  <UserPlus size={18} color="#fff" />
+                )
+              }
+              style={{ 
+                flex: 1, 
+                borderColor: colors.tint, 
+                borderWidth: (profile.is_following || profile.follow_request_sent) ? 1.5 : 0, 
+                minWidth: 120,
+                maxWidth: 120
+              }}
+              textStyle={(profile.is_following || profile.follow_request_sent) ? { color: colors.tint } : undefined}
+            />
+
+            <ThemedButton
+              title="Message"
+              onPress={startChat}
+              variant="secondary"
+              size="medium"
+              disabled={chatLoading}
+              loading={chatLoading}
+              icon={<MessageSquare size={18} color={colors.tint} />}
+              style={{ flex: 1, borderColor: colors.tint, borderWidth: 1.5 }}
+              textStyle={{ color: colors.tint }}
+            />
+            
+            <TouchableOpacity
+              style={styles.moreButton}
+              onPress={() => setShowMenu(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <MoreVertical size={22} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      <View style={[
+        styles.statsContainer, 
+        { 
+          borderTopColor: colors.border, 
+          borderBottomColor: colors.border,
+          backgroundColor: colors.background
+        }
+      ]}>
+        <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
+          <Text style={[styles.statNumber, { color: colors.tint }]}>
+            {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(posts.length)}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+        </View>
+        <TouchableOpacity 
+          style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+          onPress={handleShowFollowers}
+        >
+          <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
+          onPress={handleShowFollowing}
+        >
+          <Text style={[styles.statNumber, { color: colors.tint }]}>
+            {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(profile._count.following)}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Toggle Tabs */}
+      <View style={styles.toggleContainer}>
+        <TouchableOpacity
+          style={[styles.toggleButton, activeTab === 'posts' && styles.activeToggle]}
+          onPress={() => setActiveTab('posts')}
+        >
+          <Grid3x3 size={20} color={activeTab === 'posts' ? colors.tint : colors.text} />
+          {activeTab === 'posts' && (
+            <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.toggleButton, activeTab === 'lifts' && styles.activeToggle]}
+          onPress={() => setActiveTab('lifts')}
+        >
+          <Activity size={20} color={activeTab === 'lifts' ? colors.tint : colors.text} />
+          {activeTab === 'lifts' && (
+            <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.toggleButton, activeTab === 'workouts' && styles.activeToggle]}
+          onPress={() => setActiveTab('workouts')}
+        >
+          <Dumbbell size={20} color={activeTab === 'workouts' ? colors.tint : colors.text} />
+          {activeTab === 'workouts' && (
+            <View style={[styles.underline, { backgroundColor: colors.tint }]} />
+          )}
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
@@ -881,185 +1068,48 @@ export default function UserProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
-        <TouchableOpacity 
-          onPress={profile.has_story ? () => setShowingStories(true) : undefined}
-          style={[
-            styles.profileImageContainer,
-            profile.has_story && styles.hasStoryRing,
-            { backgroundColor: colors.background }
-          ]}>
-            <Image
-              source={{ 
-                uri: getAvatarUrl(profile.avatar_url, profile.username)
-              }}
-              style={styles.profileImage}
-            />
-        </TouchableOpacity>
-
-        <View style={styles.profileInfo}>
-          <View style={styles.usernameContainer}>
-            <Text style={[styles.username, { color: colors.text }]}>{profile.username}</Text>
-            {profile.is_verified && (
-              <CheckCircle2 size={20} color="#fff" fill="#3B82F6" />
-            )}
-          </View>
-          <Text style={[styles.bio, { color: colors.textSecondary }]}>{profile.bio || 'No bio yet'}</Text>
-          {profile.gym && (
-            <View style={styles.gymContainer}>
-              <Text style={[styles.gymLabel, { color: colors.textSecondary }]}>📍 </Text>
-              <Text style={[styles.gymName, { color: colors.text }]}>{profile.gym}</Text>
-            </View>
-          )}
-          
-          {currentUserId && currentUserId !== profile.id && (
-            <View style={[
-              styles.buttonContainer,
-              styles.singleButtonContainer
-            ]}>
-              <ThemedButton
-                title={profile.is_following ? 'Following' : profile.follow_request_sent ? 'Requested' : 'Follow'}
-                onPress={handleFollow}
-                variant={(profile.is_following || profile.follow_request_sent) ? 'secondary' : 'primary'}
-                size="medium"
-                disabled={followLoading}
-                loading={followLoading}
-                icon={
-                  profile.is_following ? (
-                    <UserCheck size={18} color={colors.tint} />
-                  ) : profile.follow_request_sent ? (
-                    <UserPlus size={18} color={colors.tint} />
-                  ) : (
-                    <UserPlus size={18} color="#fff" />
-                  )
-                }
-                style={{ 
-                  flex: 1, 
-                  borderColor: colors.tint, 
-                  borderWidth: (profile.is_following || profile.follow_request_sent) ? 1.5 : 0, 
-                  minWidth: 120,
-                  maxWidth: 120
-                }}
-                textStyle={(profile.is_following || profile.follow_request_sent) ? { color: colors.tint } : undefined}
-              />
-
-              <ThemedButton
-                title="Message"
-                onPress={startChat}
-                variant="secondary"
-                size="medium"
-                disabled={chatLoading}
-                loading={chatLoading}
-                icon={<MessageSquare size={18} color={colors.tint} />}
-                style={{ flex: 1, borderColor: colors.tint, borderWidth: 1.5 }}
-                textStyle={{ color: colors.tint }}
-              />
-              
-              <TouchableOpacity
-                style={styles.moreButton}
-                onPress={() => setShowMenu(true)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <MoreVertical size={22} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        <View style={[
-          styles.statsContainer, 
-          { 
-            borderTopColor: colors.border, 
-            borderBottomColor: colors.border,
-            backgroundColor: colors.background
-          }
-        ]}>
-          <View style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}>
-            <Text style={[styles.statNumber, { color: colors.tint }]}>
-              {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(posts.length)}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
-          </View>
-          <TouchableOpacity 
-            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
-            onPress={handleShowFollowers}
-          >
-            <Text style={[styles.statNumber, { color: colors.tint }]}>{formatNumber(profile._count.followers)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.statItem, { backgroundColor: colors.backgroundSecondary }]}
-            onPress={handleShowFollowing}
-          >
-            <Text style={[styles.statNumber, { color: colors.tint }]}>
-              {profile.is_private && !profile.is_following && currentUserId !== profile.id ? '-' : formatNumber(profile._count.following)}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Toggle Tabs */}
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'posts' && styles.activeToggle]}
-            onPress={() => setActiveTab('posts')}
-          >
-            <Grid3x3 size={20} color={activeTab === 'posts' ? colors.tint : colors.text} />
-            {activeTab === 'posts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'lifts' && styles.activeToggle]}
-            onPress={() => setActiveTab('lifts')}
-          >
-            <Activity size={20} color={activeTab === 'lifts' ? colors.tint : colors.text} />
-            {activeTab === 'lifts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toggleButton, activeTab === 'workouts' && styles.activeToggle]}
-            onPress={() => setActiveTab('workouts')}
-          >
-            <Dumbbell size={20} color={activeTab === 'workouts' ? colors.tint : colors.text} />
-            {activeTab === 'workouts' && (
-              <View style={[styles.underline, { backgroundColor: colors.tint }]} />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Content based on active tab */}
-        {profile.is_private && !profile.is_following && currentUserId !== profile.id ? (
-          // Show private account message for all tabs
+      {/* Content based on active tab */}
+      {profile.is_private && !profile.is_following && currentUserId !== profile.id ? (
+        <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
+          {renderProfileHeader()}
           <View style={styles.privateAccountContainer}>
             <Text style={[styles.privateAccountTitle, { color: colors.text }]}>This Account is Private</Text>
             <Text style={[styles.privateAccountText, { color: colors.textSecondary }]}>
               Follow this account to see their {activeTab === 'posts' ? 'posts' : activeTab === 'lifts' ? 'lift records' : 'workouts'}.
             </Text>
           </View>
-        ) : activeTab === 'posts' ? (
+        </ScrollView>
+      ) : activeTab === 'posts' ? (
         <FlatList
-          data={posts}
+          data={postGridItems}
+          numColumns={3}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderProfileHeader}
+          contentContainerStyle={{ paddingBottom: 20 }}
           renderItem={({ item }) => (
-            <FeedPost
-              post={item}
-              onLike={handleLike}
-              onUnlike={handleUnlike}
+            <TouchableOpacity
+              style={styles.postItem}
+              activeOpacity={0.9}
               onPress={() => {
-                if (item.type === 'workout') {
+                if ((item as any).type === 'workout') {
                   setSelectedWorkoutId(item.id);
                   setShowWorkoutModal(true);
                 } else {
                   router.push(`/(tabs)/post/${item.id}`);
                 }
               }}
-            />
+            >
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={styles.postImage} />
+              ) : (
+                <View style={[styles.noImageContainer, { backgroundColor: colors.backgroundSecondary }]}> 
+                  <Text style={[styles.noImageText, { color: colors.textSecondary }]}> 
+                    No image 
+                  </Text> 
+                </View>
+              )}
+            </TouchableOpacity>
           )}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 5 }}
           ListEmptyComponent={() => (
             <View style={styles.postsGrid}>
               <Text style={[styles.progressText, { color: colors.textSecondary }]}>No posts to show yet.</Text>
@@ -1067,51 +1117,56 @@ export default function UserProfileScreen() {
           )}
         />
         ) : activeTab === 'lifts' ? (
-          lifts.length === 0 ? (
-            <View style={styles.progressContainer}>
-              <Text style={[styles.progressText, { color: colors.textSecondary }]}>No lift records to show yet.</Text>
-              <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
-            </View>
-          ) : (
-            <View style={styles.postsGrid}>
-              {lifts.map((lift) => (
-                <TouchableOpacity
-                  key={lift.id}
-                  style={styles.postContainer}>
-                  <View style={[styles.liftContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderWidth: 1 }]}>
-                    <Text style={[styles.liftName, { color: colors.text }]}>
-                      {lift.exercise_name}
-                    </Text>
-                    <Text style={[styles.liftWeight, { color: colors.tint }]}>
-                      {lift.weight}kg
-                    </Text>
-                    <Text style={[styles.liftReps, { color: colors.textSecondary }]}>
-                      {lift.reps} reps
-                </Text>
+          <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
+            {renderProfileHeader()}
+            {lifts.length === 0 ? (
+              <View style={styles.progressContainer}>
+                <Text style={[styles.progressText, { color: colors.textSecondary }]}>No lift records to show yet.</Text>
+                <Text style={[styles.progressSubText, { color: colors.textSecondary }]}>Start tracking your lifts to see progress here.</Text>
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-          )
+            ) : (
+              <View style={styles.postsGrid}>
+                {lifts.map((lift) => (
+                  <TouchableOpacity
+                    key={lift.id}
+                    style={styles.postContainer}>
+                    <View style={[styles.liftContainer, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderWidth: 1 }]}>
+                      <Text style={[styles.liftName, { color: colors.text }]}>
+                        {lift.exercise_name}
+                      </Text>
+                      <Text style={[styles.liftWeight, { color: colors.tint }]}>
+                        {lift.weight}kg
+                      </Text>
+                      <Text style={[styles.liftReps, { color: colors.textSecondary }]}>
+                        {lift.reps} reps
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </ScrollView>
         ) : (
-          workouts.length === 0 ? (
-            <View style={styles.progressContainer}>
-              <Text style={[styles.progressText, { color: colors.textSecondary }]}>No workouts to show yet.</Text>
-            </View>
-          ) : (
-            <View style={styles.postsGrid}>
-              {workouts.map((workout) => (
-                <TouchableOpacity
-                  key={workout.id}
-                  style={styles.workoutCard}
-                  onPress={() => {
-                    setSelectedWorkoutId(workout.id);
-                    setShowWorkoutModal(true);
-                  }}
-                  activeOpacity={0.9}>
-                  {workout.progress_image_url ? (
-                    <View style={styles.workoutImageContainer}>
-                      <Image source={{ uri: workout.progress_image_url }} style={styles.workoutImage} />
+          <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ paddingBottom: 20 }}>
+            {renderProfileHeader()}
+            {workouts.length === 0 ? (
+              <View style={styles.progressContainer}>
+                <Text style={[styles.progressText, { color: colors.textSecondary }]}>No workouts to show yet.</Text>
+              </View>
+            ) : (
+              <View style={styles.postsGrid}>
+                {workouts.map((workout) => (
+                  <TouchableOpacity
+                    key={workout.id}
+                    style={styles.workoutCard}
+                    onPress={() => {
+                      setSelectedWorkoutId(workout.id);
+                      setShowWorkoutModal(true);
+                    }}
+                    activeOpacity={0.9}>
+                    {workout.progress_image_url ? (
+                      <View style={styles.workoutImageContainer}>
+                        <Image source={{ uri: workout.progress_image_url }} style={styles.workoutImage} />
                       <View style={styles.workoutOverlay}>
                         <View style={[styles.exerciseBadge, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
                           <Dumbbell size={14} color="#fff" />
@@ -1140,9 +1195,9 @@ export default function UserProfileScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          )
+            )}
+          </ScrollView>
         )}
-      </ScrollView>
 
       <Modal
         visible={showingStories}

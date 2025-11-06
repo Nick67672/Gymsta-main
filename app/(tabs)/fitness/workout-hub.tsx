@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Modal, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
+// @ts-ignore
+FlashList.defaultProps = { ...(FlashList.defaultProps || {}), disableAutoLayout: true };
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronRight, ChevronLeft, Play, Zap, Plus, Trash2, Edit3, TrendingUp, Flame, Dumbbell } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -17,8 +19,17 @@ import { LineChart } from 'react-native-chart-kit';
 
 export default function WorkoutHubScreen() {
   const { theme } = useTheme();
-  const colors = Colors[theme];
+  const colors = (theme && Colors[theme]) ? Colors[theme] : Colors.light; // Proper null check with fallback
   const { user } = useAuth();
+
+  // Don't render until theme is properly initialized
+  if (!theme) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.light.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={Colors.light.tint} size="large" />
+      </SafeAreaView>
+    );
+  }
 
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<any[]>([]);
@@ -805,6 +816,7 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     ...Shadows.light,
     marginBottom: Spacing.md,
+    minHeight: 140,
   },
   planCardHeader: {
     position: 'absolute',

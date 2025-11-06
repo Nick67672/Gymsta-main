@@ -161,15 +161,49 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
   const singleTapTimeout = useRef<number | null>(null);
 
   // Check if post has workout data
-  const hasWorkoutData = (post as any).workout_id || post.caption?.includes('#workout') || post.caption?.includes('#fitness');
+  const hasWorkoutData = (post as any).workout_id || (post as any).post_type === 'workout';
+
+  // Load attached workout for real stats when available
+  const [attachedWorkout, setAttachedWorkout] = useState<any | null>(null);
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const workoutId = (post as any).workout_id;
+        if (!workoutId) return;
+        const { data, error } = await supabase
+          .from('workouts')
+          .select('id,name,exercises,duration_minutes,total_volume,created_at')
+          .eq('id', workoutId)
+          .maybeSingle();
+        if (!isMounted) return;
+        if (!error && data) setAttachedWorkout(data);
+      } catch {}
+    })();
+    return () => { isMounted = false; };
+  }, [post?.id, (post as any).workout_id]);
   
-  // Simulated workout stats for demonstration
+  // Workout stats based on attached workout (fallback to heuristics)
+  const workoutExercises: any[] = (attachedWorkout?.exercises as any[]) || [];
+  const totalSets = workoutExercises.reduce((total: number, exercise: any) => total + ((exercise.sets || []).length || 0), 0);
+  const totalReps = workoutExercises.reduce((total: number, exercise: any) => {
+    const reps = (exercise.sets || []).reduce((s: number, st: any) => s + (Number(st.reps) || 0), 0);
+    return total + reps;
+  }, 0);
+  const totalVolume = typeof attachedWorkout?.total_volume === 'number' && attachedWorkout.total_volume > 0
+    ? attachedWorkout.total_volume
+    : workoutExercises.reduce((sum: number, ex: any) => {
+        const sets = Array.isArray(ex.sets) ? ex.sets : [];
+        const exVol = sets.reduce((s: number, st: any) => s + ((Number(st.reps) || 0) * (Number(st.weight) || 0)), 0);
+        return sum + exVol;
+      }, 0);
+  const estimatedDuration = attachedWorkout?.duration_minutes || Math.max(20, totalSets * 2 + workoutExercises.length * 3);
   const workoutStats = {
-    duration: '45 min',
-    calories: '320 cal',
-    exercises: 8,
-    difficulty: 'Intermediate',
-    type: 'Strength'
+    duration: `${estimatedDuration} min`,
+    calories: `${Math.max(200, Math.round(estimatedDuration * 5))} cal`,
+    exercises: workoutExercises.length,
+    difficulty: totalSets > 18 ? 'Hard' : totalSets > 10 ? 'Intermediate' : 'Light',
+    type: 'Strength',
   };
 
   // Format date helper

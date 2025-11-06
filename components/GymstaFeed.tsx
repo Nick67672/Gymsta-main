@@ -11,6 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+// @ts-ignore
+FlashList.defaultProps = { ...(FlashList.defaultProps || {}), disableAutoLayout: true };
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Post } from '../types/social';

@@ -1,9 +1,10 @@
+import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Post as PostType } from '@/types/social';
-import GymstaPost from '@/components/GymstaPost';
+const FeedPost = React.lazy(() => import('@/components/Post'));
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
@@ -138,6 +139,8 @@ export default function PostDetailScreen() {
             media_type,
             created_at,
             product_id,
+            workout_id,
+            post_type,
             profiles (
               id,
               username,
@@ -200,24 +203,26 @@ export default function PostDetailScreen() {
       </TouchableOpacity>
       
       <View style={styles.postContainer}>
-        <GymstaPost
-          post={post}
-          colors={colors}
-          playingVideo={playingVideo}
-          currentUserId={currentUserId}
-          flaggedPosts={flaggedPosts}
-          flagging={flagging}
-          setFlagging={setFlagging}
-          setFlaggedPosts={setFlaggedPosts}
-          isAuthenticated={isAuthenticated}
-          showAuthModal={showAuthModal}
-          toggleVideoPlayback={toggleVideoPlayback}
-          navigateToProfile={navigateToProfile}
-          handleLike={handleLike}
-          handleUnlike={handleUnlike}
-          videoRefs={videoRefs}
-          handleDeletePost={handleDeletePost}
-        />
+        <React.Suspense fallback={null}>
+          <FeedPost
+            post={post}
+            colors={colors}
+            playingVideo={playingVideo}
+            currentUserId={currentUserId}
+            flaggedPosts={flaggedPosts}
+            flagging={flagging}
+            setFlagging={setFlagging}
+            setFlaggedPosts={setFlaggedPosts}
+            isAuthenticated={isAuthenticated}
+            showAuthModal={showAuthModal}
+            toggleVideoPlayback={toggleVideoPlayback}
+            navigateToProfile={navigateToProfile}
+            handleLike={handleLike}
+            handleUnlike={handleUnlike}
+            videoRefs={videoRefs}
+            handleDeletePost={handleDeletePost}
+          />
+        </React.Suspense>
       </View>
     </View>
   );

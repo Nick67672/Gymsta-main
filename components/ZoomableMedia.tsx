@@ -1,11 +1,10 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent } from 'react-native';
 import {
-	PanGestureHandler,
-	PinchGestureHandler,
+	Gesture,
+	GestureDetector,
 } from 'react-native-gesture-handler';
 import Animated, {
-	useAnimatedGestureHandler,
 	useAnimatedStyle,
 	useSharedValue,
 	withSpring,
@@ -38,8 +37,6 @@ export default function ZoomableMedia({
 	const savedTranslateY = useSharedValue(0);
 
 	const [isActive, setIsActive] = useState(false);
-	const panRef = useRef(null);
-	const pinchRef = useRef(null);
 
 	const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -56,21 +53,22 @@ export default function ZoomableMedia({
 		}
 	};
 
-	const pinchHandler = useAnimatedGestureHandler({
-		onStart: (_, ctx: any) => {
-			ctx.startScale = savedScale.value;
-			ctx.startX = savedTranslateX.value;
-			ctx.startY = savedTranslateY.value;
-		},
-		onActive: (event, ctx: any) => {
+	const pinchGesture = Gesture.Pinch()
+		.onStart(() => {
+			'worklet';
+			// Store current values
+		})
+		.onUpdate((event) => {
+			'worklet';
 			// Scale around center. For simplicity, ignore focal-based transforms here.
-			const nextScale = clamp(ctx.startScale * event.scale, 1, maxScale);
+			const nextScale = clamp(savedScale.value * event.scale, 1, maxScale);
 			scale.value = nextScale;
 			// While scaling up, keep translation from context
-			translateX.value = ctx.startX;
-			translateY.value = ctx.startY;
-		},
-		onEnd: () => {
+			translateX.value = savedTranslateX.value;
+			translateY.value = savedTranslateY.value;
+		})
+		.onEnd(() => {
+			'worklet';
 			savedScale.value = scale.value;
 			savedTranslateX.value = translateX.value;
 			savedTranslateY.value = translateY.value;
@@ -97,23 +95,24 @@ export default function ZoomableMedia({
 					SPRING_CONFIG
 				);
 			}
-		},
-	});
+		});
 
-	const panHandler = useAnimatedGestureHandler({
-		onStart: (_, ctx: any) => {
-			ctx.startX = savedTranslateX.value;
-			ctx.startY = savedTranslateY.value;
-		},
-		onActive: (event, ctx: any) => {
+	const panGesture = Gesture.Pan()
+		.onStart(() => {
+			'worklet';
+			// Store current values
+		})
+		.onUpdate((event) => {
+			'worklet';
 			// Only allow panning when zoomed in
 			if (scale.value <= 1) return;
 			const maxTranslateX = (containerWidth.value * (scale.value - 1)) / 2;
 			const maxTranslateY = (containerHeight.value * (scale.value - 1)) / 2;
-			translateX.value = clamp(ctx.startX + event.translationX, -maxTranslateX, maxTranslateX);
-			translateY.value = clamp(ctx.startY + event.translationY, -maxTranslateY, maxTranslateY);
-		},
-		onEnd: () => {
+			translateX.value = clamp(savedTranslateX.value + event.translationX, -maxTranslateX, maxTranslateX);
+			translateY.value = clamp(savedTranslateY.value + event.translationY, -maxTranslateY, maxTranslateY);
+		})
+		.onEnd(() => {
+			'worklet';
 			savedTranslateX.value = translateX.value;
 			savedTranslateY.value = translateY.value;
 			if (resetOnEnd) {
@@ -126,8 +125,9 @@ export default function ZoomableMedia({
 				savedTranslateY.value = 0;
 				runOnJS(updateActive)(false);
 			}
-		},
-	});
+		});
+
+	const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
 	const animatedStyle = useAnimatedStyle(() => ({
 		transform: [
@@ -151,15 +151,13 @@ export default function ZoomableMedia({
 
 	return (
 		<View onLayout={onLayout} style={styles.container}>
-			<PanGestureHandler ref={panRef} simultaneousHandlers={pinchRef} enabled={isActive}>
+			<GestureDetector gesture={composedGesture}>
 				<Animated.View style={[styles.fill, containerAnimatedStyle]}>
-					<PinchGestureHandler ref={pinchRef} simultaneousHandlers={panRef}>
-						<Animated.View style={[styles.fill, animatedStyle]}>
-							{children}
-						</Animated.View>
-					</PinchGestureHandler>
+					<Animated.View style={[styles.fill, animatedStyle]}>
+						{children}
+					</Animated.View>
 				</Animated.View>
-			</PanGestureHandler>
+			</GestureDetector>
 		</View>
 	);
 }

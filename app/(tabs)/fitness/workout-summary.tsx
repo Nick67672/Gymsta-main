@@ -168,7 +168,31 @@ export default function WorkoutSummaryScreen() {
         setHasSavedShareInfo(true);
       }
 
-      // Show the workout display
+      // If sharing to feed, create a linked post with cover image
+      if (shareToFeed && currentUserId) {
+        try {
+          const defaultCaption = captionText.trim().length > 0 ? captionText.trim() : undefined;
+          const { error: postError } = await supabase
+            .from('posts')
+            // @ts-ignore insert shape supports workout_id/post_type
+            .insert({
+              user_id: currentUserId,
+              image_url: photoUrl,
+              media_type: 'image',
+              caption: defaultCaption || null,
+              workout_id: workoutId,
+              post_type: 'workout',
+            });
+
+          if (postError) {
+            console.error('Failed to create workout post:', postError);
+          }
+        } catch (e) {
+          console.error('Unexpected error creating workout post:', e);
+        }
+      }
+
+      // Show the workout display (cover + swipe breakdown)
       handleShowWorkoutDisplay();
     } catch (err) {
       console.error('Failed to show workout display:', err);

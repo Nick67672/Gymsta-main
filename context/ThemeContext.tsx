@@ -22,8 +22,8 @@ export const useTheme = () => useContext(ThemeContext);
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const systemColorScheme = useColorScheme();
-  const [theme, setTheme] = useState<ThemeType>('light');
-  const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<ThemeType>(systemColorScheme === 'dark' ? 'dark' : 'light');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Load saved theme on startup
   useEffect(() => {
@@ -32,14 +32,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
         const savedTheme = await AsyncStorage.getItem('theme');
         if (savedTheme) {
           setTheme(savedTheme as ThemeType);
-        } else {
-          // Use system preference if no saved theme
-          setTheme(systemColorScheme === 'dark' ? 'dark' : 'light');
         }
+        // If no saved theme, keep the initial system preference
       } catch (error) {
         console.error('Failed to load theme:', error);
-      } finally {
-        setIsLoading(false);
       }
     };
 
@@ -48,12 +44,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Save theme to AsyncStorage when it changes
   useEffect(() => {
-    if (!isLoading) {
-      AsyncStorage.setItem('theme', theme).catch(error => {
-        console.error('Failed to save theme:', error);
-      });
-    }
-  }, [theme, isLoading]);
+    AsyncStorage.setItem('theme', theme).catch(error => {
+      console.error('Failed to save theme:', error);
+    });
+  }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prevTheme => (prevTheme === 'light' ? 'dark' : 'light'));

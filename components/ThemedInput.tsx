@@ -62,7 +62,7 @@ export function ThemedInput({
       left: leftIcon ? 48 : Spacing.md,
       top: animatedLabel.interpolate({
         inputRange: [0, 1],
-        outputRange: [size === 'large' ? 20 : size === 'small' ? 12 : 16, 8],
+        outputRange: [size === 'large' ? 18 : size === 'small' ? 10 : 14, 6],
       }),
       fontSize: animatedLabel.interpolate({
         inputRange: [0, 1],
@@ -112,7 +112,8 @@ export function ThemedInput({
         color: colors.text,
         paddingLeft: leftIcon ? 48 : Spacing.md,
         paddingRight: rightIcon ? 48 : Spacing.md,
-        paddingTop: label ? (size === 'large' ? 40 : 36) : (size === 'large' ? 16 : size === 'small' ? 8 : 12),
+        paddingTop: label ? (size === 'large' ? 20 : 18) : (size === 'large' ? 16 : size === 'small' ? 8 : 12),
+        paddingBottom: size === 'large' ? 16 : size === 'small' ? 8 : 12,
       },
       style,
     ];
@@ -172,6 +173,8 @@ const styles = StyleSheet.create({
     flex: 1,
     ...Typography.bodyLarge,
     textAlignVertical: 'center',
+    includeFontPadding: false,
+    textAlign: 'left',
   },
   iconContainer: {
     position: 'absolute',
@@ -181,6 +184,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: 40,
     zIndex: 2,
+    height: '100%',
   },
   leftIcon: {
     left: Spacing.sm,

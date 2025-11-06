@@ -102,10 +102,17 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
   const totalSets = workout.exercises.reduce((total, exercise) => {
     return total + (exercise.sets?.length || 0);
   }, 0);
-  
+
+  const totalReps = workout.exercises.reduce((total, exercise) => {
+    const exerciseReps = exercise.sets?.reduce((setTotal: number, set: any) => {
+      return setTotal + (Number(set.reps) || 0);
+    }, 0) || 0;
+    return total + exerciseReps;
+  }, 0);
+
   const totalVolume = workout.exercises.reduce((total, exercise) => {
     const exerciseVolume = exercise.sets?.reduce((setTotal: number, set: any) => {
-      return setTotal + (set.reps * set.weight);
+      return setTotal + ((Number(set.reps) || 0) * (Number(set.weight) || 0));
     }, 0) || 0;
     return total + exerciseVolume;
   }, 0);
@@ -388,6 +395,14 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
     }
   };
 
+  // Swipeable media (cover + breakdown)
+  const [activePage, setActivePage] = useState(0);
+  const onScrollMedia = (e: any) => {
+    const { contentOffset, layoutMeasurement } = e.nativeEvent;
+    const newIndex = Math.round(contentOffset.x / layoutMeasurement.width);
+    if (newIndex !== activePage) setActivePage(newIndex);
+  };
+
   return (
     <View style={styles.postContainer}>
       {/* Floating Header */}
@@ -433,30 +448,98 @@ const EnhancedWorkoutPost: React.FC<WorkoutPostProps> = ({
       {/* Media Section */}
       <View style={styles.mediaWrapper}>
         {hasPhoto && photoUrl ? (
-          <View style={styles.imageWrapper}>
-            <TouchableOpacity
-              onPress={handleImageTap}
-              activeOpacity={0.95}
-              style={styles.imageTouchable}
+          <>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={onScrollMedia}
+              scrollEventThrottle={16}
             >
-              <Image 
-                source={{ uri: photoUrl }} 
-                style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
-                resizeMode="cover"
-                onLoad={() => setImageLoaded(true)}
-              />
-              {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
-            </TouchableOpacity>
-            
-            {/* Workout badge */}
-            <View style={styles.workoutBadge}>
-              <Dumbbell size={16} color="white" />
-              <Text style={styles.workoutBadgeText}>{workout.exercises.length} exercises</Text>
+              {/* Cover Image */}
+              <View style={{ width: screenWidth }}>
+                <View style={styles.imageWrapper}>
+                  <TouchableOpacity
+                    onPress={handleImageTap}
+                    activeOpacity={0.95}
+                    style={styles.imageTouchable}
+                  >
+                    <Image 
+                      source={{ uri: photoUrl }} 
+                      style={[styles.postMedia, { aspectRatio: 1, opacity: imageLoaded ? 1 : 0 }]}
+                      resizeMode="cover"
+                      onLoad={() => setImageLoaded(true)}
+                    />
+                    {!imageLoaded && <View style={[styles.mediaPlaceholder, { backgroundColor: colors.backgroundSecondary }]} />}
+                  </TouchableOpacity>
+
+                  {/* Workout badge */}
+                  <View style={styles.workoutBadge}>
+                    <Dumbbell size={16} color="white" />
+                    <Text style={styles.workoutBadgeText}>{workout.exercises.length} exercises</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Breakdown Slide */}
+              <View style={{ width: screenWidth }}>
+                <View style={[styles.visualizationContainer, { backgroundColor: colors.backgroundSecondary }]}> 
+                  {/* Simple Breakdown Grid */}
+                  <View style={{ padding: Spacing.md }}>
+                    <Text style={[styles.visualizationTitle, { color: colors.text }]}>Workout Breakdown</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.md }}>
+                      <View style={[styles.statCard, { alignItems: 'center' }]}> 
+                        <TrendingUp size={16} color={colors.tint} />
+                        <Text style={[styles.statValue, { color: colors.text }]}>{Math.round(totalVolume)} kg</Text>
+                        <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Volume</Text>
+                      </View>
+                      <View style={[styles.statCard, { alignItems: 'center' }]}> 
+                        <Target size={16} color={colors.tint} />
+                        <Text style={[styles.statValue, { color: colors.text }]}>{totalSets}</Text>
+                        <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Sets</Text>
+                      </View>
+                      <View style={[styles.statCard, { alignItems: 'center' }]}> 
+                        <Zap size={16} color={colors.tint} />
+                        <Text style={[styles.statValue, { color: colors.text }]}>{totalReps}</Text>
+                        <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Reps</Text>
+                      </View>
+                      <View style={[styles.statCard, { alignItems: 'center' }]}> 
+                        <Dumbbell size={16} color={colors.tint} />
+                        <Text style={[styles.statValue, { color: colors.text }]}>{workout.exercises.length}</Text>
+                        <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Exercises</Text>
+                      </View>
+                    </View>
+
+                    {/* Exercise list preview */}
+                    <View>
+                      <Text style={[styles.visualizationTitle, { color: colors.text }]}>Top Exercises</Text>
+                      <View style={{ gap: 8 }}>
+                        {workout.exercises.slice(0, 5).map((exercise, index) => (
+                          <View key={index} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ color: colors.text, fontWeight: '600', flex: 1 }} numberOfLines={1}>{exercise.name}</Text>
+                            <Text style={{ color: colors.textSecondary }}>{exercise.sets?.length || 0} sets</Text>
+                          </View>
+                        ))}
+                        {workout.exercises.length > 5 && (
+                          <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>+{workout.exercises.length - 5} more…</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Pager indicator */}
+            <View style={{ position: 'absolute', bottom: 12, alignSelf: 'center', flexDirection: 'row', gap: 6 }}>
+              {[0, 1].map((i) => (
+                <View key={i} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: i === activePage ? colors.tint : 'rgba(255,255,255,0.5)' }} />
+              ))}
             </View>
-          </View>
+          </>
         ) : (
           // Creative workout visualization when no photo
-          <View style={[styles.visualizationContainer, { backgroundColor: colors.backgroundSecondary }]}>
+          <View style={[styles.visualizationContainer, { backgroundColor: colors.backgroundSecondary }]}> 
             {/* Visualization Tabs */}
             <View style={styles.visualizationTabs}>
               {[
