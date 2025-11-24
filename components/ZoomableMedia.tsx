@@ -37,6 +37,7 @@ export default function ZoomableMedia({
 	const savedTranslateY = useSharedValue(0);
 
 	const [isActive, setIsActive] = useState(false);
+	const [isZoomed, setIsZoomed] = useState(false);
 
 	const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -52,6 +53,10 @@ export default function ZoomableMedia({
 			onZoomActiveChange?.(active);
 		}
 	};
+
+	const updateZoomed = useCallback((zoomed: boolean) => {
+		setIsZoomed(zoomed);
+	}, []);
 
 	const pinchGesture = Gesture.Pinch()
 		.onStart(() => {
@@ -98,6 +103,11 @@ export default function ZoomableMedia({
 		});
 
 	const panGesture = Gesture.Pan()
+		// Only enable pan when zoomed - this prevents it from blocking scroll when not zoomed
+		.enabled(isZoomed)
+		// Fail pan gesture if vertical movement is primary (allows parent scroll when not zoomed)
+		// This allows vertical scrolling to pass through to the parent ScrollView
+		.failOffsetY([-3, 3]) // Fail if vertical movement exceeds threshold (allows scrolling)
 		.onStart(() => {
 			'worklet';
 			// Store current values
@@ -105,7 +115,8 @@ export default function ZoomableMedia({
 		.onUpdate((event) => {
 			'worklet';
 			// Only allow panning when zoomed in
-			if (scale.value <= 1) return;
+			// When not zoomed, failOffsetY should cause this to fail, allowing scroll
+			if (scale.value <= 1.01) return;
 			const maxTranslateX = (containerWidth.value * (scale.value - 1)) / 2;
 			const maxTranslateY = (containerHeight.value * (scale.value - 1)) / 2;
 			translateX.value = clamp(savedTranslateX.value + event.translationX, -maxTranslateX, maxTranslateX);
@@ -113,6 +124,8 @@ export default function ZoomableMedia({
 		})
 		.onEnd(() => {
 			'worklet';
+			// Only process if we were actually panning (zoomed in)
+			if (scale.value <= 1) return;
 			savedTranslateX.value = translateX.value;
 			savedTranslateY.value = translateY.value;
 			if (resetOnEnd) {
@@ -127,7 +140,12 @@ export default function ZoomableMedia({
 			}
 		});
 
-	const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+	// Use Race for pan so it doesn't block scroll when not zoomed
+	// Pinch can still work simultaneously
+	const composedGesture = Gesture.Simultaneous(
+		pinchGesture,
+		panGesture
+	);
 
 	const animatedStyle = useAnimatedStyle(() => ({
 		transform: [
@@ -140,11 +158,15 @@ export default function ZoomableMedia({
 	// Inform parent when zoom becomes active (scale > 1) or inactive
 	const containerAnimatedStyle = useAnimatedStyle(() => {
 		const nowActive = scale.value > 1.001;
+		const nowZoomed = scale.value > 1.01;
 		if (nowActive && !isActive) {
 			runOnJS(updateActive)(true);
 		}
 		if (!nowActive && isActive) {
 			runOnJS(updateActive)(false);
+		}
+		if (nowZoomed !== isZoomed) {
+			runOnJS(updateZoomed)(nowZoomed);
 		}
 		return {};
 	});

@@ -1556,9 +1556,8 @@ function HomeScreenContent() {
                             isMyGymTab={true}
                           />
                         ) : (
-                          <React.Suspense fallback={null}>
+                          <React.Suspense key={`workout-${item.id}`} fallback={null}>
                             <EnhancedWorkoutPost
-                              key={`workout-${item.id}`}
                               workout={item}
                               colors={colors}
                               currentUserId={currentUserId}

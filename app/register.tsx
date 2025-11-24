@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -7,6 +7,15 @@ import Colors from '@/constants/Colors';
 import { ThemedButton } from '../components/ThemedButton';
 import { ThemedInput } from '../components/ThemedInput';
 import { Check, User as UserIcon, MapPin } from 'lucide-react-native';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+
+type PlacesError = Error | string | { message?: string } | null | undefined;
+
+type PlaceDetails = {
+  description?: string;
+  types?: string[];
+  [key: string]: any;
+} | null;
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -16,11 +25,49 @@ export default function RegisterScreen() {
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showGymSuggestions, setShowGymSuggestions] = useState(false);
+  const [isGymInputFocused, setIsGymInputFocused] = useState(false);
   const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
   const scrollRef = useRef<ScrollView | null>(null);
-  const [gymInputY, setGymInputY] = useState<number>(0);
+  const apiKey = process.env.EXPO_PUBLIC_GOOGLE_API_KEY || '';
+
+  const onSearchError = useCallback((searchError: PlacesError) => {
+    console.log(searchError);
+  }, []);
+
+  const onPlaceSelected = useCallback((place: PlaceDetails) => {
+    console.log(place);
+  }, []);
+
+  const handleGymSelection = useCallback(
+    (data: any, details: PlaceDetails = null) => {
+      if (details) {
+        const placeTypes = Array.isArray(details?.types) ? details?.types : [];
+        const isGym = placeTypes?.some(
+          (type) =>
+            type.toLowerCase() === 'gym' ||
+            type.toLowerCase().includes('gym') ||
+            type.toLowerCase() === 'health' ||
+            type.toLowerCase().includes('fitness')
+        );
+
+        if (isGym) {
+          setGym(data?.description ?? '');
+          setError(null);
+        } else {
+          setError('Please select a gym location. The selected place is not recognized as a gym.');
+          setGym('');
+        }
+      } else {
+        setGym(data?.description ?? '');
+        setError(null);
+      }
+
+      setIsGymInputFocused(false);
+      onPlaceSelected(details);
+    },
+    [onPlaceSelected, setError, setGym, setIsGymInputFocused]
+  );
 
   // Check auth session on component mount
   useEffect(() => {
@@ -34,10 +81,6 @@ export default function RegisterScreen() {
     
     checkSession();
   }, []);
-
-  const filteredGyms = GYM_LIST.filter(g => 
-    g.toLowerCase().includes(gym.toLowerCase())
-  );
 
   const checkUsername = async (candidate: string) => {
     const name = candidate.trim();
@@ -113,7 +156,7 @@ export default function RegisterScreen() {
           has_completed_onboarding: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
+        } as any)
         .select()
         .single();
 
@@ -164,6 +207,7 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
         >
         <Text style={[styles.title, { color: colors.tint }]}>Complete Your Profile</Text>
         
@@ -197,66 +241,75 @@ export default function RegisterScreen() {
           style={{ minHeight: 100, textAlignVertical: 'top' }}
         />
 
-        <View style={styles.gymInputContainer} onLayout={(e) => setGymInputY(e.nativeEvent.layout.y)}>
-          <ThemedInput
-            label="Gym (optional)"
-            value={gym}
-            onChangeText={(text) => {
-              setGym(text);
-              setShowGymSuggestions(true);
-            }}
-            onFocus={() => {
-              setShowGymSuggestions(true);
-              setTimeout(() => {
-                if (scrollRef.current) {
-                  scrollRef.current.scrollTo({ y: Math.max(gymInputY - 20, 0), animated: true });
-                }
-              }, 50);
-            }}
-            leftIcon={<MapPin size={18} color={colors.textSecondary} />}
-            variant="filled"
-            size="large"
-            style={{
-              marginBottom: showGymSuggestions && filteredGyms.length > 0 ? 0 : 16,
-              borderBottomLeftRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
-              borderBottomRightRadius: showGymSuggestions && filteredGyms.length > 0 ? 0 : 8,
-            }}
-          />
-          
-          {showGymSuggestions && filteredGyms.length > 0 && (
-            <View style={[
-              styles.suggestionsContainer,
-              {
-                backgroundColor: colors.inputBackground,
-                borderColor: colors.border
-              }
-            ]}>
-              <ScrollView 
-                style={styles.suggestionsList}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                showsVerticalScrollIndicator={false}
-              >
-                {filteredGyms.map((suggestion, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.suggestionItem,
-                      { borderBottomColor: colors.border, borderBottomWidth: index < filteredGyms.length - 1 ? 1 : 0 }
-                    ]}
-                    onPress={() => {
-                      setGym(suggestion);
-                      setShowGymSuggestions(false);
-                    }}
-                  >
-                    <Text style={[styles.suggestionText, { color: colors.text }]}>
-                      {suggestion}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+        <View style={styles.gymInputContainer}>
+          <View style={styles.gymLabelContainer}>
+            <Text style={[styles.gymLabel, { color: colors.textSecondary }]}>Gym (optional)</Text>
+          </View>
+          <View style={[
+            styles.googlePlacesContainer,
+            {
+              backgroundColor: colors.inputBackground,
+              borderRadius: 8,
+              ...styles.shadow,
+            }
+          ]}>
+            <View style={styles.mapPinIcon}>
+              <MapPin size={18} color={colors.textSecondary} />
             </View>
-          )}
+            <GooglePlacesAutocomplete
+              placeholder="Search for a gym..."
+              predefinedPlaces={[]}
+              onPress={handleGymSelection}
+              query={{
+                key: apiKey,
+                language: 'en',
+                types: 'establishment',
+                components: 'country:us',
+              }}
+              fetchDetails={true}
+              enablePoweredByContainer={false}
+              debounce={200}
+              listViewDisplayed="auto"
+              onFail={onSearchError}
+              styles={{
+                container: styles.googlePlacesWrapper,
+                textInputContainer: styles.textInputContainer,
+                textInput: [
+                  styles.googlePlacesInput,
+                  { color: colors.text }
+                ],
+                listView: [
+                  styles.googlePlacesList,
+                  { backgroundColor: colors.inputBackground }
+                ],
+                row: [
+                  styles.googlePlacesRow,
+                  { backgroundColor: colors.inputBackground }
+                ],
+                separator: {
+                  height: 1,
+                  backgroundColor: colors.border,
+                },
+                description: {
+                  color: colors.text,
+                  fontSize: 16,
+                },
+                predefinedPlacesDescription: {
+                  color: colors.textSecondary,
+                },
+              }}
+              textInputProps={{
+                placeholderTextColor: colors.textSecondary,
+                returnKeyType: 'search',
+                onFocus: () => setIsGymInputFocused(true),
+                onBlur: () => setIsGymInputFocused(false),
+              }}
+              nearbyPlacesAPI="GooglePlacesSearch"
+              GooglePlacesSearchQuery={{
+                rankby: 'distance',
+              }}
+            />
+          </View>
         </View>
 
         <ThemedButton
@@ -265,7 +318,10 @@ export default function RegisterScreen() {
           variant="primary"
           loading={loading}
           disabled={loading || !username.trim()}
-          style={styles.completeButton}
+          style={[
+            styles.completeButton,
+            isGymInputFocused && { marginTop: 220 } // Push button down when dropdown is visible
+          ]}
         />
         </ScrollView>
       </TouchableWithoutFeedback>
@@ -306,35 +362,80 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   gymInputContainer: {
+    marginBottom: 16,
     position: 'relative',
     zIndex: 10,
+    overflow: 'visible',
   },
-  suggestionsContainer: {
+  gymLabelContainer: {
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  gymLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  googlePlacesContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    paddingLeft: 48,
+    paddingRight: 12,
+    overflow: 'visible',
+  },
+  mapPinIcon: {
+    position: 'absolute',
+    left: 12,
+    zIndex: 2,
+  },
+  shadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  googlePlacesWrapper: {
+    flex: 1,
+    overflow: 'visible',
+  },
+  textInputContainer: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  googlePlacesInput: {
+    height: 56,
+    fontSize: 16,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    backgroundColor: 'transparent',
+  },
+  googlePlacesList: {
     position: 'absolute',
     top: '100%',
     left: 0,
     right: 0,
-    maxHeight: 140,
     borderRadius: 8,
-    borderWidth: 1,
     marginTop: 8,
-    zIndex: 11,
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    zIndex: 9999,
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
-  suggestionsList: {
-    flex: 1,
-  },
-  suggestionItem: {
+  googlePlacesRow: {
     padding: 12,
-    borderBottomWidth: 1,
-  },
-  suggestionText: {
-    fontSize: 16,
   },
   completeButton: {
     marginTop: 20,
   },
 });
-
-const GYM_LIST = [
-'Arete'
-];

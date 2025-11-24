@@ -28,6 +28,7 @@ export default function WorkoutSummaryScreen() {
   const [hasSavedShareInfo, setHasSavedShareInfo] = useState<boolean>(false);
   const [titleText, setTitleText] = useState<string>('');
   const [captionText, setCaptionText] = useState<string>('');
+  const [uploadingPhoto, setUploadingPhoto] = useState<boolean>(false);
 
   // Track saving state & grab params / auth
   const [saving, setSaving] = useState(false);
@@ -72,38 +73,89 @@ export default function WorkoutSummaryScreen() {
   };
 
   const uploadPhoto = async (uri: string) => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      console.error('Cannot upload photo: no user ID');
+      return;
+    }
 
+    setUploadingPhoto(true);
+    
     try {
-      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${currentUserId}/${fileName}`;
       const WORKOUT_IMAGES_BUCKET = process.env.EXPO_PUBLIC_WORKOUT_IMAGES_BUCKET ?? 'workout_images';
+      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
 
-      // Use Blob upload for both web and native (FormData is not supported by Supabase storage upload)
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      console.log('Starting photo upload:', { filePath, contentType, platform: Platform.OS });
 
-      const { error: uploadError } = await supabase.storage
-        .from(WORKOUT_IMAGES_BUCKET)
-        .upload(filePath, blob, {
-          contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-          cacheControl: '3600',
-          upsert: false,
-        });
+      // Structure upload data based on platform
+      if (Platform.OS === 'web') {
+        // Web: Use blob
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.statusText}`);
+        }
+        const blob = await response.blob();
 
-      if (uploadError) {
-        throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from(WORKOUT_IMAGES_BUCKET)
+          .upload(filePath, blob, {
+            contentType,
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('Upload error (web):', uploadError);
+          throw uploadError;
+        }
+      } else {
+        // Native: Use FormData with structured file object
+        const formData = new FormData();
+        formData.append('file', {
+          uri,
+          name: fileName,
+          type: contentType,
+        } as any);
+
+        const { error: uploadError } = await supabase.storage
+          .from(WORKOUT_IMAGES_BUCKET)
+          .upload(filePath, formData, {
+            contentType: 'multipart/form-data',
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('Upload error (native):', uploadError);
+          throw uploadError;
+        }
       }
 
+      // Get public URL
       const { data: publicData } = supabase.storage
         .from(WORKOUT_IMAGES_BUCKET)
         .getPublicUrl(filePath);
 
-      setPhotoUrl(publicData?.publicUrl ?? null);
+      const uploadedUrl = publicData?.publicUrl ?? null;
+      
+      if (uploadedUrl) {
+        console.log('Photo uploaded successfully:', uploadedUrl);
+        setPhotoUrl(uploadedUrl);
+        // Also update photoUri to show the uploaded image
+        setPhotoUri(uploadedUrl);
+      } else {
+        throw new Error('Failed to get public URL for uploaded image');
+      }
     } catch (error) {
       console.error('Error uploading photo:', error);
-      Alert.alert('Error', 'Failed to upload photo');
+      Alert.alert('Error', `Failed to upload photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Reset photo selection on error
+      setPhotoUri(null);
+      setPhotoUrl(null);
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 

@@ -19,23 +19,26 @@
  * If the user has a custom avatar, use it
  * Otherwise, return a default avatar based on their username
  */
-export const getAvatarUrl = (avatarUrl: string | null, username: string): string => {
+export const getAvatarUrl = (avatarUrl: string | null, username: string | null | undefined): string => {
   if (avatarUrl && avatarUrl.trim() !== '') {
     return avatarUrl;
   }
   
   // Return a default avatar with the user's initials
-  return getDefaultAvatarUrl(username);
+  return getDefaultAvatarUrl(username || 'default');
 };
 
 /**
  * Generate a default avatar URL using DiceBear API
  * This creates a consistent avatar based on the username
  */
-export const getDefaultAvatarUrl = (username: string): string => {
+export const getDefaultAvatarUrl = (username: string | null | undefined): string => {
+  // Ensure username is a valid string
+  const safeUsername = username || 'default';
+  
   // Use DiceBear's identicon style for gym-themed geometric avatars
   // This creates consistent, fitness-themed avatars with gym-related colors
-  const encodedUsername = encodeURIComponent(username);
+  const encodedUsername = encodeURIComponent(safeUsername);
   
   // Gym-themed color palette: energetic reds, blues, greens, and oranges
   const gymColors = [
@@ -55,7 +58,7 @@ export const getDefaultAvatarUrl = (username: string): string => {
   const colorString = gymColors.join(',');
   
   // Generate a consistent style choice based on username
-  const styleIndex = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 3;
+  const styleIndex = safeUsername.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 3;
   
   // Choose between different gym-themed styles
   switch (styleIndex) {
@@ -146,8 +149,10 @@ export const getUserInitials = (username: string): string => {
  * Alternative default avatar using a simple colored background with initials
  * This is a fallback if DiceBear is not available
  */
-export const getSimpleDefaultAvatarUrl = (username: string): string => {
-  const initials = getUserInitials(username);
+export const getSimpleDefaultAvatarUrl = (username: string | null | undefined): string => {
+  // Ensure username is a valid string
+  const safeUsername = username || 'default';
+  const initials = getUserInitials(safeUsername);
   // Gym-themed colors: energetic and motivating
   const colors = [
     '#ff4757', // Red
@@ -163,7 +168,7 @@ export const getSimpleDefaultAvatarUrl = (username: string): string => {
   ];
   
   // Generate a consistent color based on username
-  const colorIndex = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+  const colorIndex = safeUsername.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
   const backgroundColor = colors[colorIndex];
   
   // Create a simple SVG with initials
