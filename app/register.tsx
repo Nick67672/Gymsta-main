@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -9,13 +9,25 @@ import { ThemedInput } from '../components/ThemedInput';
 import { Check, User as UserIcon, MapPin } from 'lucide-react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 
-type PlacesError = Error | string | { message?: string } | null | undefined;
+// Type definitions for Google Places
+interface PlacesError {
+  message: string;
+  code?: string;
+}
 
-type PlaceDetails = {
-  description?: string;
+interface PlaceDetails {
+  description: string;
+  place_id: string;
+  geometry?: {
+    location: {
+      lat: number;
+      lng: number;
+    };
+  };
   types?: string[];
-  [key: string]: any;
-} | null;
+  formatted_address?: string;
+  name?: string;
+}
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -29,45 +41,70 @@ export default function RegisterScreen() {
   const { theme, setTheme } = useTheme();
   const colors = Colors[theme];
   const scrollRef = useRef<ScrollView | null>(null);
-  const apiKey = process.env.EXPO_PUBLIC_GOOGLE_API_KEY || '';
+  const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY || '';
+  
+  // Debug: Log API key status (remove in production)
+  useEffect(() => {
+    if (!API_KEY) {
+      console.warn('Google Places API key is missing. Dropdown will not work.');
+    }
+  }, [API_KEY]);
 
-  const onSearchError = useCallback((searchError: PlacesError) => {
-    console.log(searchError);
+  const onSearchError = React.useCallback((error?: any) => {
+    console.log('Google Places Error:', error);
+    const errorMessage = error?.message || error || 'An error occurred while searching for gyms';
+    setError(typeof errorMessage === 'string' ? errorMessage : 'An error occurred while searching for gyms');
   }, []);
 
-  const onPlaceSelected = useCallback((place: PlaceDetails) => {
+  const onPlaceSelected = React.useCallback((place: PlaceDetails) => {
     console.log(place);
+    if (place.description) {
+      setGym(place.description);
+      setError(null);
+      setIsGymInputFocused(false);
+    }
   }, []);
 
-  const handleGymSelection = useCallback(
-    (data: any, details: PlaceDetails = null) => {
-      if (details) {
-        const placeTypes = Array.isArray(details?.types) ? details?.types : [];
-        const isGym = placeTypes?.some(
-          (type) =>
-            type.toLowerCase() === 'gym' ||
-            type.toLowerCase().includes('gym') ||
-            type.toLowerCase() === 'health' ||
-            type.toLowerCase().includes('fitness')
-        );
+  // Check if a place is a gym based on its types
+  const isGymPlace = React.useCallback((types: string[] | undefined): boolean => {
+    if (!types || !Array.isArray(types)) return false;
+    
+    const gymKeywords = ['gym', 'fitness', 'health', 'sport', 'athletic', 'training', 'workout'];
+    return types.some((type) => {
+      const lowerType = type.toLowerCase();
+      return gymKeywords.some(keyword => lowerType.includes(keyword));
+    });
+  }, []);
 
-        if (isGym) {
-          setGym(data?.description ?? '');
-          setError(null);
-        } else {
-          setError('Please select a gym location. The selected place is not recognized as a gym.');
-          setGym('');
-        }
-      } else {
-        setGym(data?.description ?? '');
-        setError(null);
+  // Wrapper to adapt library's onPress to onPlaceSelected
+  const handlePlacePress = React.useCallback((data: any, details: any = null) => {
+    try {
+      const placeTypes = details?.types || [];
+      
+      // Validate that the selected place is a gym
+      if (!isGymPlace(placeTypes)) {
+        setError('Please select a gym location. The selected place is not recognized as a gym.');
+        setGym('');
+        setIsGymInputFocused(false);
+        return;
       }
 
-      setIsGymInputFocused(false);
-      onPlaceSelected(details);
-    },
-    [onPlaceSelected, setError, setGym, setIsGymInputFocused]
-  );
+      const place: PlaceDetails = {
+        description: data.description || data.structured_formatting?.main_text || '',
+        place_id: data.place_id || '',
+        geometry: details?.geometry,
+        types: placeTypes,
+        formatted_address: details?.formatted_address,
+        name: details?.name || data.structured_formatting?.main_text,
+      };
+      onPlaceSelected(place);
+    } catch (err) {
+      const error: PlacesError = {
+        message: err instanceof Error ? err.message : 'Failed to process selected place',
+      };
+      onSearchError(error);
+    }
+  }, [onPlaceSelected, onSearchError, isGymPlace]);
 
   // Check auth session on component mount
   useEffect(() => {
@@ -256,59 +293,60 @@ export default function RegisterScreen() {
             <View style={styles.mapPinIcon}>
               <MapPin size={18} color={colors.textSecondary} />
             </View>
-            <GooglePlacesAutocomplete
-              placeholder="Search for a gym..."
-              predefinedPlaces={[]}
-              onPress={handleGymSelection}
-              query={{
-                key: apiKey,
-                language: 'en',
-                types: 'establishment',
-                components: 'country:us',
-              }}
-              fetchDetails={true}
-              enablePoweredByContainer={false}
-              debounce={200}
-              listViewDisplayed="auto"
-              onFail={onSearchError}
-              styles={{
-                container: styles.googlePlacesWrapper,
-                textInputContainer: styles.textInputContainer,
-                textInput: [
-                  styles.googlePlacesInput,
-                  { color: colors.text }
-                ],
-                listView: [
-                  styles.googlePlacesList,
-                  { backgroundColor: colors.inputBackground }
-                ],
-                row: [
-                  styles.googlePlacesRow,
-                  { backgroundColor: colors.inputBackground }
-                ],
-                separator: {
-                  height: 1,
-                  backgroundColor: colors.border,
-                },
-                description: {
-                  color: colors.text,
-                  fontSize: 16,
-                },
-                predefinedPlacesDescription: {
-                  color: colors.textSecondary,
-                },
-              }}
-              textInputProps={{
-                placeholderTextColor: colors.textSecondary,
-                returnKeyType: 'search',
-                onFocus: () => setIsGymInputFocused(true),
-                onBlur: () => setIsGymInputFocused(false),
-              }}
-              nearbyPlacesAPI="GooglePlacesSearch"
-              GooglePlacesSearchQuery={{
-                rankby: 'distance',
-              }}
-            />
+            <View style={styles.googlePlacesWrapper}>
+              <GooglePlacesAutocomplete
+                placeholder="Search for a gym..."
+                predefinedPlaces={[]}
+                onPress={handlePlacePress}
+                onFail={onSearchError}
+                query={{
+                  key: API_KEY,
+                  language: 'en',
+                  types: 'gym',
+                }}
+                fetchDetails={true}
+                enablePoweredByContainer={false}
+                debounce={300}
+                listViewDisplayed={isGymInputFocused ? 'auto' : false}
+                minLength={2}
+                keepResultsAfterBlur={false}
+                nearbyPlacesAPI="GooglePlacesSearch"
+                styles={{
+                  container: { flex: 1, zIndex: 1000 },
+                  textInputContainer: styles.textInputContainer,
+                  textInput: [
+                    styles.googlePlacesInput,
+                    { color: colors.text }
+                  ],
+                  listView: [
+                    styles.googlePlacesList,
+                    { backgroundColor: colors.inputBackground }
+                  ],
+                  row: [
+                    styles.googlePlacesRow,
+                    { backgroundColor: colors.inputBackground }
+                  ],
+                  separator: {
+                    height: 1,
+                    backgroundColor: colors.border,
+                  },
+                  description: {
+                    color: colors.text,
+                    fontSize: 16,
+                  },
+                  predefinedPlacesDescription: {
+                    color: colors.textSecondary,
+                  },
+                }}
+                textInputProps={{
+                  placeholderTextColor: colors.textSecondary,
+                  returnKeyType: 'search',
+                  onFocus: () => setIsGymInputFocused(true),
+                  onBlur: () => setIsGymInputFocused(false),
+                }}
+                keyboardShouldPersistTaps="handled"
+              />
+            </View>
           </View>
         </View>
 
@@ -399,6 +437,7 @@ const styles = StyleSheet.create({
   googlePlacesWrapper: {
     flex: 1,
     overflow: 'visible',
+    zIndex: 1000,
   },
   textInputContainer: {
     backgroundColor: 'transparent',
@@ -424,8 +463,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxHeight: 200,
     borderWidth: 1,
-    borderColor: 'transparent',
-    zIndex: 9999,
+    zIndex: 10000,
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
