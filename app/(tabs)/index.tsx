@@ -1461,6 +1461,28 @@ function HomeScreenContent() {
 
       {/* Main Content - No padding, header overlays */}
       <View style={styles.contentContainer}>
+        {/* Text for when user (logged in or guest) follows no one */}
+        {activeTab === "following" && following.length == 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: colors.textSecondary },
+              ]}
+            >
+              You're not following anyone yet...
+            </Text>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: colors.textSecondary },
+              ]}
+            >
+              Find someone to follow in the Explore tab!
+            </Text>
+          </View>
+        ) : null}
+        
         {/* Stories Rail */}
         {activeTab !== 'my-gym' && stories.length > 0 && (
           <View style={{ paddingTop: headerHeight + 15 }}>
