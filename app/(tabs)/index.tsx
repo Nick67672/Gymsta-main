@@ -1482,7 +1482,7 @@ function HomeScreenContent() {
             </Text>
           </View>
         ) : null}
-        
+
         {/* Stories Rail */}
         {activeTab !== 'my-gym' && stories.length > 0 && (
           <View style={{ paddingTop: headerHeight + 15 }}>
@@ -1596,10 +1596,10 @@ function HomeScreenContent() {
                       )}
                     </>
                   ) : (
-                    <View style={styles.emptyGymContainer}>
+                    <View style={styles.emptyContainer}>
                       <Text
                         style={[
-                          styles.emptyGymText,
+                          styles.emptyText,
                           { color: colors.textSecondary },
                         ]}
                       >
@@ -2043,13 +2043,13 @@ const styles = StyleSheet.create({
     ...Typography.bodyMedium,
     color: 'white',
   },
-  emptyGymContainer: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: Spacing.lg,
   },
-  emptyGymText: {
+  emptyText: {
     fontSize: 18,
     textAlign: 'center',
   },
