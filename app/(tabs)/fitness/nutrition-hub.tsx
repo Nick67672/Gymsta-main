@@ -205,7 +205,7 @@ export default function NutritionHubScreen() {
         <View style={styles.summaryRow}>
           <View style={styles.summaryCol}>
             <Text
-              style={[styles.summaryLabel, { color: colors.textSecondary }]}
+              style={[styles.summaryLabel, { color: colors.textSecondary }, { paddingBottom: 7 }]}
             >
               Goal
             </Text>
@@ -215,7 +215,7 @@ export default function NutritionHubScreen() {
           </View>
           <View style={styles.summaryCol}>
             <Text
-              style={[styles.summaryLabel, { color: colors.textSecondary }]}
+              style={[styles.summaryLabel, { color: colors.textSecondary }, { paddingBottom: 7 }]}
             >
               Food
             </Text>
@@ -225,7 +225,7 @@ export default function NutritionHubScreen() {
           </View>
           <View style={styles.summaryCol}>
             <Text
-              style={[styles.summaryLabel, { color: colors.textSecondary }]}
+              style={[styles.summaryLabel, { color: colors.textSecondary }, { paddingBottom: 7 }]}
             >
               Remaining
             </Text>
@@ -238,7 +238,7 @@ export default function NutritionHubScreen() {
           <Text style={[styles.macroItem, { color: colors.textSecondary }]}>
             P {Math.round(totals.protein_g)}g
           </Text>
-          <Text style={[styles.macroItem, { color: colors.textSecondary }]}>
+          <Text style={[styles.macroItem, { color: colors.textSecondary }, { paddingBottom: 7 }]}>
             C {Math.round(totals.carbs_g)}g
           </Text>
           <Text style={[styles.macroItem, { color: colors.textSecondary }]}>
