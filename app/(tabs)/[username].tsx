@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, use } from 'react';
+import React, { useEffect, useState, useRef} from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, FlatList } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,7 +15,6 @@ import WorkoutDetailModal from '@/components/WorkoutDetailModal';
 import { ThemedButton } from '@/components/ThemedButton';
 import { goBack } from '@/lib/goBack';
 import { getAvatarUrl } from '@/lib/avatarUtils';
-import loadFeed from '@/app/(tabs)/index';
 
 interface ProfileStory {
   id: string;
