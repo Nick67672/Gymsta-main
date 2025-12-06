@@ -607,7 +607,7 @@ export default function ChatScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.signInButton, { backgroundColor: colors.tint }]}
-            onPress={() => router.push('/auth?mode=signup')}
+            onPress={() => router.push('/auth?mode=signin')}
           >
             <Text style={styles.signInButtonText}>Sign In</Text>
           </TouchableOpacity>

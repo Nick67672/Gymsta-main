@@ -474,6 +474,13 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
             }
           ]}
         >
+          <KeyboardAvoidingView 
+            style={styles.keyboardContainer}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + 64 : 230}
+            // Keyboard offset for Android is currently hardcoded as 230
+          >
+
           {/* Options Modal for Long Press */}
           <Modal
             visible={showOptionsModal}
@@ -590,10 +597,6 @@ export const CommentSystem: React.FC<CommentSystemProps> = ({
           </ScrollView>
 
           {/* Input Section */}
-          <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? insets.bottom + 64 : 0}
-          >
             <View style={[styles.inputContainer, { 
               borderTopColor: colors.border,
               backgroundColor: colors.background,
@@ -725,6 +728,10 @@ const styles = StyleSheet.create({
   replyContainer: {
     paddingVertical: 8,
     marginLeft: 44, // Single level of indentation for all replies
+  },
+  keyboardContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   avatar: {
     width: 32,

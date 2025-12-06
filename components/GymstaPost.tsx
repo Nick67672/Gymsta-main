@@ -832,7 +832,14 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
             <TouchableOpacity 
               style={styles.actionButton} 
               activeOpacity={0.7}
-              onPress={() => setShowShareModal(true)}
+              onPress={() => {
+                if (!isAuthenticated) {
+                  showAuthModal();
+                  return;
+                }
+                else {
+                  setShowShareModal(true)}
+                }}
             >
               <Share2 size={28} color={colors.textSecondary} strokeWidth={2} />
             </TouchableOpacity>

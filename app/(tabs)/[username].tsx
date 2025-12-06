@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef} from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert, Platform, FlatList } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -155,183 +155,196 @@ export default function UserProfileScreen() {
   }, []);
 
   const loadProfile = async () => {
-    try {
-      console.log('Loading profile for username:', username);
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.error('Auth error in loadProfile:', authError);
+    console.log('Loading profile for username:', username);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError) {
+      if (user == null) {
+        console.log("authError here is shown because user is null (i.e. user is logged out)")
+      }
+      console.error('Auth error in loadProfile:', authError);
+      if (user != null) {
         throw authError;
       }
+    }
 
-      // Get profile with follower counts
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select(`
-          id,
-          username,
-          bio,
-          avatar_url,
-          gym,
-          is_early_adopter,
-          is_verified,
-          is_private,
-          followers!followers_following_id_fkey(count),
-          following:followers!followers_follower_id_fkey(count)
-        `)
-        .eq('username', username)
-        .single();
+    if (user) {
+      try {
+        // Get profile with follower counts
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select(`
+            id,
+            username,
+            bio,
+            avatar_url,
+            gym,
+            is_early_adopter,
+            is_verified,
+            is_private,
+            followers!followers_following_id_fkey(count),
+            following:followers!followers_follower_id_fkey(count)
+          `)
+          .eq('username', username)
+          .single();
 
-      if (profileError) throw profileError;
+        if (profileError) throw profileError;
 
-      if (!profileData) {
-        setError('Profile not found');
-        return;
-      }
+        if (!profileData) {
+          setError('Profile not found');
+          return;
+        }
 
-      // If this is the current user's profile, redirect to the profile tab
-      if (user && profileData.id === user.id) {
-        router.replace('/(tabs)/profile');
-        return;
-      }
+        // If this is the current user's profile, redirect to the profile tab
+        if (user && profileData.id === user.id) {
+          router.replace('/(tabs)/profile');
+          return;
+        }
 
-      // Check if the current user is following this profile
-      let isFollowing = false;
-      let followRequestSent = false;
-      if (user) {
-        const { data: followData } = await supabase
-          .from('followers')
-          .select('id')
-          .eq('follower_id', user.id)
-          .eq('following_id', profileData.id)
-          .maybeSingle();
-        
-        isFollowing = !!followData;
-
-        // Check if there's a pending follow request
-        if (!isFollowing) {
-          const { data: followRequestData, error: followRequestError } = await supabase
-            .from('follow_requests')
+        // Check if the current user is following this profile
+        let isFollowing = false;
+        let followRequestSent = false;
+        if (user) {
+          const { data: followData } = await supabase
+            .from('followers')
             .select('id')
-            .eq('requester_id', user.id)
-            .eq('requested_id', profileData.id)
+            .eq('follower_id', user.id)
+            .eq('following_id', profileData.id)
             .maybeSingle();
           
-          if (followRequestError) {
-            console.error('Error checking follow request:', followRequestError);
+          isFollowing = !!followData;
+
+          // Check if there's a pending follow request
+          if (!isFollowing) {
+            const { data: followRequestData, error: followRequestError } = await supabase
+              .from('follow_requests')
+              .select('id')
+              .eq('requester_id', user.id)
+              .eq('requested_id', profileData.id)
+              .maybeSingle();
+            
+            if (followRequestError) {
+              console.error('Error checking follow request:', followRequestError);
+            }
+            
+            followRequestSent = !!followRequestData;
+            
+            console.log('Follow request check for', profileData.username, ':', {
+              followRequestSent,
+              hasData: !!followRequestData
+            });
           }
-          
-          followRequestSent = !!followRequestData;
-          
-          console.log('Follow request check for', profileData.username, ':', {
-            followRequestSent,
-            hasData: !!followRequestData
-          });
         }
-      }
 
-      // Load user's stories
-      const { data: storiesData } = await supabase
-        .from('stories')
-        .select('id, media_url')
-        .eq('user_id', profileData.id)
-        .order('created_at', { ascending: true });
+        // Load user's stories
+        const { data: storiesData } = await supabase
+          .from('stories')
+          .select('id, media_url')
+          .eq('user_id', profileData.id)
+          .order('created_at', { ascending: true });
 
-      setStories((storiesData as ProfileStory[]) || []);
+        setStories((storiesData as ProfileStory[]) || []);
 
-      // Load user's workouts
-      const { data: workoutsData, error: workoutsError } = await supabase
-        .from('workouts')
-        .select('id, created_at, exercises')
-        .eq('user_id', profileData.id)
-        .order('created_at', { ascending: false });
+        // Load user's workouts
+        const { data: workoutsData, error: workoutsError } = await supabase
+          .from('workouts')
+          .select('id, created_at, exercises')
+          .eq('user_id', profileData.id)
+          .order('created_at', { ascending: false });
 
-      if (!workoutsError) {
-        setWorkouts(workoutsData || []);
-      }
+        if (!workoutsError) {
+          setWorkouts(workoutsData || []);
+        }
 
-      setProfile({
-        ...profileData,
-        is_private: profileData.is_private || false,
-        _count: {
-          followers: profileData.followers?.[0]?.count || 0,
-          following: profileData.following?.[0]?.count || 0,
-        },
-        is_following: isFollowing,
-        has_story: !!(storiesData && storiesData.length > 0),
-        follow_request_sent: followRequestSent
-      });
+        setProfile({
+          ...profileData,
+          is_private: profileData.is_private || false,
+          _count: {
+            followers: profileData.followers?.[0]?.count || 0,
+            following: profileData.following?.[0]?.count || 0,
+          },
+          is_following: isFollowing,
+          has_story: !!(storiesData && storiesData.length > 0),
+          follow_request_sent: followRequestSent
+        });
 
-      // Load user's posts with likes and profiles
-      const { data: postsData, error: postsError } = await supabase
-        .from('posts')
-        .select('id, caption, image_url, created_at, user_id, media_type, product_id, likes(id, user_id), profiles(id, username, avatar_url, is_verified)')
-        .eq('user_id', profileData.id)
-        .order('created_at', { ascending: false });
+        // Load user's posts with likes and profiles
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select('id, caption, image_url, created_at, user_id, media_type, product_id, likes(id, user_id), profiles(id, username, avatar_url, is_verified)')
+          .eq('user_id', profileData.id)
+          .order('created_at', { ascending: false });
 
-      if (postsError) throw postsError;
-      
-      // Get comment counts for user's posts
-      const postIds = postsData?.map(post => post.id) || [];
-      let commentCounts: { [postId: string]: number } = {};
-      
-      if (postIds.length > 0) {
-        const { data: commentsData } = await supabase
-          .from('comments')
-          .select('post_id, id')
-          .in('post_id', postIds);
+        if (postsError) throw postsError;
         
-        // Count comments per post
-        commentCounts = (commentsData || []).reduce((acc, comment) => {
-          acc[comment.post_id] = (acc[comment.post_id] || 0) + 1;
-          return acc;
-        }, {} as { [postId: string]: number });
+        // Get comment counts for user's posts
+        const postIds = postsData?.map(post => post.id) || [];
+        let commentCounts: { [postId: string]: number } = {};
+        
+        if (postIds.length > 0) {
+          const { data: commentsData } = await supabase
+            .from('comments')
+            .select('post_id, id')
+            .in('post_id', postIds);
+          
+          // Count comments per post
+          commentCounts = (commentsData || []).reduce((acc, comment) => {
+            acc[comment.post_id] = (acc[comment.post_id] || 0) + 1;
+            return acc;
+          }, {} as { [postId: string]: number });
+        }
+
+        // Load user's workout posts (no likes relationship on workouts)
+        const { data: workoutPostsData, error: workoutPostsError } = await supabase
+          .from('workouts')
+          .select(`
+            id, 
+            created_at, 
+            exercises,
+            workout_sharing_information (*)
+          `)
+          .eq('user_id', profileData.id)
+          .order('created_at', { ascending: false });
+
+        if (workoutPostsError) {
+          console.error('Error loading workout posts:', workoutPostsError);
+        }
+
+        // Combine posts and workouts, marking workouts with type
+        const postsWithCommentCount: ProfileFeedItem[] = (postsData || []).map(post => ({
+          ...post,
+          comments_count: commentCounts[post.id] || 0,
+          type: 'post'
+        }));
+
+        const workoutPosts: ProfileFeedItem[] = (workoutPostsData || []).map((workout: any) => ({ 
+          type: 'workout',
+          id: workout.id,
+          created_at: workout.created_at,
+          exercises: workout.exercises,
+          workout_sharing_information: workout.workout_sharing_information,
+          image_url: workout.workout_sharing_information?.[0]?.photo_url || null,
+          caption: workout.workout_sharing_information?.[0]?.caption || null,
+          comments_count: 0,
+          likes: []
+        }));
+
+        const combinedPosts: ProfileFeedItem[] = [...postsWithCommentCount, ...workoutPosts]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        setPosts(combinedPosts);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load profile');
+      } finally {
+        setLoading(false);
       }
+    }
 
-      // Load user's workout posts (no likes relationship on workouts)
-      const { data: workoutPostsData, error: workoutPostsError } = await supabase
-        .from('workouts')
-        .select(`
-          id, 
-          created_at, 
-          exercises,
-          workout_sharing_information (*)
-        `)
-        .eq('user_id', profileData.id)
-        .order('created_at', { ascending: false });
-
-      if (workoutPostsError) {
-        console.error('Error loading workout posts:', workoutPostsError);
-      }
-
-      // Combine posts and workouts, marking workouts with type
-      const postsWithCommentCount: ProfileFeedItem[] = (postsData || []).map(post => ({
-        ...post,
-        comments_count: commentCounts[post.id] || 0,
-        type: 'post'
-      }));
-
-      const workoutPosts: ProfileFeedItem[] = (workoutPostsData || []).map((workout: any) => ({ 
-        type: 'workout',
-        id: workout.id,
-        created_at: workout.created_at,
-        exercises: workout.exercises,
-        workout_sharing_information: workout.workout_sharing_information,
-        image_url: workout.workout_sharing_information?.[0]?.photo_url || null,
-        caption: workout.workout_sharing_information?.[0]?.caption || null,
-        comments_count: 0,
-        likes: []
-      }));
-
-      const combinedPosts: ProfileFeedItem[] = [...postsWithCommentCount, ...workoutPosts]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setPosts(combinedPosts);
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setLoading(false);
+    // Otherwise user is logged off, therefore show login/sign up wall
+    else {
+        showAuthModal();
+        // Return to Explore page
+        router.push('/');
     }
   };
 

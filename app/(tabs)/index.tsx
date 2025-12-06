@@ -1461,6 +1461,28 @@ function HomeScreenContent() {
 
       {/* Main Content - No padding, header overlays */}
       <View style={styles.contentContainer}>
+        {/* Text for when user (logged in or guest) follows no one */}
+        {activeTab === "following" && following.length == 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: colors.textSecondary },
+              ]}
+            >
+              You're not following anyone yet...
+            </Text>
+            <Text
+              style={[
+                styles.emptyText,
+                { color: colors.textSecondary },
+              ]}
+            >
+              Find someone to follow in the Explore tab!
+            </Text>
+          </View>
+        ) : null}
+
         {/* Stories Rail */}
         {activeTab !== 'my-gym' && stories.length > 0 && (
           <View style={{ paddingTop: headerHeight + 15 }}>
@@ -1574,10 +1596,10 @@ function HomeScreenContent() {
                       )}
                     </>
                   ) : (
-                    <View style={styles.emptyGymContainer}>
+                    <View style={styles.emptyContainer}>
                       <Text
                         style={[
-                          styles.emptyGymText,
+                          styles.emptyText,
                           { color: colors.textSecondary },
                         ]}
                       >
@@ -2021,13 +2043,13 @@ const styles = StyleSheet.create({
     ...Typography.bodyMedium,
     color: 'white',
   },
-  emptyGymContainer: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: Spacing.lg,
   },
-  emptyGymText: {
+  emptyText: {
     fontSize: 18,
     textAlign: 'center',
   },

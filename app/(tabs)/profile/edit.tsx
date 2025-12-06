@@ -350,8 +350,9 @@ export default function EditProfileScreen() {
                     />
                   </View>
 
-                  <View 
-                    style={styles.gymInputContainer}
+                  <View
+                    style={!showGymSuggestions || filteredGyms.length == 0
+                      ? styles.gymInputContainer : styles.gymSuggestionAndInputContainer}
                     onLayout={(e) => setGymInputY(e.nativeEvent.layout.y)}
                   >
                     <View style={styles.inputContainer}>
@@ -546,7 +547,7 @@ const styles = StyleSheet.create({
     ...Typography.bodySmall,
   },
   formSection: {
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.xs,
     padding: Spacing.xl,
   },
   inputGroup: {
@@ -565,8 +566,15 @@ const styles = StyleSheet.create({
   gymInputContainer: {
     position: 'relative',
     zIndex: 10,
+    marginBottom: 0,
+  },
+
+  gymSuggestionAndInputContainer : {
+    position: 'relative',
+    zIndex: 10,
     marginBottom: Spacing.xl * 2, // Add more margin to prevent overlap
   },
+
   suggestionsContainer: {
     position: 'absolute',
     top: '100%',
@@ -600,7 +608,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: Spacing.md,
-    marginTop: Spacing.xl * 1.5,
+    marginTop: 0,
     paddingTop: Spacing.lg,
     paddingHorizontal: Spacing.xl,
     maxWidth: 400,
