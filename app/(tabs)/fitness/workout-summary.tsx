@@ -223,8 +223,14 @@ export default function WorkoutSummaryScreen() {
       // If sharing to feed, create a linked post with cover image
       if (shareToFeed && currentUserId) {
         try {
+          console.log('🏋️ Creating unified workout post:', { 
+            workout_id: workoutId, 
+            user_id: currentUserId,
+            has_photo: !!photoUrl 
+          });
+          
           const defaultCaption = captionText.trim().length > 0 ? captionText.trim() : undefined;
-          const { error: postError } = await supabase
+          const { data: newPost, error: postError } = await supabase
             .from('posts')
             // @ts-ignore insert shape supports workout_id/post_type
             .insert({
@@ -234,13 +240,21 @@ export default function WorkoutSummaryScreen() {
               caption: defaultCaption || null,
               workout_id: workoutId,
               post_type: 'workout',
-            });
+            })
+            .select()
+            .single();
 
           if (postError) {
-            console.error('Failed to create workout post:', postError);
+            console.error('❌ Failed to create workout post:', postError);
+            Alert.alert('Post Creation Failed', 'Workout saved but post creation failed. Please try again.');
+          } else {
+            console.log('✅ Unified workout post created successfully:', { 
+              post_id: newPost?.id, 
+              workout_id: workoutId 
+            });
           }
         } catch (e) {
-          console.error('Unexpected error creating workout post:', e);
+          console.error('❌ Unexpected error creating workout post:', e);
         }
       }
 

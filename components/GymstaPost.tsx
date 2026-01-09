@@ -59,6 +59,7 @@ import { ShareModal } from './ShareModal';
 import { getAvatarUrl } from '@/lib/avatarUtils';
 import ImageZoomViewer from './ImageZoomViewer';
 import ZoomableMedia from './ZoomableMedia';
+import WorkoutSwipeDisplay from './WorkoutSwipeDisplay';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -643,7 +644,11 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
                 {hasWorkoutData && (
                   <TouchableOpacity
                     style={styles.achievementOverlay}
-                    onPress={() => setShowWorkoutStats(!showWorkoutStats)}
+                    onPress={() => {
+                      if (attachedWorkout) {
+                        setShowWorkoutStats(true);
+                      }
+                    }}
                     activeOpacity={0.9}
                   >
                     <LinearGradient
@@ -662,7 +667,14 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
                             <Flame size={14} color="#fff" />
                             <Text style={styles.achievementStatText}>{workoutStats.calories}</Text>
                           </View>
+                          <View style={styles.achievementStat}>
+                            <Dumbbell size={14} color="#fff" />
+                            <Text style={styles.achievementStatText}>{workoutStats.exercises} exercises</Text>
+                          </View>
                         </View>
+                        <Text style={[styles.achievementStatText, { marginTop: 4, opacity: 0.9 }]}>
+                          Tap to view details →
+                        </Text>
                       </View>
                     </LinearGradient>
                   </TouchableOpacity>
@@ -926,6 +938,22 @@ const GymstaPost: React.FC<GymstaPostProps> = ({
         onClose={() => setShowImageZoom(false)}
         colors={colors}
       />
+
+      {/* Workout Stats Modal - Swipeable Workout Details */}
+      {hasWorkoutData && attachedWorkout && (
+        <Modal
+          visible={showWorkoutStats}
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={() => setShowWorkoutStats(false)}
+        >
+          <WorkoutSwipeDisplay
+            workout={attachedWorkout}
+            photoUrl={post.image_url}
+            onClose={() => setShowWorkoutStats(false)}
+          />
+        </Modal>
+      )}
     </Animated.View>
   );
 };

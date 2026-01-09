@@ -24,7 +24,6 @@ import Animated, {
 
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/hooks/useAuth';
-const UnitContextModule = React.lazy(() => import('@/context/UnitContext'));
 import { supabase } from '@/lib/supabase';
 import { goBack } from '@/lib/goBack';
 import Colors from '@/constants/Colors';

@@ -4,7 +4,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Post as PostType } from '@/types/social';
-const FeedPost = React.lazy(() => import('@/components/Post'));
+import FeedPost from '@/components/Post';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import Colors from '@/constants/Colors';
@@ -203,26 +203,24 @@ export default function PostDetailScreen() {
       </TouchableOpacity>
       
       <View style={styles.postContainer}>
-        <React.Suspense fallback={null}>
-          <FeedPost
-            post={post}
-            colors={colors}
-            playingVideo={playingVideo}
-            currentUserId={currentUserId}
-            flaggedPosts={flaggedPosts}
-            flagging={flagging}
-            setFlagging={setFlagging}
-            setFlaggedPosts={setFlaggedPosts}
-            isAuthenticated={isAuthenticated}
-            showAuthModal={showAuthModal}
-            toggleVideoPlayback={toggleVideoPlayback}
-            navigateToProfile={navigateToProfile}
-            handleLike={handleLike}
-            handleUnlike={handleUnlike}
-            videoRefs={videoRefs}
-            handleDeletePost={handleDeletePost}
-          />
-        </React.Suspense>
+        <FeedPost
+          post={post}
+          colors={colors}
+          playingVideo={playingVideo}
+          currentUserId={currentUserId}
+          flaggedPosts={flaggedPosts}
+          flagging={flagging}
+          setFlagging={setFlagging}
+          setFlaggedPosts={setFlaggedPosts}
+          isAuthenticated={isAuthenticated}
+          showAuthModal={showAuthModal}
+          toggleVideoPlayback={toggleVideoPlayback}
+          navigateToProfile={navigateToProfile}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          videoRefs={videoRefs}
+          handleDeletePost={handleDeletePost}
+        />
       </View>
     </View>
   );

@@ -42,7 +42,7 @@ import { BorderRadius, Shadows, Spacing } from '@/constants/Spacing';
 import { Typography } from '@/constants/Typography';
 import GymstaPost from '../../components/GymstaPost';
 import StoriesRail from '../../components/StoriesRail';
-const EnhancedWorkoutPost = React.lazy(() => import('../../components/EnhancedWorkoutPost'));
+import EnhancedWorkoutPost from '../../components/EnhancedWorkoutPost';
 import { Story, Profile, Post, Workout } from '../../types/social';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -414,8 +414,33 @@ function HomeScreenContent() {
         setCurrentUserId(null);
       }
 
-      // Use the get_feed_posts function which includes privacy logic
-      const { data, error } = await supabase.rpc('get_feed_posts');
+      // Direct query instead of RPC - bypassing get_feed_posts function issues
+      const { data, error } = await supabase
+        .from('posts')
+        .select(`
+          id,
+          user_id,
+          caption,
+          image_url,
+          workout_id,
+          post_type,
+          media_type,
+          created_at,
+          product_id,
+          profiles (
+            id,
+            username,
+            avatar_url,
+            is_verified,
+            gym
+          ),
+          likes (
+            id,
+            user_id
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (error) throw error;
 
@@ -443,6 +468,12 @@ function HomeScreenContent() {
         post_type: post.post_type || (post.workout_id ? 'workout' : 'regular'),
         comments_count: commentCounts[post.id] || 0,
       }));
+
+      console.log('📥 Posts loaded:', {
+        total: postsWithMediaType.length,
+        with_workout_id: postsWithMediaType.filter((p: any) => p.workout_id).length,
+        workout_posts: postsWithMediaType.filter((p: any) => p.post_type === 'workout').length,
+      });
 
       setPosts(postsWithMediaType as Post[]);
     } catch (err) {
@@ -564,21 +595,42 @@ function HomeScreenContent() {
         return;
       }
 
-      // Use get_feed_posts function which includes privacy logic, then filter for followed users
-      const { data: feedPosts, error: feedError } = await supabase.rpc(
-        'get_feed_posts'
-      );
+      // Direct query for posts from followed users
+      const { data: feedPosts, error: feedError } = await supabase
+        .from('posts')
+        .select(`
+          id,
+          user_id,
+          caption,
+          image_url,
+          workout_id,
+          post_type,
+          media_type,
+          created_at,
+          product_id,
+          profiles (
+            id,
+            username,
+            avatar_url,
+            is_verified,
+            gym
+          ),
+          likes (
+            id,
+            user_id
+          )
+        `)
+        .in('user_id', followingIds)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (feedError) throw feedError;
 
-      // Filter posts to only include those from followed users
-      const followingPosts = (feedPosts || []).filter((post: any) =>
-        followingIds.includes(post.user_id)
-      );
-
-      const postsWithMediaType = followingPosts.map((post: any) => ({
+      const postsWithMediaType = (feedPosts || []).map((post: any) => ({
         ...post,
         media_type: post.media_type || 'image',
+        workout_id: post.workout_id || null,
+        post_type: post.post_type || (post.workout_id ? 'workout' : 'regular'),
       }));
 
       // Load workouts from followed users that were explicitly shared (is_my_gym = true)
@@ -1198,10 +1250,20 @@ function HomeScreenContent() {
     const gymPosts = posts.filter(
       (post) => (post.profiles as any).gym === currentUserGym
     );
-    const gymWorkoutItems = gymWorkouts.map((workout) => ({
-      ...workout,
-      type: 'workout' as const,
-    }));
+    
+    // Get workout_ids that are already represented as posts
+    const workoutIdsInPosts = gymPosts
+      .filter((post) => post.workout_id)
+      .map((post) => post.workout_id);
+    
+    // Only include workouts that DON'T have associated posts (to avoid duplication)
+    const gymWorkoutItems = gymWorkouts
+      .filter((workout) => !workoutIdsInPosts.includes(workout.id))
+      .map((workout) => ({
+        ...workout,
+        type: 'workout' as const,
+      }));
+    
     const gymPostItems = gymPosts.map((post) => ({
       ...post,
       type: 'post' as const,
@@ -1217,15 +1279,24 @@ function HomeScreenContent() {
       currentUserGym,
       gymPostsCount: gymPosts.length,
       gymWorkoutsCount: gymWorkouts.length,
+      workoutIdsInPosts: workoutIdsInPosts.length,
+      filteredWorkoutsCount: gymWorkoutItems.length,
       combinedContentCount: combinedContent.length,
-      posts: gymPosts.map((p) => ({
-        id: p.id,
-        caption: p.caption?.substring(0, 50),
+      '📝 Posts': gymPosts.map((p) => ({
+        id: p.id.substring(0, 8),
+        caption: p.caption?.substring(0, 30),
+        workout_id: p.workout_id ? p.workout_id.substring(0, 8) : 'null',
+        post_type: p.post_type || 'regular',
       })),
-      workouts: gymWorkouts.map((w) => ({
-        id: w.id,
+      '🏋️ Standalone Workouts (no posts)': gymWorkoutItems.map((w) => ({
+        id: w.id.substring(0, 8),
         title: w.workout_sharing_information?.[0]?.title,
       })),
+      '✨ Summary': {
+        'Unified workout posts': workoutIdsInPosts.length,
+        'Standalone workouts': gymWorkoutItems.length,
+        'Regular posts': gymPosts.filter(p => !p.workout_id).length,
+      },
       timestamp: new Date().toISOString(),
     });
 
@@ -1324,20 +1395,18 @@ function HomeScreenContent() {
     } else {
       // It's a Workout
       return (
-        <React.Suspense fallback={null}>
-          <EnhancedWorkoutPost
-            workout={item}
-            colors={colors}
-            currentUserId={currentUserId}
-            isAuthenticated={isAuthenticated}
-            showAuthModal={showAuthModal}
-            navigateToProfile={navigateToProfile}
-            handleLike={handleLike}
-            handleUnlike={handleUnlike}
-            handleDeletePost={handleDeletePost}
-            onCommentCountChange={handleCommentCountChange}
-          />
-        </React.Suspense>
+        <EnhancedWorkoutPost
+          workout={item}
+          colors={colors}
+          currentUserId={currentUserId}
+          isAuthenticated={isAuthenticated}
+          showAuthModal={showAuthModal}
+          navigateToProfile={navigateToProfile}
+          handleLike={handleLike}
+          handleUnlike={handleUnlike}
+          handleDeletePost={handleDeletePost}
+          onCommentCountChange={handleCommentCountChange}
+        />
       );
     }
   };
@@ -1556,20 +1625,19 @@ function HomeScreenContent() {
                             isMyGymTab={true}
                           />
                         ) : (
-                          <React.Suspense key={`workout-${item.id}`} fallback={null}>
-                            <EnhancedWorkoutPost
-                              workout={item}
-                              colors={colors}
-                              currentUserId={currentUserId}
-                              isAuthenticated={isAuthenticated}
-                              showAuthModal={showAuthModal}
-                              navigateToProfile={navigateToProfile}
-                              handleLike={handleLike}
-                              handleUnlike={handleUnlike}
-                              handleDeletePost={handleDeletePost}
-                              onCommentCountChange={handleCommentCountChange}
-                            />
-                          </React.Suspense>
+                          <EnhancedWorkoutPost
+                            key={`workout-${item.id}`}
+                            workout={item}
+                            colors={colors}
+                            currentUserId={currentUserId}
+                            isAuthenticated={isAuthenticated}
+                            showAuthModal={showAuthModal}
+                            navigateToProfile={navigateToProfile}
+                            handleLike={handleLike}
+                            handleUnlike={handleUnlike}
+                            handleDeletePost={handleDeletePost}
+                            onCommentCountChange={handleCommentCountChange}
+                          />
                         )
                       )}
                     </>
