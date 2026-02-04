@@ -127,7 +127,7 @@ const GymSearch: React.FC = () => {
           query={{
             key: GOOGLE_API_KEY || '',
             language: 'en',
-            types: 'establishment', // Focuses results on businesses/buildings
+            types: 'gym',
           }}
           fetchDetails={true} // REQUIRED to get lat/long coordinates
           styles={{

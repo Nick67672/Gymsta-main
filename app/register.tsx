@@ -7,7 +7,7 @@ import Colors from '@/constants/Colors';
 import { ThemedButton } from '../components/ThemedButton';
 import { ThemedInput } from '../components/ThemedInput';
 import { Check, User as UserIcon, MapPin } from 'lucide-react-native';
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import { GooglePlacesAutocomplete, GooglePlacesAutocompleteRef } from 'react-native-google-places-autocomplete';
 
 // Type definitions for Google Places
 interface PlacesError {
@@ -65,25 +65,91 @@ export default function RegisterScreen() {
     }
   }, []);
 
-  // Check if a place is a gym based on its types
-  const isGymPlace = React.useCallback((types: string[] | undefined): boolean => {
-    if (!types || !Array.isArray(types)) return false;
+  // Filter function to check if result should be displayed
+  const shouldShowResult = React.useCallback((data: any): boolean => {
+    const description = (data.description || '').toLowerCase();
+    const mainText = (data.structured_formatting?.main_text || '').toLowerCase();
+    const secondaryText = (data.structured_formatting?.secondary_text || '').toLowerCase();
+    const fullText = `${description} ${mainText} ${secondaryText}`;
     
-    const gymKeywords = ['gym', 'fitness', 'health', 'sport', 'athletic', 'training', 'workout'];
-    return types.some((type) => {
-      const lowerType = type.toLowerCase();
-      return gymKeywords.some(keyword => lowerType.includes(keyword));
-    });
+    // Gym-related keywords - be more inclusive
+    const gymKeywords = [
+      'gym', 'fitness', 'recreation center', 'rec center', 'rec centre',
+      'athletic center', 'athletic centre', 'wellness center', 'wellness centre',
+      'training center', 'training centre', 'sports complex', 'sports center',
+      'aquatic center', 'health club', 'crossfit', 'yoga', 'pilates',
+      'boxing', 'martial arts', 'climbing', 'workout', 'exercise',
+      // Popular gym chains
+      'puregym', 'pure gym', 'planet fitness', 'anytime fitness', 'la fitness',
+      '24 hour fitness', 'equinox', 'crunch', 'gold\'s gym', 'golds gym',
+      'snap fitness', 'f45', 'orangetheory'
+    ];
+    
+    // Exclude these types of places - only check secondary text for streets
+    const excludeKeywords = [
+      'hotel', 'restaurant', 'hospital', 'pharmacy', 'clinic',
+      'store', 'shop', 'mall', 'airport', 'station', 'museum',
+      'library', 'bank', 'cafe', 'coffee'
+    ];
+    
+    // Check main text for exclusions (but not street names in secondary text)
+    const hasExcludedTerm = excludeKeywords.some(keyword => 
+      mainText.includes(keyword)
+    );
+    
+    if (hasExcludedTerm) {
+      return false;
+    }
+    
+    // Check if it contains gym keywords anywhere
+    const hasGymKeyword = gymKeywords.some(keyword =>
+      fullText.includes(keyword)
+    );
+    
+    return hasGymKeyword;
+  }, []);
+
+  // Check if a place is a gym based on its types and name
+  const isGymPlace = React.useCallback((types: string[] | undefined, name?: string, description?: string): boolean => {
+    // Keywords for place names and descriptions (includes university rec centers)
+    const gymKeywords = [
+      'gym', 'fitness', 'recreation center', 'rec center', 'athletic center',
+      'wellness center', 'training center', 'sports complex', 'aquatic center',
+      'health club', 'workout', 'crossfit', 'yoga studio', 'pilates', 
+      'boxing gym', 'martial arts', 'climbing gym'
+    ];
+    
+    // Check name
+    const lowerName = (name || '').toLowerCase();
+    const hasGymInName = gymKeywords.some(keyword => lowerName.includes(keyword));
+    
+    // Check description (the full text shown in autocomplete)
+    const lowerDesc = (description || '').toLowerCase();
+    const hasGymInDesc = gymKeywords.some(keyword => lowerDesc.includes(keyword));
+    
+    // Check types if available
+    if (types && Array.isArray(types)) {
+      const gymTypeKeywords = ['gym', 'fitness', 'health', 'sport', 'athletic', 'training', 'workout'];
+      const hasGymType = types.some((type) => {
+        const lowerType = type.toLowerCase();
+        return gymTypeKeywords.some(keyword => lowerType.includes(keyword));
+      });
+      return hasGymType || hasGymInName || hasGymInDesc;
+    }
+    
+    // If no types, rely on name/description
+    return hasGymInName || hasGymInDesc;
   }, []);
 
   // Wrapper to adapt library's onPress to onPlaceSelected
   const handlePlacePress = React.useCallback((data: any, details: any = null) => {
     try {
       const placeTypes = details?.types || [];
+      const placeName = details?.name || data.structured_formatting?.main_text || '';
       
       // Validate that the selected place is a gym
-      if (!isGymPlace(placeTypes)) {
-        setError('Please select a gym location. The selected place is not recognized as a gym.');
+      if (!isGymPlace(placeTypes, placeName)) {
+        setError('Please select a gym or fitness facility. The selected place is not recognized as a gym.');
         setGym('');
         setIsGymInputFocused(false);
         return;
@@ -95,7 +161,7 @@ export default function RegisterScreen() {
         geometry: details?.geometry,
         types: placeTypes,
         formatted_address: details?.formatted_address,
-        name: details?.name || data.structured_formatting?.main_text,
+        name: placeName,
       };
       onPlaceSelected(place);
     } catch (err) {
@@ -311,6 +377,20 @@ export default function RegisterScreen() {
                 minLength={2}
                 keepResultsAfterBlur={false}
                 nearbyPlacesAPI="GooglePlacesSearch"
+                renderRow={(rowData) => {
+                  // Filter out non-gym results - return empty view with no height
+                  if (!shouldShowResult(rowData)) {
+                    return <View style={{ height: 0, margin: 0, padding: 0, overflow: 'hidden' }} />;
+                  }
+                  const title = rowData.structured_formatting?.main_text || rowData.description;
+                  const subtitle = rowData.structured_formatting?.secondary_text;
+                  return (
+                    <View style={{ paddingVertical: 12, paddingHorizontal: 14 }}>
+                      <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500', marginBottom: subtitle ? 2 : 0 }}>{title}</Text>
+                      {subtitle && <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>{subtitle}</Text>}
+                    </View>
+                  );
+                }}
                 styles={{
                   container: { flex: 1, zIndex: 1000 },
                   textInputContainer: styles.textInputContainer,
